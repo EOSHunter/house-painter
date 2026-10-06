@@ -1,9 +1,9 @@
 """House Painter: import a painted house into Blender.
 
 File > Import > House Painter scheme (.json) builds the house from a file saved with "Export for Blender" in the paint
-studio (it contains the house and every surface's colour), or from a plain house.json (that one needs Node.js installed).
+studio (it contains the house and every surface's color), or from a plain house.json (that one needs Node.js installed).
 The scene gets the same paint surfaces as the web page: one material per wall face, ceiling, cabinet door and drawer,
-door and trim piece, named "Paint:<key>", so you can re-colour any of them by hand. Cameras for the dollhouse view,
+door and trim piece, named "Paint:<key>", so you can re-color any of them by hand. Cameras for the dollhouse view,
 every room and (if the file has one) the view you exported are included.
 """
 import os
@@ -58,7 +58,7 @@ class IMPORT_SCENE_OT_house_painter(bpy.types.Operator, ImportHelper):
         name="Lighting",
         description="Light the scene the way the web page does",
         items=[("file", "As exported", "The lighting chosen when the file was exported"), ("day", "Daylight", ""),
-               ("overcast", "Overcast", ""), ("evening", "Evening lamps", ""), ("true", "True colour", "")],
+               ("overcast", "Overcast", ""), ("evening", "Evening lamps", ""), ("true", "True color", "")],
         default="file",
     )
     clear: BoolProperty(name="Replace the open scene", description="Delete everything in this file first. Turn off to add the house to the scene as it is", default=True)

@@ -35,7 +35,7 @@ cams = [o for o in objs if o.type == "CAMERA"]
 lights = [o for o in objs if o.type == "LIGHT"]
 check("walls built", sum(1 for o in objs if o.name.startswith("Wall_")) >= 25, sum(1 for o in objs if o.name.startswith("Wall_")))
 check("paint materials", len(paint) >= 150, len(paint))
-check("wall surface keeps its colour", any(m.name == "Paint:MBR-W1" for m in paint))
+check("wall surface keeps its color", any(m.name == "Paint:MBR-W1" for m in paint))
 check("cameras", any(o.name == "Cam_doll" for o in cams) and any(o.name == "Cam_export" for o in cams), len(cams))
 check("room lights", len(lights) >= 10, len(lights))
 check("scene camera set", bpy.context.scene.camera is not None)

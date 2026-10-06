@@ -22,7 +22,7 @@ blueprint image ──► Plan editor ──► house.json ──► Paint studi
 - [x] `house-core.js` holds the shared pipeline: wall joinery, room zones, paint surfaces and room shapes. Its output matches the old code's 90 surface IDs exactly.
 - [x] The studio and floor plan load any house: `?house=<url>`, a file opened with **Open file…**, or the example house.
 - [x] Heights per house (ceiling, door, window head and sill), and per opening (`height`, `sill`, `head`).
-- [x] Cabinets, colour defaults, the room order, the walkthrough start, render rooms and floor shape all come from the data.
+- [x] Cabinets, color defaults, the room order, the walkthrough start, render rooms and floor shape all come from the data.
 - [x] Pluggable scheme storage (`storage.js`):
   - this browser (localStorage);
   - the Claude artifact runtime (shared);
@@ -67,7 +67,7 @@ Still to do:
 - [x] Every fixture can face any way. The fridge, range, washer, dryer, shower, sink and barn door used to face a fixed direction. They are now built in their own frame (`fixtures.js`), in the browser and in Blender. Files that don't say which way they face look exactly as before: all 959 meshes of the example house are identical.
 - [x] Select, drag, turn, resize, duplicate and delete fixtures. The inspector also sets the cabinet height, counter, fronts (drawer over each door, doors only, or a stack of drawers), how many fronts, a sink or basin set into the counter, and the paint group. A fixture list on the left finds any of them.
 - [x] Paint groups: a new cabinet joins the house's existing group of that kind in the same room, or starts a new one. **New paint group…** makes your own. Every door and drawer can still be painted on its own.
-- [x] Floors: plain colour, the bundled Desert Sand photo, eight wood species (drawn like the cabinet veneers, in the browser and in Blender), or your own photo. A photo is turned upright, shrunk and stored inside the house file.
+- [x] Floors: plain color, the bundled Desert Sand photo, eight wood species (drawn like the cabinet veneers, in the browser and in Blender), or your own photo. A photo is turned upright, shrunk and stored inside the house file.
 - [x] The walkthrough's collision boxes follow each fixture's real footprint.
 
 Still to do:
@@ -78,7 +78,7 @@ Still to do:
 ## Phase 4: release ✅ (what's left needs the repository owner)
 
 - [x] **Licence:** MIT, with third-party notices in [NOTICE.md](NOTICE.md).
-- [x] **Paint brands:** the project ships its own palette, 124 original colours (`paint-colors.js`, built by `data/build_palette.js`). Sherwin-Williams and Behr are no longer part of it. A paint maker's book is an optional extra that you build from data you download yourself (`paint-colors-extra.js`, git-ignored): see [data/README.md](data/README.md). The studio shows the palette, plus an extra tab for each book it finds. The seven example schemes and the example export were remapped to the nearest palette colours (the biggest shift is 6 dE).
+- [x] **Paint brands:** the project ships its own palette, 124 original colors (`paint-colors.js`, built by `data/build_palette.js`). Sherwin-Williams and Behr are no longer part of it. A paint maker's book is an optional extra that you build from data you download yourself (`paint-colors-extra.js`, git-ignored): see [data/README.md](data/README.md). The studio shows the palette, plus an extra tab for each book it finds. The seven example schemes and the example export were remapped to the nearest palette colors (the biggest shift is 6 dE).
 - [x] **Blender add-on** (`blender_addon/`, Blender 4.2+ extension): **File > Import > House Painter scheme (.json)**. Tested end to end, from the source tree and from the packaged zip (`python tools/build_addon.py`, then `blender -b --factory-startup -P tools/test_addon.py`), and the manifest validates with Blender's own checker.
 - [x] **Static site and deployment:** `index.html` is the start page; `npm run build` (`tools/build.js`) writes the deployable site to `dist/`, with the libraries vendored in `vendor/` (no CDN), content-hashed assets, a 404 page and `_headers`. It is meant for Cloudflare Pages, embedded in an iframe on r7orbit.io: [docs/DEPLOY.md](docs/DEPLOY.md). `.github/workflows/pages.yml` can still publish the same `dist/` to GitHub Pages.
 - [x] **Tests and CI:** 119 unit tests (`npm test`) run on every push. The surface IDs and areas of both example houses are locked by snapshot, and the tests also check the palette, the shipped schemes and every file a page loads.
@@ -88,7 +88,7 @@ Still to do:
 Still to do by hand:
 - [ ] Create the Cloudflare Pages project and the `housepainter.r7orbit.io` custom domain ([docs/DEPLOY.md](docs/DEPLOY.md)); optionally turn on GitHub Pages too (Settings > Pages > Source: GitHub Actions).
 - [ ] Tag a release (`git tag v0.1.0 && git push --tags`): `.github/workflows/addon.yml` attaches the add-on zip. Neither workflow could be run from here, so the first run is the real test.
-- [ ] The earlier commits still contain the Sherwin-Williams and Behr colour books. Removing them from the history needs a history rewrite and a force push, which is the owner's call.
+- [ ] The earlier commits still contain the Sherwin-Williams and Behr color books. Removing them from the history needs a history rewrite and a force push, which is the owner's call.
 - [ ] Confirm you are happy to publish `textures/desert_sand_plank.png`, a crop of a flooring reference photo, and the traced Fleetwood plan.
 
 ## Phase 5: later
@@ -144,9 +144,9 @@ Walls at any angle: a cut corner, a bay window, a diagonal partition. The exampl
 
 ### Outside detail ✅ (first version)
 
-- [x] **Roof:** gable, hip, shed or flat over the outline of the top floor, with pitch and overhang. One paint item, with gable ends in the siding colour and fascia in the exterior trim.
+- [x] **Roof:** gable, hip, shed or flat over the outline of the top floor, with pitch and overhang. One paint item, with gable ends in the siding color and fascia in the exterior trim.
 - [x] **Porch:** a fixture with a deck, posts and a sloping roof.
-- [x] **Siding profiles:** lap, board and batten, shingle and stucco relief in the studio and in Blender, under the paint colour.
+- [x] **Siding profiles:** lap, board and batten, shingle and stucco relief in the studio and in Blender, under the paint color.
 - [ ] A roof that follows an L- or T-shaped outline (valleys), dormers, chimneys, gutters.
 - [ ] Wrap-around porches and railings, garage doors, and windows in gable ends.
 - [ ] Per-surface siding profiles (shingles on a gable, lap below).
@@ -158,4 +158,4 @@ Walls at any angle: a cut corner, a bay window, a diagonal partition. The exampl
 ## Known limits today
 
 - Walls are straight or circular arcs, at any angle. A room's ceiling is flat, one slope or a vault (one or two planes across its bounding box). Floors are whole storeys stacked on each other, with straight stairs. The roof covers the bounding box of the top floor. The tracer finds level, plumb and angled straight walls, not curves.
-- Saved colours are tied to surface IDs (such as `BR1-N`). If walls change in a way that renames surfaces, the colours on the renamed walls are lost.
+- Saved colors are tied to surface IDs (such as `BR1-N`). If walls change in a way that renames surfaces, the colors on the renamed walls are lost.

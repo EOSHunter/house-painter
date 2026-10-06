@@ -18,7 +18,7 @@ test('the shipped palette is the House Painter palette and nothing else', () => 
   assert.ok(hp && hp.colors.length >= 100, 'palette size ' + (hp && hp.colors.length));
 });
 
-test('palette codes and names are unique and every colour is a valid hex', () => {
+test('palette codes and names are unique and every color is a valid hex', () => {
   const codes = new Set(), names = new Set();
   for (const [code, name, hex] of hp.colors) {
     assert.match(code, /^HP \d+$/); assert.match(hex, /^#[0-9A-F]{6}$/, name);
@@ -28,7 +28,7 @@ test('palette codes and names are unique and every colour is a valid hex', () =>
   for (const c of hp.popular) assert.ok(codes.has(c), 'quick pick ' + c + ' is not in the palette');
 });
 
-test('every House Painter colour used in a scheme exists in the palette with the same name and hex', () => {
+test('every House Painter color used in a scheme exists in the palette with the same name and hex', () => {
   const byCode = Object.fromEntries(hp.colors.map(c => [c[0], c]));
   const files = ['examples/house-cozy-deco-emerald-brass.json'];
   for (const h of fs.readdirSync(path.join(ROOT, 'houses'))) {
@@ -39,7 +39,7 @@ test('every House Painter colour used in a scheme exists in the palette with the
   for (const f of files) {
     const doc = readJSON(f), a = doc.assignments || doc.a;
     for (const [key, v] of Object.entries(a)) {
-      assert.ok(['hp', 'wood', 'custom'].includes(v.b), `${f} ${key}: colour book "${v.b}" is not shipped (run data/remap_schemes.js)`);
+      assert.ok(['hp', 'wood', 'custom'].includes(v.b), `${f} ${key}: color book "${v.b}" is not shipped (run data/remap_schemes.js)`);
       if (v.b === 'hp') { const c = byCode[v.c]; assert.ok(c, `${f} ${key}: ${v.c} missing`); assert.equal(v.h, c[2], `${f} ${key} hex`); assert.equal(v.n, c[1], `${f} ${key} name`); }
     }
   }
@@ -60,10 +60,10 @@ test('every key in a shipped scheme is a real paint target of that house', () =>
   }
 });
 
-test('the example export carries a house that builds, and a resolved colour for every surface', () => {
+test('the example export carries a house that builds, and a resolved color for every surface', () => {
   const ex = readJSON('examples/house-cozy-deco-emerald-brass.json');
   assert.equal(ex.format, 'house-painter/scheme'); assert.equal(ex.house.format, 'house-painter/built-house');
-  for (const s of ex.house.surfaces) assert.ok(ex.resolved[s.id], 'no resolved colour for ' + s.id);
+  for (const s of ex.house.surfaces) assert.ok(ex.resolved[s.id], 'no resolved color for ' + s.id);
   assert.ok(ex.view.camera.position.length === 3);
 });
 
@@ -82,7 +82,7 @@ test('every page finds the scripts it loads', () => {
     for (const m of html.matchAll(/data-default="([^"]+)"/g)) refs.push(m[1]);
     for (const ref of refs) {
       if (/^https?:/.test(ref)) continue;
-      if (ref.endsWith('?')) continue;                              // optional on purpose (extra colour books)
+      if (ref.endsWith('?')) continue;                              // optional on purpose (extra color books)
       assert.ok(fs.existsSync(path.join(ROOT, ref)), `${page} loads ${ref}, which is missing`);
     }
   }

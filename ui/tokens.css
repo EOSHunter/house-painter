@@ -32,7 +32,7 @@
 @font-face { font-family: 'JetBrains Mono Fallback'; src: local('Courier New'), local('Liberation Mono'), local('Courier'); size-adjust: 100%; ascent-override: 102%; descent-override: 30%; line-gap-override: 0%; }
 
 :root {
-  /* ------------------------------------------------------------------------------------------------ Colour: surfaces */
+  /* ------------------------------------------------------------------------------------------------ Color: surfaces */
   /* Stepped tones of warm black. Depth is tone, never heavy shadow. */
   --bg: #09090a;
   --surface-1: #0f0f11;
@@ -40,19 +40,19 @@
   --surface-3: #1b1b1f;
   --void: #020203;                        /* web: the dark inside the logo; the deepest tone, for wells and the mark's fill */
 
-  /* ---------------------------------------------------------------------------------------------------- Colour: lines */
+  /* ---------------------------------------------------------------------------------------------------- Color: lines */
   --line: rgb(236 228 210 / 0.08);        /* hairline: dividers, card edges */
   --line-strong: rgb(236 228 210 / 0.16);  /* inputs, hovered edges */
   --line-brass: rgb(201 169 106 / 0.42);   /* selected, focused, needs you */
 
-  /* ---------------------------------------------------------------------------------------------------- Colour: text */
+  /* ---------------------------------------------------------------------------------------------------- Color: text */
   /* Ivory, never pure white. */
   --text: #ece6d8;
   --text-2: #a39e92;
   --text-3: #827e75;                       /* web: lifted from the app's #6b675f so small text passes 4.5:1 (see DESIGN_SYSTEM.md) */
   --text-3-app: #6b675f;                   /* the app's dimmest text; 3.5:1, for big or decorative text only */
 
-  /* ---------------------------------------------------------------------------------------------------- Colour: brass */
+  /* ---------------------------------------------------------------------------------------------------- Color: brass */
   /* The single accent. */
   --brass: #c9a96a;
   --brass-bright: #e3c98f;
@@ -77,7 +77,7 @@
   /* The logo's brass, as a gradient. Use for the mark and, rarely, one hero word. */
   --brass-gradient: linear-gradient(135deg, var(--brass-leaf) 0%, var(--brass) 50%, var(--brass-shadow) 100%);
 
-  /* --------------------------------------------------------------------------------------------------- Colour: status */
+  /* --------------------------------------------------------------------------------------------------- Color: status */
   /* Desaturated, used sparingly. */
   --st-working: var(--brass);
   --st-attention: var(--brass-bright);
@@ -155,7 +155,7 @@
 
   /* ---------------------------------------------------------------------------------------------------------- Motion */
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
-  --dur-fast: 140ms;                       /* hover, colour changes */
+  --dur-fast: 140ms;                       /* hover, color changes */
   --dur: 240ms;                            /* most things */
   --dur-slow: 420ms;                       /* things arriving */
   --dur-orbit: 14s;                        /* web: one lap of the dot while busy */

@@ -1,8 +1,8 @@
 /*
   House Painter interface: shared base and components, built on the R7 Orbit tokens (tokens.css).
-  Rules (docs/DESIGN.md): tokens only, never raw colours, radii, spacing, shadows, type sizes or durations. One accent: brass.
+  Rules (docs/DESIGN.md): tokens only, never raw colors, radii, spacing, shadows, type sizes or durations. One accent: brass.
   Component shapes follow the site's components.css (src/styles/design-system, same commit as tokens.css); the app-only parts are here.
-  The paint colours a person chooses, swatches and any colour data are never restyled: they come from data and are set inline as --c.
+  The paint colors a person chooses, swatches and any color data are never restyled: they come from data and are set inline as --c.
 */
 
 :root {
@@ -13,7 +13,7 @@
   --tap: 44px;
   --icon: 16px;
   --mark-h: 18px;                         /* the R7 mark in a header */
-  --bw-2: 2px;                            /* a heavier hairline: scrollbar thumb gap, slider track, forced-colour ring */
+  --bw-2: 2px;                            /* a heavier hairline: scrollbar thumb gap, slider track, forced-color ring */
   --bw-3: 3px;
   --blur: 12px;                           /* the veil behind a floating bar */
   --blur-sm: 4px;                         /* the scrim behind a dialog */
@@ -122,7 +122,7 @@ code { font-size: 0.92em; padding: 0 var(--s-1); background: var(--surface-2); b
 .pill:hover { color: var(--brass-bright); border-color: var(--line-brass); }
 .pill.on { color: var(--brass-bright); border-color: var(--line-brass); background: var(--brass-wash-1); }
 
-/* Segmented control (view switches, wall type, sheen, colour book) */
+/* Segmented control (view switches, wall type, sheen, color book) */
 .seg { display: inline-flex; max-width: 100%; border: var(--bw) solid var(--line-strong); border-radius: var(--r-sm); overflow-x: auto; scrollbar-width: none; background: var(--surface-1); }
 .seg button {
   flex: none; min-height: var(--ctl-sm); padding: 0 var(--s-3); background: transparent; border: 0; border-right: var(--bw) solid var(--line);
@@ -154,7 +154,7 @@ input[type='search']::-webkit-search-cancel-button { filter: invert(0.7); }
 input[type='number'] { font-family: var(--font-mono); }
 .field input[data-len], .field input[data-f='h_id'] { font-family: var(--font-mono); }
 
-/* A native select, with a drawn chevron made of two token-coloured wedges */
+/* A native select, with a drawn chevron made of two token-colored wedges */
 select {
   appearance: none; -webkit-appearance: none; padding-right: var(--s-6); cursor: pointer;
   background-image: linear-gradient(45deg, transparent 50%, var(--text-2) 50%), linear-gradient(135deg, var(--text-2) 50%, transparent 50%);
@@ -175,7 +175,7 @@ input[type='range']:hover::-webkit-slider-thumb { background: var(--brass-bright
 input[type='range']:hover::-moz-range-thumb { background: var(--brass-bright); }
 input[type='range']:focus-visible { outline: var(--focus-ring); outline-offset: 0; }
 
-/* The colour picker keeps its true colour: only its frame is styled */
+/* The color picker keeps its true color: only its frame is styled */
 input[type='color'] { width: 100%; min-height: var(--ctl); padding: calc(var(--s-1) / 2); background: var(--surface-1); border: var(--bw) solid var(--line-strong); border-radius: var(--r-sm); cursor: pointer; }
 input[type='color']::-webkit-color-swatch-wrapper { padding: 0; }
 input[type='color']::-webkit-color-swatch { border: 0; border-radius: var(--r-xs); }
@@ -194,7 +194,7 @@ input[type='file']::file-selector-button:hover { border-color: var(--brass); col
 
 /* ---------------------------------------------------------------------------------------------------------- Surfaces */
 .card { position: relative; display: flex; flex-direction: column; background: var(--surface-1); border: var(--bw) solid var(--line); border-radius: var(--r-lg); color: inherit; overflow: hidden; }
-/* A swatch of paint: the colour is data (--c), never a token. The hairline keeps pale colours visible on the dark panel. */
+/* A swatch of paint: the color is data (--c), never a token. The hairline keeps pale colors visible on the dark panel. */
 .swatch-edge { outline: var(--bw) solid var(--line-strong); outline-offset: calc(-1 * var(--bw)); }
 
 /* ----------------------------------------------------------------------------------------------------- Floating things */
@@ -247,7 +247,7 @@ input[type='file']::file-selector-button:hover { border-color: var(--brass); col
   input[type='checkbox'], input[type='radio'] { width: var(--s-5); height: var(--s-5); }
 }
 
-/* ------------------------------------------------------------------------------------------------------ Forced colours */
+/* ------------------------------------------------------------------------------------------------------ Forced colors */
 @media (forced-colors: active) {
   .btn, .seg, input, select, textarea, .dialog .box, .toast, .tip { border-color: ButtonText; }
   .btn[aria-pressed='true'], .seg button[aria-pressed='true'] { outline: var(--bw-2) solid Highlight; outline-offset: calc(-1 * var(--bw-2)); }

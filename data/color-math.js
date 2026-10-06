@@ -1,4 +1,4 @@
-// Colour maths for the data tools: sRGB hex -> CIELAB, and the CIEDE2000 distance between two Lab colours.
+// Color maths for the data tools: sRGB hex -> CIELAB, and the CIEDE2000 distance between two Lab colors.
 const lab = hex => {
   let [r, g, b] = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255).map(v => v > 0.04045 ? ((v + 0.055) / 1.055) ** 2.4 : v / 12.92);
   let x = (r * 0.4124 + g * 0.3576 + b * 0.1805) / 0.95047, y = r * 0.2126 + g * 0.7152 + b * 0.0722, z = (r * 0.0193 + g * 0.1192 + b * 0.9505) / 1.08883;

@@ -20,11 +20,11 @@ The pages work without the fonts (they fall back to system fonts).
 
 The Blender add-on and `build_house.py` use Blender's Python API. Blender itself is licensed under the GPL and is not included. The add-on is MIT licensed, which is GPL-compatible, as Blender's extensions platform requires.
 
-## Colours
+## Colors
 
-The built-in palette (`paint-colors.js`) is original: its names and values were written for this project. It is not any paint maker's colour book.
+The built-in palette (`paint-colors.js`) is original: its names and values were written for this project. It is not any paint maker's color book.
 
-The tools in `data/` can build extra colour books, such as a paint maker's own, from data you download yourself. Those books are for your own use. They are never committed to this repository (they are git-ignored), and the paint makers own their names, codes and values. Screen colours are approximations in any case: check a real chip in your own light before buying paint.
+The tools in `data/` can build extra color books, such as a paint maker's own, from data you download yourself. Those books are for your own use. They are never committed to this repository (they are git-ignored), and the paint makers own their names, codes and values. Screen colors are approximations in any case: check a real chip in your own light before buying paint.
 
 ## Images
 

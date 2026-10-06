@@ -24,14 +24,14 @@ house.json ──► house-core.js ──► HOUSE + ROOMS ──► editor.js  
 - **`house3d.js`** and **`build_house.py`** build the same model twice, once in Three.js and once in Blender. They have to agree.
 - **`storage.js`** is where schemes are kept. Add a backend there if you want your own.
 - **`docs/house-format.md`** is the contract for the house file.
-- **`ui/`** holds all the interface CSS. It uses the R7 Orbit tokens only (no raw colours, sizes or shadows); `docs/DESIGN.md` has the rules and `tests/ui-tokens.test.js` checks them.
+- **`ui/`** holds all the interface CSS. It uses the R7 Orbit tokens only (no raw colors, sizes or shadows); `docs/DESIGN.md` has the rules and `tests/ui-tokens.test.js` checks them.
 
 ## Rules that keep it working
 
 1. **Surface IDs are part of the format.** Saved schemes refer to them. If a change alters them, the snapshot test fails. Run `UPDATE_SNAPSHOTS=1 npm test` (PowerShell: `$env:UPDATE_SNAPSHOTS=1; npm test`) only when you mean to, and say so in the pull request.
 2. **Browser and Blender stay in step.** If you change how a fixture, wall or opening is built in `house3d.js`, make the same change in `build_house.py`, and check both. `blender -b --factory-startup -P tools/test_addon.py` runs the add-on end to end.
-3. **Palette codes are append-only.** Add colours to `data/build_palette.js` and run `node data/build_palette.js`. Never renumber or reuse a code.
-4. **No paint maker's data in the repository.** No names, codes or colour values copied from a brand's book. Extra books are built locally (`data/README.md`) and are git-ignored.
+3. **Palette codes are append-only.** Add colors to `data/build_palette.js` and run `node data/build_palette.js`. Never renumber or reuse a code.
+4. **No paint maker's data in the repository.** No names, codes or color values copied from a brand's book. Extra books are built locally (`data/README.md`) and are git-ignored.
 5. **Page scripts are plain ASCII.** Run `node data/ascii_js.js` after editing them; a test checks.
 6. **Keep the old files working.** A house file written last month should still open. Add fields; don't change what existing ones mean. Bump `version` only for a real break, with a migration.
 

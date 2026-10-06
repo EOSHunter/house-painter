@@ -1,6 +1,6 @@
 /*
  * Picks the house to show, builds it with HouseCore, then loads the page's own scripts in order.
- * A script name ending in "?" is optional: if it is missing the page carries on (extra colour books use this).
+ * A script name ending in "?" is optional: if it is missing the page carries on (extra color books use this).
  *
  *   <script src="house-core.js"></script>
  *   <script src="house-loader.js" data-default="houses/waterford-4563c/house.json" data-then="a.js b.js"></script>

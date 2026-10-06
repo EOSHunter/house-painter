@@ -1,7 +1,7 @@
 /*
- * Paint Studio app: selection, colour picker, camera views, schemes, totals, share links, export for Blender.
+ * Paint Studio app: selection, color picker, camera views, schemes, totals, share links, export for Blender.
  * Reads the house from window.HOUSE / window.ROOMS (house-loader.js) and keeps schemes through storage.js.
- * Scheme assignments: { <targetKey>: {b, c, n, h, s} }  b = colour book id ('hp' for the House Painter palette, 'wood', 'custom', or any extra book), c = code, n = name, h = hex, s = sheen
+ * Scheme assignments: { <targetKey>: {b, c, n, h, s} }  b = color book id ('hp' for the House Painter palette, 'wood', 'custom', or any extra book), c = code, n = name, h = hex, s = sheen
  */
 (function () {
   const H = window.HOUSE, R = window.ROOMS, C = window.PAINT_COLORS, B = window.House3D, T = THREE;
@@ -28,7 +28,7 @@
   ]).concat(H.roof ? [['roof', 'Roof', 'house', 'roof']] : []);
   ITEMS.forEach(([k, l, room, kind]) => { TARGETS[k] = { key: k, room, kind, area: 0, label: l,
     full: (room === 'house' ? 'Whole house' : R.byId[room].name) + ' \u00b7 ' + l }; });
-  // individual cabinet doors and drawers (built by house3d.js); each falls back to its cabinet run's colour
+  // individual cabinet doors and drawers (built by house3d.js); each falls back to its cabinet run's color
   const PARTS_OF = {};
   for (const p of B.cabParts) {
     const g = TARGETS[p.group]; if (!g) continue;
@@ -43,10 +43,10 @@
     .sort((a, b) => (DIR_ORDER[a.s.dir] - DIR_ORDER[b.s.dir]) || a.key.localeCompare(b.key, 'en', { numeric: true }));
   const defaultSheen = t => ({ ceiling: 'flat', trim: 'semigloss', door: 'semigloss', cabinet: 'satin', cabdoor: 'satin', siding: 'satin', roof: 'flat' }[t.kind] || 'eggshell');
   const SHEEN_LABEL = { flat: 'Flat', eggshell: 'Eggshell', satin: 'Satin', semigloss: 'Semi-gloss' };
-  const BOOKS = C.books;                                      // colour books: the House Painter palette, plus any extra ones (paint-colors-extra.js)
+  const BOOKS = C.books;                                      // color books: the House Painter palette, plus any extra ones (paint-colors-extra.js)
   const BRAND_LABEL = new Proxy({ wood: 'Wood', custom: 'Custom', ...Object.fromEntries(BOOKS.map(b => [b.id, b.label])) }, { get: (t, k) => (k in t ? t[k] : String(k)) });   // a scheme made with a book that isn't loaded still reads sensibly
 
-  // colour books \u2192 objects
+  // color books \u2192 objects
   const BOOK = Object.fromEntries(BOOKS.map(bk => [bk.id, bk.colors.map(([c, n, h]) => ({ b: bk.id, c, n, h }))]));
   BOOK.wood = Object.entries(B.WOODS).map(([c, w]) => ({ b: 'wood', c, n: w.n, h: w.avg }));
   const byCode = {}; for (const id in BOOK) BOOK[id].forEach(x => { byCode[id + '|' + x.c] = x; });
@@ -90,7 +90,7 @@
   B.ceilings.children.forEach(m => { m.castShadow = false; });
 
   // ------------------------------------------------------------------ lighting modes
-  // true colour: flat, neutral light, so every wall shows the chip colour. The others are previews of real light.
+  // true color: flat, neutral light, so every wall shows the chip color. The others are previews of real light.
   const lamps = Object.values(B.roomInfo).map(ri => {
     const l = new T.PointLight(0xffbf80, 0, 17, 2);           // ~2700K bulb at each room's ceiling
     l.position.set(ri.cx, (ri.elevation || 0) + 7.4, ri.cy); scene.add(l); return l;
@@ -99,10 +99,10 @@
   try { const pm = new T.PMREMGenerator(renderer); envTex = pm.fromScene(new T.RoomEnvironment(), 0.04).texture; } catch (e) { envTex = null; }
   // exposures calibrated so a wall facing the camera reads close to its chip; shifts come from the light, not the setup
   const LIGHTS = {
-    true:     { label: 'True colour', tone: T.NoToneMapping, exp: 1, env: 0, amb: 0.9, head: 0.12, hemi: 0, sun: 0, lamps: 0, note: 'Even, neutral light: every wall shows the chip colour exactly.' },
+    true:     { label: 'True color', tone: T.NoToneMapping, exp: 1, env: 0, amb: 0.9, head: 0.12, hemi: 0, sun: 0, lamps: 0, note: 'Even, neutral light: every wall shows the chip color exactly.' },
     day:      { label: 'Daylight', tone: T.ACESFilmicToneMapping, exp: 0.75, env: 0.75, amb: 0, head: 0, hemi: 0.2, sun: 2.1, lamps: 0, note: 'Sun through the windows. Walls facing away from the light read darker, as they will in the house.' },
     overcast: { label: 'Overcast', tone: T.ACESFilmicToneMapping, exp: 0.75, env: 0.7, amb: 0, head: 0, hemi: 0.35, sun: 0, lamps: 0, note: 'Soft, cool daylight with no direct sun.' },
-    evening:  { label: 'Evening lamps', tone: T.ACESFilmicToneMapping, exp: 1.35, env: 0.12, amb: 0, head: 0, hemi: 0.04, sun: 0, lamps: 1.25, note: 'Warm 2700K ceiling lights, no daylight. Cool colours shift warmer.' }
+    evening:  { label: 'Evening lamps', tone: T.ACESFilmicToneMapping, exp: 1.35, env: 0.12, amb: 0, head: 0, hemi: 0.04, sun: 0, lamps: 1.25, note: 'Warm 2700K ceiling lights, no daylight. Cool colors shift warmer.' }
   };
   let lightMode = 'true', exposure = 1;
   try { lightMode = localStorage.getItem('paintstudio.light') || 'true'; exposure = +localStorage.getItem('paintstudio.exposure') || 1; } catch { }
@@ -453,7 +453,7 @@
 
   // ------------------------------------------------------------------ selection
   const SEL_GLOW = new T.Color(0x1d5bff);
-  // selection flashes, then clears completely so it never tints the paint colour being judged
+  // selection flashes, then clears completely so it never tints the paint color being judged
   let glowT = 0;
   function glow(flash = true) {
     const level = flash ? 0.3 : 0;
@@ -478,7 +478,7 @@
   function hexOf(k) { return effective(k)?.h || B.defaultHex(k); }
   function applyMaterial(k) {
     const v = effective(k); B.setPaint(k, v?.h, v?.s || defaultSheen(TARGETS[k]), v?.b === 'wood' ? v.c : null);
-    if (PARTS_OF[k]) PARTS_OF[k].forEach(applyMaterial);              // a run's doors follow it unless they have their own colour
+    if (PARTS_OF[k]) PARTS_OF[k].forEach(applyMaterial);              // a run's doors follow it unless they have their own color
   }
   function applyAll() { for (const k in TARGETS) applyMaterial(k); glow(false); }
   function paint(keys, colour, sheen) {
@@ -564,7 +564,7 @@
   function renderSel() {
     const box = $('#selBox'), keys = [...sel];
     if (!keys.length) {
-      box.innerHTML = `<p class="empty">Pick a wall in the model, or a room or item on the left. Shift-click to pick several at once, then choose a colour.</p>`;
+      box.innerHTML = `<p class="empty">Pick a wall in the model, or a room or item on the left. Shift-click to pick several at once, then choose a color.</p>`;
       return;
     }
     const vals = keys.map(k => A[k]), first = vals[0], same = vals.every(v => (v?.h || null) === (first?.h || null) && (v?.c || null) === (first?.c || null));
@@ -573,7 +573,7 @@
     const title = keys.length === 1 ? TARGETS[keys[0]].full : `${keys.length} surfaces`;
     const area = keys.reduce((s, k) => s + (TARGETS[k].area || 0), 0);
     const names = keys.length > 1 ? keys.slice(0, 4).map(k => TARGETS[k].full).join(', ') + (keys.length > 4 ? ` and ${keys.length - 4} more` : '') : '';
-    const colourLine = !same ? 'Mixed colours' : first ? (first.b === 'wood' ? `${esc(first.n)} \u00b7 wood finish` : `${esc(first.n)} <code>${esc(first.b === 'custom' ? first.h : first.c)}</code> \u00b7 ${BRAND_LABEL[first.b]}`) : 'Primer white (not painted yet)';
+    const colourLine = !same ? 'Mixed colors' : first ? (first.b === 'wood' ? `${esc(first.n)} \u00b7 wood finish` : `${esc(first.n)} <code>${esc(first.b === 'custom' ? first.h : first.c)}</code> \u00b7 ${BRAND_LABEL[first.b]}`) : 'Primer white (not painted yet)';
     box.innerHTML = `
       <div class="sel-head"><div class="bigchip" style="--c:${same ? hexOf(keys[0]) : 'linear-gradient(135deg,' + keys.slice(0, 4).map(hexOf).join(',') + ')'}${same ? '' : ';background:var(--c)'}"></div>
         <div><div class="sel-title">${esc(title)}</div><div class="sel-sub">${colourLine}${area ? ` \u00b7 ${Math.round(area)} sq ft` : ''}</div>${names ? `<div class="sel-sub">${esc(names)}</div>` : ''}</div></div>
@@ -587,7 +587,7 @@
     box.querySelector('#clearSel')?.addEventListener('click', () => paint(keys, null, null));
   }
 
-  // ------------------------------------------------------------------ colour picker
+  // ------------------------------------------------------------------ color picker
   function chipHTML(x) {
     const cur = sel.size && [...sel].every(k => A[k] && A[k].b === x.b && A[k].c === x.c);
     return `<button class="chip${cur ? ' cur' : ''}" data-b="${x.b}" data-c="${esc(x.c)}" style="--c:${x.h}${x.b === 'wood' ? `;--img:url(${B.woodSwatch(x.c)})` : ''}" title="${esc(x.n)} \u00b7 ${esc(x.c)} \u00b7 ${x.h}"${sel.size && canWrite ? '' : ' disabled'}>
@@ -596,7 +596,7 @@
   const hexRGB = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
   function search(book, q) {
     q = q.trim().toLowerCase();
-    if (/^#?[0-9a-f]{6}$/.test(q)) {                         // nearest colours to a hex
+    if (/^#?[0-9a-f]{6}$/.test(q)) {                         // nearest colors to a hex
       const [r, g, b] = hexRGB(q[0] === '#' ? q : '#' + q);
       return book.map(x => { const [R2, G2, B2] = hexRGB(x.h); return [x, (r - R2) ** 2 * 2 + (g - G2) ** 2 * 4 + (b - B2) ** 2 * 3]; })
         .sort((p, q2) => p[1] - q2[1]).slice(0, 48).map(p => p[0]);
@@ -613,10 +613,10 @@
     const area = $('#chipArea');
     if (brand === 'custom') {
       const v = sel.size ? A[[...sel][0]] : null;
-      area.innerHTML = `<div class="custom"><input type="color" id="customHex" value="${v?.h || '#d9d4cb'}" aria-label="Pick a colour">
+      area.innerHTML = `<div class="custom"><input type="color" id="customHex" value="${v?.h || '#d9d4cb'}" aria-label="Pick a color">
         <input type="text" id="customName" placeholder="Name it (e.g. store match)" value="${v?.b === 'custom' ? esc(v.n) : ''}">
         <button class="btn primary" id="customApply"${sel.size && canWrite ? '' : ' disabled'}>Apply</button></div>
-        <p class="note">Use this for a colour matched at the store or a brand that isn't listed.</p>`;
+        <p class="note">Use this for a color matched at the store or a brand that isn't listed.</p>`;
       $('#customApply').onclick = () => { const h = $('#customHex').value.toUpperCase(), n = $('#customName').value.trim() || 'Custom ' + h;
         paint([...sel], { b: 'custom', c: h, n, h }); };
       return;
@@ -625,10 +625,10 @@
     let html = '';
     if (query.trim()) {
       const res = search(BOOK[brand], query);
-      html = res.length ? `<div class="chips">${res.map(chipHTML).join('')}</div>` : `<p class="empty">No ${BRAND_LABEL[brand]} colour matches \u201c${esc(query)}\u201d. Try part of the name, the number, or a hex like #D1CBC1.</p>`;
+      html = res.length ? `<div class="chips">${res.map(chipHTML).join('')}</div>` : `<p class="empty">No ${BRAND_LABEL[brand]} color matches \u201c${esc(query)}\u201d. Try part of the name, the number, or a hex like #D1CBC1.</p>`;
     } else {
       if (used.length) html += `<h2 style="margin:0 0 6px">In this scheme</h2><div class="chips">${used.map(chipHTML).join('')}</div>`;
-      html += `<h2 style="margin:12px 0 6px">Popular ${BRAND_LABEL[brand]} colours</h2><div class="chips">${POPULAR[brand].map(chipHTML).join('')}</div>`;
+      html += `<h2 style="margin:12px 0 6px">Popular ${BRAND_LABEL[brand]} colors</h2><div class="chips">${POPULAR[brand].map(chipHTML).join('')}</div>`;
     }
     if (!sel.size) html = `<p class="note" style="margin:0 0 8px">Select a surface first, then click a chip to paint it.</p>` + html;
     area.innerHTML = html;
@@ -657,7 +657,7 @@
       if (t.area) g.area += t.area; else g.items.add(t.kind === 'cabdoor' ? TARGETS[t.group].label + ' (some doors)' : t.label);
     }
     const woodHTML = woods.size ? `<p class="note"><b>Wood finishes (not paint):</b> ${[...woods].map(([n, set]) => esc(n) + ' on ' + esc([...set].join(', '))).join('; ')}.</p>` : '';
-    if (!groups.size) { $('#totals').innerHTML = woodHTML; if (woodHTML) return; $('#totals').innerHTML = `<p class="empty">Gallons per colour appear here as you paint: 2 coats at about 350 sq ft per gallon.</p>`; return; }
+    if (!groups.size) { $('#totals').innerHTML = woodHTML; if (woodHTML) return; $('#totals').innerHTML = `<p class="empty">Gallons per color appear here as you paint: 2 coats at about 350 sq ft per gallon.</p>`; return; }
     const rows = [...groups.values()].sort((a, b) => b.area - a.area).map(g => {
       const gal = g.area ? Math.max(0.25, Math.ceil(g.area * 2 / 350 * 4) / 4) : 0;
       const qty = g.area ? `${gal.toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1')} gal` : '\u2014';
@@ -777,7 +777,7 @@
 
   // ------------------------------------------------------------------ walkthrough: its own full-screen experience
   // Walk with WASD + mouse; point at a wall to see what it is; click to free the mouse and open the paint panel on the
-  // right. While the panel is open the camera stays put, so the mouse is only for choosing colours.
+  // right. While the panel is open the camera stays put, so the mouse is only for choosing colors.
   let immersive = false, picker = null, iBrand = BOOKS[0].id, iQuery = '', promptT = 0;
   const appEl = document.querySelector('.app');
   $('#ihGo').innerHTML = ROOM_ORDER.map(id => `<option value="${id}">${esc(R.byId[id].name)}</option>`).join('');
@@ -856,11 +856,11 @@
     let html = '';
     if (iQuery.trim()) {
       const res = search(BOOK[iBrand], iQuery);
-      html = res.length ? `<div class="chips">${res.map(chipHTML).join('')}</div>` : `<p class="empty">No ${BRAND_LABEL[iBrand]} colour matches \u201c${esc(iQuery)}\u201d.</p>`;
+      html = res.length ? `<div class="chips">${res.map(chipHTML).join('')}</div>` : `<p class="empty">No ${BRAND_LABEL[iBrand]} color matches \u201c${esc(iQuery)}\u201d.</p>`;
     } else {
       const used = usedColours();
       if (used.length) html += `<h2>In this scheme</h2><div class="chips">${used.map(chipHTML).join('')}</div>`;
-      html += `<h2>Popular ${BRAND_LABEL[iBrand]} colours</h2><div class="chips">${POPULAR[iBrand].map(chipHTML).join('')}</div>`;
+      html += `<h2>Popular ${BRAND_LABEL[iBrand]} colors</h2><div class="chips">${POPULAR[iBrand].map(chipHTML).join('')}</div>`;
     }
     $('#ihpChips').innerHTML = html;
   }
@@ -966,7 +966,7 @@
     toast('That file is neither a house nor a scheme.');
   });
   // ------------------------------------------------------------------ export for Blender
-  // One self-contained JSON file: the built house, every surface's final colour / wood / sheen, and the exact camera
+  // One self-contained JSON file: the built house, every surface's final color / wood / sheen, and the exact camera
   // you are looking through. build_house.py --scheme <file> rebuilds the house from it and renders that view (and others).
   function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => { t.hidden = true; }, 3500); }
   function exportPayload() {

@@ -1,5 +1,5 @@
-// Rewrites schemes so every colour that came from an extra colour book (Sherwin-Williams, Behr, ...) becomes the nearest
-// colour of the House Painter palette, by CIEDE2000. Custom colours and woods are left alone.
+// Rewrites schemes so every color that came from an extra color book (Sherwin-Williams, Behr, ...) becomes the nearest
+// color of the House Painter palette, by CIEDE2000. Custom colors and woods are left alone.
 //   node data/remap_schemes.js <file or folder> ...        (scheme files, or exports from "Export for Blender")
 // Before a file is changed, a copy is kept in a schemes-original/ folder beside it (git-ignored).
 const fs = require('fs'), path = require('path');
@@ -47,4 +47,4 @@ for (const t of targets) {
   if (fs.statSync(t).isDirectory()) fs.readdirSync(t).filter(f => f.endsWith('.json')).forEach(f => remapFile(path.join(t, f)));
   else remapFile(t);
 }
-console.log(`${stats.mapped} colours mapped, ${stats.kept} left alone; the biggest shift was ${stats.worst.toFixed(1)} dE (${stats.worstName}).`);
+console.log(`${stats.mapped} colors mapped, ${stats.kept} left alone; the biggest shift was ${stats.worst.toFixed(1)} dE (${stats.worstName}).`);

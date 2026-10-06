@@ -11,7 +11,7 @@ const ROOT = path.join(__dirname, '..'), DIST = path.join(ROOT, 'dist');
 const run = spawnSync(process.execPath, [path.join(ROOT, 'tools', 'build.js')], { encoding: 'utf8' });
 const files = [];
 (function walk(d) { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) walk(p); else files.push(path.relative(DIST, p).split(path.sep).join('/')); } })(fs.existsSync(DIST) ? DIST : ROOT);
-const read = f => fs.readFileSync(path.join(DIST, f), 'utf8');
+const read = f => fs.readFileSync(path.join(DIST, f), 'utf8').replace(/\r\n/g, '\n');   // a Windows checkout may hold CRLF
 const pages = () => files.filter(f => /^[^/]+\.html$/.test(f) && f !== '404.html');
 
 test('the build succeeds', () => assert.equal(run.status, 0, run.stderr + run.stdout));
@@ -47,7 +47,7 @@ test('app files are content-hashed, libraries sit in versioned folders', () => {
 test('nothing is over 25 MiB, and the bundle holds only what the app needs', () => {
   for (const f of files) assert.ok(fs.statSync(path.join(DIST, f)).size <= 25 * 1024 * 1024, f + ' is over 25 MiB');
   for (const f of files) assert.ok(!/^(blender_addon|docs|tests|tools|data|examples|\.git|\.github|node_modules)\//.test(f) && !/\.(blend1?|py|md)$/.test(f) && !/(^|\/)schemes\//.test(f), 'should not ship: ' + f);
-  assert.ok(!files.includes('paint-colors-extra.js') && !files.some(f => /paint-colors-extra/.test(f)), 'a locally built paint maker colour book must never be published');
+  assert.ok(!files.includes('paint-colors-extra.js') && !files.some(f => /paint-colors-extra/.test(f)), 'a locally built paint maker color book must never be published');
   assert.ok(files.includes('404.html') && files.includes('_headers') && files.includes('index.html'));
   assert.ok(files.includes('houses/waterford-4563c/house.json') && files.includes('textures/desert_sand_plank.png'));
 });
@@ -66,4 +66,53 @@ test('the 404 page names no other file (it is served at any depth)', () => {
   const html = read('404.html');
   assert.ok(!/<script|<link\b[^>]*stylesheet|<img/i.test(html));
   assert.ok(!/href="(?!\/|https?:|#)/.test(html), 'links in 404.html must start at the site root');
+});
+
+test('the interface files ship: every url() in the built CSS resolves, every font and the logo are in dist, and nothing is fetched from another host', () => {
+  const css = files.filter(f => f.endsWith('.css'));
+  assert.ok(css.some(f => /^assets\/tokens\./.test(f)) && css.some(f => /^assets\/base\./.test(f)), 'tokens.css and base.css are not in dist');
+  for (const f of css) {
+    const text = read(f);
+    for (const m of text.matchAll(/url\(\s*(['"]?)([^'")]+?)\1\s*\)/g)) {
+      const u = m[2].trim();
+      if (/^data:/.test(u)) continue;
+      assert.ok(!/^(https?:)?\/\//.test(u), `${f} loads ${u} from another host`);
+      const target = path.posix.normalize(path.posix.join(path.posix.dirname(f), u.split(/[?#]/)[0]));
+      assert.ok(files.includes(target), `${f}: url(${u}) is not in dist`);
+    }
+    assert.ok(!/@import\s+(?:url\()?['"]?(?:https?:)?\/\//.test(text), `${f} imports from another host`);
+  }
+  const src = fs.readdirSync(path.join(ROOT, 'ui', 'fonts')).filter(f => f.endsWith('.woff2'));
+  assert.equal(src.length, 12);
+  for (const f of src) assert.ok(files.some(d => d.startsWith('assets/' + f.replace('.woff2', '.')) && d.endsWith('.woff2')), `ui/fonts/${f} is not in dist`);
+  assert.ok(files.some(f => /^assets\/r7-mark\.[0-9a-f]{10}\.svg$/.test(f)), 'the R7 Orbit mark is not in dist');
+  for (const page of [...pages(), '404.html']) {
+    const html = read(page);
+    for (const m of html.matchAll(/<(?:link|script|img|source|iframe|video|audio)\b[^>]*\s(?:src|href)=["']((?:https?:)?\/\/[^"']+)["'][^>]*>/gi)) {
+      if (/^<link\b[^>]*\srel=["'](?:canonical|alternate|author)/i.test(m[0])) continue;
+      assert.fail(`${page} loads ${m[1]} from another host`);
+    }
+    assert.ok(!/fonts\.(googleapis|gstatic)\.com/.test(html), page + ' uses Google Fonts');
+  }
+});
+
+test('the landing page has no header or nav of its own: only the R7 Orbit back link, and the project links in the footer', () => {
+  const html = read('index.html');
+  assert.ok(!/<header\b|site-header|site-nav/.test(html), 'index.html still has a site header / nav');
+  const back = /<div class="home-back">\s*<a class="wordmark" href="https:\/\/r7orbit\.io" target="_top"><img src="assets\/r7-mark\.[0-9a-f]{10}\.svg" alt="" width="21" height="18">R7 Orbit<\/a>\s*<\/div>/;
+  assert.match(html, back);
+  assert.ok(html.indexOf('home-back') < html.indexOf('<main'), 'the back link comes before the page');
+  const footer = html.slice(html.indexOf('<footer'));
+  for (const label of ['GitHub', 'Getting started', 'House file format', 'Blender add-on', 'MIT licence'])
+    assert.match(footer, new RegExp(`<a href="https://github\.com/EOSHunter/house-painter[^"]*" target="_blank" rel="noopener">${label}</a>`));
+  assert.ok(/<h1>/.test(html) && /class="btn solid lg" href="editor\.html"/.test(html) && /class="btn lg" href="paint\.html"/.test(html), 'the heading and the calls to action stay');
+});
+
+test('the documented iframe sandbox is the one the iframe suite tests, and includes allow-forms', () => {
+  const doc = fs.readFileSync(path.join(ROOT, 'docs', 'DEPLOY.md'), 'utf8');
+  const suite = fs.readFileSync(path.join(ROOT, 'tools', 'e2e', 'embed.js'), 'utf8');
+  const docSandbox = /sandbox="([^"]+)"/.exec(doc)[1].split(/\s+/).sort();
+  const base = /const BASE_SANDBOX = '([^']+)'/.exec(suite)[1], extra = /BASE_SANDBOX \+ '([^']+)'/.exec(suite)[1];
+  assert.deepEqual(docSandbox, [...base.split(/\s+/), ...extra.trim().split(/\s+/)].sort());
+  assert.ok(docSandbox.includes('allow-forms') && docSandbox.includes('allow-downloads'));
 });

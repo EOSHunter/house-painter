@@ -16,7 +16,7 @@ The first time, the editor loads onnxruntime-web (the engine that runs the file,
 ## What kind of file
 
 An **ONNX** file of a segmentation network that takes a 512 x 512 RGB picture (the plan fitted into the square without stretching, the empty
-border filled with the ImageNet mean, colours normalised with the ImageNet mean and standard deviation) and gives four classes per pixel:
+border filled with the ImageNet mean, colors normalised with the ImageNet mean and standard deviation) and gives four classes per pixel:
 0 floor/background, 1 wall, 2 door, 3 window.
 
 ## Getting one
