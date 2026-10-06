@@ -81,7 +81,7 @@ Still to do:
 - [x] **Paint brands:** the project ships its own palette, 124 original colours (`paint-colors.js`, built by `data/build_palette.js`). Sherwin-Williams and Behr are no longer part of it. A paint maker's book is an optional extra that you build from data you download yourself (`paint-colors-extra.js`, git-ignored): see [data/README.md](data/README.md). The studio shows the palette, plus an extra tab for each book it finds. The seven example schemes and the example export were remapped to the nearest palette colours (the biggest shift is 6 dE).
 - [x] **Blender add-on** (`blender_addon/`, Blender 4.2+ extension): **File > Import > House Painter scheme (.json)**. Tested end to end, from the source tree and from the packaged zip (`python tools/build_addon.py`, then `blender -b --factory-startup -P tools/test_addon.py`), and the manifest validates with Blender's own checker.
 - [x] **GitHub Pages:** `index.html` is the start page, `tools/build_site.js` assembles the site, and `.github/workflows/pages.yml` deploys it.
-- [x] **Tests and CI:** 63 unit tests (`npm test`) run on every push. The surface IDs and areas of both example houses are locked by snapshot, and the tests also check the palette, the shipped schemes and every file a page loads.
+- [x] **Tests and CI:** 119 unit tests (`npm test`) run on every push. The surface IDs and areas of both example houses are locked by snapshot, and the tests also check the palette, the shipped schemes and every file a page loads.
 - [x] **Community files:** CONTRIBUTING, a code of conduct, issue and pull request templates.
 - [x] **Docs:** a [getting-started guide](docs/getting-started.md) with pictures, including "trace your house in 15 minutes".
 
