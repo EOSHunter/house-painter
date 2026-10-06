@@ -1,0 +1,257 @@
+/*
+  House Painter interface: shared base and components, built on the R7 Orbit tokens (tokens.css).
+  Rules (docs/DESIGN.md): tokens only, never raw colours, radii, spacing, shadows, type sizes or durations. One accent: brass.
+  Component shapes follow the site's components.css (src/styles/design-system, same commit as tokens.css); the app-only parts are here.
+  The paint colours a person chooses, swatches and any colour data are never restyled: they come from data and are set inline as --c.
+*/
+
+:root {
+  /* app: control sizes (the site's .btn is 36px, .btn.sm 28px, .btn.lg 46px; a touch target is 44px) */
+  --ctl-sm: 28px;
+  --ctl: 36px;
+  --ctl-lg: 46px;
+  --tap: 44px;
+  --icon: 16px;
+  --mark-h: 18px;                         /* the R7 mark in a header */
+  --bw-2: 2px;                            /* a heavier hairline: scrollbar thumb gap, slider track, forced-colour ring */
+  --bw-3: 3px;
+  --blur: 12px;                           /* the veil behind a floating bar */
+  --blur-sm: 4px;                         /* the scrim behind a dialog */
+  --scrollbar: 10px;
+  --panel-w: 22rem;
+
+  /* app: the stage behind the 3D model and the plan. The scene reads this custom property for its background (paint-app.js, editor.js). */
+  --stage: var(--bg);
+
+  /* Names the page scripts still use in inline styles and in the house loader's error box. They point at tokens; new CSS uses the token names. */
+  --panel: var(--surface-1);
+  --raised: var(--surface-2);
+  --ink: var(--text);
+  --muted: var(--text-2);
+  --select: var(--brass);
+  --select-soft: var(--brass-wash-2);
+  --ok: var(--st-done);
+  --warn: var(--st-failed-text);
+  --f-display: var(--font-display);
+  --f-body: var(--font-ui);
+  --r: var(--r-sm);
+}
+
+/* ------------------------------------------------------------------------------------------------------------- Base */
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; color-scheme: dark; background: var(--bg); }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: var(--fw-regular) var(--fs-sm)/var(--lh-ui) var(--font-ui); letter-spacing: var(--tracking-normal);
+  -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+}
+::selection { background: var(--selection); }
+img, svg, video { max-width: 100%; }
+button, input, textarea, select { font: inherit; color: inherit; letter-spacing: inherit; }
+button { cursor: pointer; }
+a { color: var(--brass); text-decoration: none; transition: color var(--dur-fast) var(--ease); }
+a:hover { color: var(--brass-bright); }
+:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); border-radius: var(--r-sm); }
+.mono, code, kbd, pre, samp { font-family: var(--font-mono); }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.spacer { flex: 1; }
+
+/* Scrollbars stay out of the way */
+* { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+::-webkit-scrollbar { width: var(--scrollbar); height: var(--scrollbar); }
+::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: var(--r-full); border: var(--bw-3) solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--brass-dim); background-clip: padding-box; }
+
+/* ------------------------------------------------------------------------------------------------------- Typography */
+h1, h2, h3, h4, .t-display, .t-h1, .t-h2, .t-h3, .t-h4 { margin: 0; font-family: var(--font-display); font-weight: var(--fw-regular); letter-spacing: var(--tracking-tight); text-wrap: balance; }
+h1, .t-h1 { font-size: var(--fs-4xl); line-height: var(--lh-tight); }
+h2, .t-h2 { font-size: var(--fs-3xl); line-height: var(--lh-snug); }
+h3, .t-h3 { font-size: var(--fs-2xl); line-height: var(--lh-snug); font-weight: var(--fw-medium); }
+h4, .t-h4 { font-size: var(--fs-xl); line-height: var(--lh-snug); font-weight: var(--fw-medium); }
+h1 em, h2 em, h3 em { font-style: italic; color: var(--brass-bright); }
+.eyebrow { margin: 0; font: var(--fw-regular) var(--fs-2xs)/1.4 var(--font-ui); letter-spacing: var(--tracking-wider); text-transform: uppercase; color: var(--text-3); }
+.eyebrow.brass { color: var(--brass); }
+.label { font: var(--fw-regular) var(--fs-xs)/1.4 var(--font-ui); letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--text-2); }
+.t-meta { font: var(--fs-xs) var(--font-mono); color: var(--text-3); letter-spacing: 0.04em; }
+.note { margin: 0; font-size: var(--fs-sm); line-height: 1.5; color: var(--text-2); text-wrap: pretty; }
+.note b, .note strong { font-weight: var(--fw-medium); color: var(--text); }
+.note.warn { color: var(--st-failed-text); }
+.empty { margin: 0; font-size: var(--fs-sm); line-height: 1.5; color: var(--text-2); text-wrap: pretty; }
+
+kbd { font: var(--fs-2xs) var(--font-mono); padding: var(--bw) var(--s-1); border: var(--bw) solid var(--line-strong); border-radius: var(--r-sm); background: var(--surface-2); color: var(--text-2); }
+code { font-size: 0.92em; padding: 0 var(--s-1); background: var(--surface-2); border: var(--bw) solid var(--line); border-radius: var(--r-sm); color: var(--brass-bright); }
+
+/* ------------------------------------------------------------------------------------------------------------ Icons */
+/* 16 x 16 viewBox, 1.5px stroke, round caps and joins, currentColor (the site's icon language). */
+.ico { width: var(--icon); height: var(--icon); flex: none; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ----------------------------------------------------------------------------------------------------------- Buttons */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--s-2); min-height: var(--ctl); padding: 0 var(--s-4);
+  background: transparent; border: var(--bw) solid var(--line-strong); border-radius: var(--r-sm); color: var(--text);
+  font-size: var(--fs-sm); line-height: 1.2; letter-spacing: 0.02em; white-space: nowrap; text-decoration: none;
+  transition: border-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+}
+.btn:hover:not(:disabled):not([aria-disabled='true']) { border-color: var(--brass); color: var(--brass-bright); }
+.btn:active:not(:disabled) { transform: translateY(calc(var(--bw) / 2)); }
+.btn:disabled, .btn[aria-disabled='true'] { color: var(--text-3); border-color: var(--line); cursor: default; }
+.btn.solid, .btn.primary { background: var(--brass); border-color: var(--brass); color: var(--on-brass); font-weight: var(--fw-medium); }
+.btn.solid:hover:not(:disabled), .btn.primary:hover:not(:disabled) { background: var(--brass-bright); border-color: var(--brass-bright); color: var(--on-brass); }
+.btn.solid:disabled, .btn.primary:disabled { background: transparent; border-color: var(--line); color: var(--text-3); }
+.btn.quiet { border-color: transparent; color: var(--text-2); }
+.btn.quiet:hover:not(:disabled) { border-color: var(--line-strong); color: var(--text); }
+.btn.sm { min-height: var(--ctl-sm); padding: 0 var(--s-3); font-size: var(--fs-xs); }
+.btn.lg { min-height: var(--ctl-lg); padding: 0 var(--s-6); font-size: var(--fs-md); }
+.btn.danger { border-color: var(--st-failed); color: var(--st-failed-text); background: var(--st-failed-wash); }
+.btn.danger:hover:not(:disabled) { border-color: var(--st-failed-text); color: var(--st-failed-text); }
+.btn.icon { width: var(--ctl); padding: 0; }
+.btn[aria-pressed='true']:not(.primary):not(.solid) { background: var(--surface-3); border-color: var(--line-brass); color: var(--brass-bright); }
+.btn.primary[aria-pressed='true'], .btn.solid[aria-pressed='true'] { background: var(--brass-bright); border-color: var(--brass-bright); }
+
+/* A link that sits inside a sentence */
+.linkish { background: none; border: 0; padding: 0; font: inherit; color: var(--brass); text-decoration: underline; text-decoration-color: var(--line-brass); text-underline-offset: 0.2em; }
+.linkish:hover { color: var(--brass-bright); text-decoration-color: var(--brass-bright); }
+
+/* ---------------------------------------------------------------------------------------------------- Chips and pills */
+.pill {
+  display: inline-flex; align-items: center; gap: var(--s-2); padding: var(--bw) var(--s-3); border: var(--bw) solid var(--line); border-radius: var(--r-full);
+  background: transparent; color: var(--text-2); font: var(--fs-xs)/1.6 var(--font-mono); white-space: nowrap;
+  transition: color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.pill:hover { color: var(--brass-bright); border-color: var(--line-brass); }
+.pill.on { color: var(--brass-bright); border-color: var(--line-brass); background: var(--brass-wash-1); }
+
+/* Segmented control (view switches, wall type, sheen, colour book) */
+.seg { display: inline-flex; max-width: 100%; border: var(--bw) solid var(--line-strong); border-radius: var(--r-sm); overflow-x: auto; scrollbar-width: none; background: var(--surface-1); }
+.seg button {
+  flex: none; min-height: var(--ctl-sm); padding: 0 var(--s-3); background: transparent; border: 0; border-right: var(--bw) solid var(--line);
+  color: var(--text-2); font-size: var(--fs-xs); letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap;
+  transition: color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+}
+.seg button:last-child { border-right: 0; }
+.seg button:hover:not(:disabled) { color: var(--text); background: var(--surface-2); }
+.seg button[aria-pressed='true'] { background: var(--surface-3); color: var(--brass-bright); }
+.seg button:disabled { color: var(--text-3); cursor: default; }
+.seg button:focus-visible { outline-offset: calc(-1 * var(--s-1)); }
+
+/* ------------------------------------------------------------------------------------------------------- Form fields */
+.field { display: grid; gap: var(--s-1); font: var(--fw-regular) var(--fs-xs)/1.4 var(--font-ui); color: var(--text-2); }
+.field > .seg { width: 100%; }
+
+/* inputs */
+input:not([type]), input[type='text'], input[type='search'], input[type='number'], input[type='email'], select, textarea, .input {
+  width: 100%; min-height: var(--ctl); padding: 0 var(--s-3); background: var(--surface-1); border: var(--bw) solid var(--line-strong); border-radius: var(--r-sm); outline: 0;
+  font-size: var(--fs-sm); color: var(--text); transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+textarea { padding: var(--s-2) var(--s-3); line-height: 1.5; resize: vertical; font-family: var(--font-mono); font-size: var(--fs-xs); }
+input::placeholder, textarea::placeholder { color: var(--text-3); }
+input:not([type]):hover, input[type='text']:hover, input[type='search']:hover, input[type='number']:hover, select:hover, textarea:hover { border-color: var(--brass-dim); }
+input:not([type]):focus, input[type='text']:focus, input[type='search']:focus, input[type='number']:focus, select:focus, textarea:focus { border-color: var(--brass); }
+input:focus-visible, select:focus-visible, textarea:focus-visible { outline: var(--focus-ring); outline-offset: 0; }
+input.bad, input[aria-invalid='true'] { border-color: var(--st-failed); }
+input[type='search']::-webkit-search-cancel-button { filter: invert(0.7); }
+input[type='number'] { font-family: var(--font-mono); }
+.field input[data-len], .field input[data-f='h_id'] { font-family: var(--font-mono); }
+
+/* A native select, with a drawn chevron made of two token-coloured wedges */
+select {
+  appearance: none; -webkit-appearance: none; padding-right: var(--s-6); cursor: pointer;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-2) 50%), linear-gradient(135deg, var(--text-2) 50%, transparent 50%);
+  background-position: calc(100% - var(--s-4) - var(--s-1)) 50%, calc(100% - var(--s-4)) 50%; background-size: var(--s-1) var(--s-1); background-repeat: no-repeat;
+  text-overflow: ellipsis;
+}
+select option { background: var(--surface-2); color: var(--text); }
+
+input[type='checkbox'], input[type='radio'] { width: var(--s-4); height: var(--s-4); margin: 0; accent-color: var(--brass); flex: none; }
+
+/* Sliders: a hairline track and a small brass handle */
+input[type='range'] { -webkit-appearance: none; appearance: none; width: 100%; height: var(--s-5); margin: 0; padding: 0; background: transparent; cursor: pointer; }
+input[type='range']::-webkit-slider-runnable-track { height: var(--bw-2); background: var(--text-3-app); border-radius: var(--r-xs); }
+input[type='range']::-moz-range-track { height: var(--bw-2); background: var(--text-3-app); border-radius: var(--r-xs); }
+input[type='range']::-webkit-slider-thumb { -webkit-appearance: none; width: var(--s-4); height: var(--s-4); margin-top: calc((var(--bw-2) - var(--s-4)) / 2); border-radius: var(--r-full); background: var(--brass); border: var(--bw) solid var(--on-brass); transition: background var(--dur-fast) var(--ease); }
+input[type='range']::-moz-range-thumb { width: var(--s-4); height: var(--s-4); border-radius: var(--r-full); background: var(--brass); border: var(--bw) solid var(--on-brass); }
+input[type='range']:hover::-webkit-slider-thumb { background: var(--brass-bright); }
+input[type='range']:hover::-moz-range-thumb { background: var(--brass-bright); }
+input[type='range']:focus-visible { outline: var(--focus-ring); outline-offset: 0; }
+
+/* The colour picker keeps its true colour: only its frame is styled */
+input[type='color'] { width: 100%; min-height: var(--ctl); padding: calc(var(--s-1) / 2); background: var(--surface-1); border: var(--bw) solid var(--line-strong); border-radius: var(--r-sm); cursor: pointer; }
+input[type='color']::-webkit-color-swatch-wrapper { padding: 0; }
+input[type='color']::-webkit-color-swatch { border: 0; border-radius: var(--r-xs); }
+input[type='color']::-moz-color-swatch { border: 0; border-radius: var(--r-xs); }
+
+/* A file picker's button looks like a button */
+input[type='file']::file-selector-button { margin-right: var(--s-3); min-height: var(--ctl); padding: 0 var(--s-4); background: transparent; border: var(--bw) solid var(--line-strong); border-radius: var(--r-sm); color: var(--text); font: inherit; font-size: var(--fs-sm); cursor: pointer; transition: border-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); }
+input[type='file']::file-selector-button:hover { border-color: var(--brass); color: var(--brass-bright); }
+
+/* The house loader's error box (house-loader.js builds it with inline styles, so these need !important) */
+[role='alert'][style*='position:fixed'] { background: var(--bg) !important; color: var(--text) !important; font: var(--fw-regular) var(--fs-sm)/var(--lh-ui) var(--font-ui) !important; }
+[role='alert'][style*='position:fixed'] > div { max-width: 32rem !important; padding: var(--s-5) !important; border: var(--bw) solid var(--line-strong) !important; border-radius: var(--r-lg) !important; background: var(--surface-2) !important; box-shadow: var(--shadow-float); }
+[role='alert'][style*='position:fixed'] h1 { font: var(--fw-medium) var(--fs-xl)/var(--lh-snug) var(--font-display) !important; letter-spacing: var(--tracking-tight); }
+[role='alert'][style*='position:fixed'] p { color: var(--text-2); }
+[role='alert'][style*='position:fixed'] a { color: var(--brass) !important; text-decoration: underline; text-decoration-color: var(--line-brass); text-underline-offset: 0.2em; }
+
+/* ---------------------------------------------------------------------------------------------------------- Surfaces */
+.card { position: relative; display: flex; flex-direction: column; background: var(--surface-1); border: var(--bw) solid var(--line); border-radius: var(--r-lg); color: inherit; overflow: hidden; }
+/* A swatch of paint: the colour is data (--c), never a token. The hairline keeps pale colours visible on the dark panel. */
+.swatch-edge { outline: var(--bw) solid var(--line-strong); outline-offset: calc(-1 * var(--bw)); }
+
+/* ----------------------------------------------------------------------------------------------------- Floating things */
+/* Menus, popovers, toasts and modals float: the only place a shadow is used. */
+.toast {
+  position: absolute; z-index: var(--z-toast); left: 50%; transform: translateX(-50%); max-width: calc(100% - 2 * var(--s-4)); padding: var(--s-2) var(--s-4);
+  background: var(--surface-3); color: var(--text); border: var(--bw) solid var(--line-strong); border-radius: var(--r-md); box-shadow: var(--shadow-float);
+  font-size: var(--fs-sm); line-height: 1.4; text-align: center; pointer-events: none; animation: arrive var(--dur) var(--ease) both;
+}
+.tip {
+  position: absolute; z-index: var(--z-overlay); pointer-events: none; padding: var(--s-1) var(--s-2); background: var(--surface-3); color: var(--text); border: var(--bw) solid var(--line-strong);
+  border-radius: var(--r-sm); box-shadow: var(--shadow-float); font-size: var(--fs-xs); white-space: nowrap; transform: translate(var(--s-3), var(--s-3));
+}
+.dialog {
+  position: fixed; inset: 0; z-index: var(--z-modal); display: grid; place-items: center; padding: var(--s-4); background: var(--scrim);
+  backdrop-filter: blur(var(--blur-sm)); animation: fade-in var(--dur) var(--ease) both;
+}
+.dialog .box {
+  width: min(28rem, 100%); max-height: calc(100vh - 2 * var(--s-4)); max-height: calc(100dvh - 2 * var(--s-4)); overflow: auto; display: grid; gap: var(--s-4); padding: var(--s-5);
+  background: var(--surface-2); border: var(--bw) solid var(--line-strong); border-radius: var(--r-lg); box-shadow: var(--shadow-float); animation: arrive var(--dur-slow) var(--ease) both;
+}
+.dialog h3 { margin: 0; font: var(--fw-medium) var(--fs-xl)/var(--lh-snug) var(--font-display); letter-spacing: var(--tracking-tight); color: var(--text); }
+.dialog ul { margin: 0; padding-left: var(--s-5); display: grid; gap: var(--s-2); font-size: var(--fs-sm); color: var(--text-2); }
+.dialog li::marker { color: var(--brass-dim); }
+.dialog .note { color: var(--text-2); }
+.dialog .row-btns { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: var(--s-2); }
+.dialog .field { color: var(--text-2); }
+.dialog table { width: 100%; border-collapse: collapse; font: var(--fs-xs) var(--font-mono); color: var(--text-2); }
+.dialog th { text-align: left; font: var(--fw-regular) var(--fs-2xs) var(--font-ui); letter-spacing: var(--tracking-wider); text-transform: uppercase; color: var(--text-2); padding: var(--s-1) var(--s-2); border-bottom: var(--bw) solid var(--line); }
+.dialog td { padding: var(--s-1) var(--s-2); border-top: var(--bw) solid var(--line); }
+
+/* ----------------------------------------------------------------------------------------------------------- Wordmark */
+.wordmark { display: inline-flex; align-items: center; gap: var(--s-3); font: var(--fw-medium) var(--fs-xs) var(--font-ui); letter-spacing: var(--tracking-wordmark); text-transform: uppercase; color: var(--text-2); }
+.wordmark img, .wordmark svg { height: var(--mark-h); width: auto; }
+.wordmark:hover { color: var(--text); }
+
+/* ------------------------------------------------------------------------------------------------------------ Motion */
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes breathe { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+@keyframes arrive { from { opacity: 0; scale: 0.96; } to { opacity: 1; scale: 1; } }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: 0.001ms !important; } }
+
+/* ---------------------------------------------------------------------------------------------------------- Touch */
+/* Where the app is used by finger, every control is at least 44px. */
+@media (pointer: coarse) {
+  .btn, .seg button, select, input:not([type]), input[type='text'], input[type='search'], input[type='number'], input[type='color'] { min-height: var(--tap); }
+  .btn.icon { width: var(--tap); }
+  input[type='range'] { height: var(--tap); }
+  input[type='checkbox'], input[type='radio'] { width: var(--s-5); height: var(--s-5); }
+}
+
+/* ------------------------------------------------------------------------------------------------------ Forced colours */
+@media (forced-colors: active) {
+  .btn, .seg, input, select, textarea, .dialog .box, .toast, .tip { border-color: ButtonText; }
+  .btn[aria-pressed='true'], .seg button[aria-pressed='true'] { outline: var(--bw-2) solid Highlight; outline-offset: calc(-1 * var(--bw-2)); }
+  :focus-visible { outline-color: Highlight; }
+  input[type='range']::-webkit-slider-thumb { background: ButtonText; }
+  select { background-image: none; }
+}

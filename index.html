@@ -5,81 +5,52 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>House Painter</title>
 <meta name="description" content="Trace your house from a blueprint, try paint colours on every wall in 3D, walk through it, and render it in Blender. Free and open source.">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
-<style>
-  :root {
-    --bg: #F3F2EE; --panel: #FFFFFF; --ink: #1C1D20; --muted: #5F636B; --line: #D9D7D0; --accent: #1D5BFF; --accent-ink: #fff;
-    --f-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif; --f-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
-  }
-  @media (prefers-color-scheme: dark) { :root { --bg: #16171A; --panel: #1E1F23; --ink: #ECECEE; --muted: #9A9DA4; --line: #33353A; --accent: #6F98FF; --accent-ink: #0F1420; } }
-  * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.55 var(--f-body); }
-  a { color: inherit; }
-  .wrap { width: min(1080px, 100% - 32px); margin: 0 auto; }
-  header { padding: 20px 0; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-  .mark { font: 700 20px var(--f-display); letter-spacing: -.01em; text-decoration: none; }
-  nav { display: flex; gap: 18px; font-size: 14px; flex-wrap: wrap; }
-  nav a { color: var(--muted); text-decoration: none; } nav a:hover { color: var(--ink); text-decoration: underline; }
-  .hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 36px; align-items: center; padding: 28px 0 48px; }
-  h1 { font: 700 clamp(34px, 5vw, 54px)/1.04 var(--f-display); letter-spacing: -.02em; margin: 0 0 16px; text-wrap: balance; }
-  .lede { font-size: 18px; color: var(--muted); margin: 0 0 24px; max-width: 34em; }
-  .cta { display: flex; gap: 10px; flex-wrap: wrap; }
-  .btn { display: inline-block; padding: 11px 18px; border-radius: 8px; border: 1px solid var(--ink); text-decoration: none; font-weight: 600; font-size: 15px; }
-  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
-  .hero img { width: 100%; height: auto; display: block; border-radius: 12px; border: 1px solid var(--line); box-shadow: 0 18px 50px rgba(0,0,0,.14); }
-  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; padding-bottom: 40px; }
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px; display: grid; gap: 8px; align-content: start; text-decoration: none; }
-  .card:hover { border-color: var(--muted); }
-  .card .n { font: 600 12px var(--f-body); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
-  .card h2 { font: 700 21px var(--f-display); margin: 0; }
-  .card p { margin: 0; color: var(--muted); font-size: 15px; }
-  .card .go { margin-top: 6px; font-weight: 600; font-size: 14px; color: var(--accent); }
-  .facts { border-top: 1px solid var(--line); padding: 28px 0 56px; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 24px; }
-  .facts h3 { font: 700 16px var(--f-display); margin: 0 0 4px; } .facts p { margin: 0; color: var(--muted); font-size: 14.5px; }
-  footer { border-top: 1px solid var(--line); padding: 20px 0 40px; color: var(--muted); font-size: 13.5px; display: flex; gap: 8px 24px; flex-wrap: wrap; justify-content: space-between; }
-  @media (max-width: 800px) { .hero { grid-template-columns: 1fr; } }
-</style>
+<link rel="preload" href="ui/fonts/inter-core-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="ui/fonts/cormorant-garamond-core-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="ui/tokens.css">
+<link rel="stylesheet" href="ui/base.css">
+<link rel="stylesheet" href="ui/home.css">
 </head>
 <body>
-<div class="wrap">
-  <header>
-    <a class="mark" href="./">House Painter</a>
-    <nav aria-label="Project">
+<header class="site-header">
+  <div class="bar">
+    <a class="wordmark" href="./">House Painter</a>
+    <nav class="site-nav" aria-label="Project">
       <a href="https://github.com/EOSHunter/house-painter">GitHub</a>
       <a href="https://github.com/EOSHunter/house-painter/blob/main/docs/getting-started.md">Getting started</a>
       <a href="https://github.com/EOSHunter/house-painter/blob/main/docs/house-format.md">House file format</a>
       <a href="https://github.com/EOSHunter/house-painter/releases">Blender add-on</a>
     </nav>
-  </header>
+  </div>
+</header>
+<main class="wrap">
 
   <section class="hero">
     <div>
-      <h1>See your house in every colour before you open a can.</h1>
+      <h1>See your house in <em>every colour</em> before you open a can.</h1>
       <p class="lede">Trace your floor plan from a blueprint, pick a colour for any wall, ceiling, cabinet door or trim piece, walk through the rooms, and render the result in Blender.</p>
       <div class="cta">
-        <a class="btn primary" href="editor.html">Trace your house</a>
-        <a class="btn" href="paint.html">Try the example house</a>
+        <a class="btn solid lg" href="editor.html">Trace your house</a>
+        <a class="btn lg" href="paint.html">Try the example house</a>
       </div>
     </div>
     <img src="renders/cozy-deco-emerald-brass/doll.png" width="1600" height="1000" alt="A 3D cutaway of a house with painted walls, rendered in Blender">
   </section>
 
   <section class="cards" aria-label="The tools">
-    <a class="card" href="editor.html">
+    <a class="card link" href="editor.html">
       <span class="n">1 · Plan editor</span>
       <h2>Trace a blueprint</h2>
       <p>Upload a photo or PDF of your plan, set the scale, click the walls, drop in doors, windows, rooms, cabinets and fixtures.</p>
       <span class="go">Open the editor →</span>
     </a>
-    <a class="card" href="paint.html">
+    <a class="card link" href="paint.html">
       <span class="n">2 · Paint studio</span>
       <h2>Paint it in 3D</h2>
       <p>Every wall face, ceiling, door and cabinet door has its own colour. Walk through with WASD, and share a scheme as a link.</p>
       <span class="go">Open the studio →</span>
     </a>
-    <a class="card" href="floorplan.html">
+    <a class="card link" href="floorplan.html">
       <span class="n">3 · Floor plan</span>
       <h2>See the plan</h2>
       <p>A drawn floor plan with the paintable surfaces mapped out, plus before and after views of a remodel.</p>
@@ -94,10 +65,11 @@
     <div><h3>Open source</h3><p>MIT licensed. Colours come from an original palette, and you can add a paint maker's own book on your own machine.</p></div>
   </section>
 
-  <footer>
-    <span>Screen colours are approximations. Check a real chip in your own light before buying paint.</span>
-    <span><a href="https://github.com/EOSHunter/house-painter/blob/main/LICENSE">MIT licence</a></span>
-  </footer>
-</div>
+</main>
+<footer class="wrap site-footer">
+  <span>Screen colours are approximations. Check a real chip in your own light before buying paint.</span>
+  <span class="credit"><a href="https://github.com/EOSHunter/house-painter/blob/main/LICENSE">MIT licence</a>
+    <a class="wordmark" href="https://r7orbit.io"><img src="ui/img/r7-mark.svg" alt="" width="21" height="18">R7 Orbit</a></span>
+</footer>
 </body>
 </html>

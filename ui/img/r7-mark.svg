@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The R7 mark alone, in brass, on a transparent background. For dark surfaces. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="622" height="536" viewBox="-6 -6 622 536" role="img" aria-label="R7">
+  <defs>
+    <linearGradient id="brass" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ecd49a"/>
+      <stop offset="0.5" stop-color="#c9a96a"/>
+      <stop offset="1" stop-color="#9a7c46"/>
+    </linearGradient>
+  </defs>
+  <g fill="url(#brass)" stroke="#e8d09a" stroke-width="5" stroke-linejoin="round">
+    <path d="M598 0H65L166 98.5H351.5L208 242V407.5L324.5 524V273.5L598 0Z"/>
+    <path d="M162 231.5L208 185.5H0C31.7749 216.5 95.9597 279.6 98.5 284C101.04 288.4 141.892 285.833 162 284V231.5Z"/>
+    <path d="M366.5 284L434.5 225L610 407.5H483L366.5 284Z"/>
+  </g>
+</svg>

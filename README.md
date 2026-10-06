@@ -113,8 +113,9 @@ The script writes `house_<scheme>.blend` and `renders/<scheme>/<view>.png`. The 
 | `export_house_json.js` | Compiles a house file for Blender and checks it for problems. |
 | `examples/` | A scheme exported with **Export for Blender**. |
 | `data/` | The palette builder and other data tools: [data/README.md](data/README.md). |
+| `ui/` | The interface's stylesheets, self-hosted fonts and logo, built on the R7 Orbit design tokens: [docs/DESIGN.md](docs/DESIGN.md). |
 | `tests/`, `tools/` | Unit tests; and scripts that build the site and the add-on. |
-| `docs/` | The getting-started guide and the house file format. |
+| `docs/` | The getting-started guide, the house file format and the interface design notes. |
 
 ## Developing
 
