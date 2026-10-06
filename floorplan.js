@@ -248,7 +248,7 @@
     // dimensions
     o+=dimH(0,H.W,-4.3,ftin(H.W));
     o+=dimV(0,H.D,-3.6,ftin(H.D));
-    (P.dims||[]).forEach(d=>{ o+=dimH(d.x1,d.x2,d.y,esc(d.label||ftin(d.x2-d.x1))); });
+    (P.dims||[]).forEach(d=>{ o+= d.x1!==undefined ? dimH(d.x1,d.x2,d.y,esc(d.label||ftin(d.x2-d.x1))) : dimV(d.y1,d.y2,d.x,esc(d.label||ftin(d.y2-d.y1))); });
     (P.texts||[]).forEach(t=>{ o+=`<text class="tiny" x="${X(t.x)}" y="${Y(t.y)}">${esc(t.t)}</text>`; });
     if(mode==='changes') (P.callouts||[]).forEach(c=>{ o+=callout(c.x,c.y,esc(c.t)); });
     if(mode==='surfaces') o+=surfacesSVG();

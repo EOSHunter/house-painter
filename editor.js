@@ -17,7 +17,8 @@
   const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
   const esc = s => String(s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   const svg = $('#plan');
-  const GRID = 1 / 12, SNAP_PX = 9, HANDLE_PX = 6, AUTOSAVE = 'housepainter.editor.v1', BACKUP = 'housepainter.editor.v1.prev';
+  const COARSE = !!(window.matchMedia && matchMedia('(pointer: coarse)').matches);
+  const GRID = 1 / 12, SNAP_PX = COARSE ? 16 : 9, HANDLE_PX = COARSE ? 11 : 6, AUTOSAVE = 'housepainter.editor.v1', BACKUP = 'housepainter.editor.v1.prev';
   const LOCAL_HOUSE = 'housepainter.localHouse';
   const r4 = v => Math.round(v * 1e4) / 1e4;
   let uidN = 1; const uid = () => 'u' + (uidN++).toString(36);
@@ -48,10 +49,12 @@
   const blank = () => ({ meta: { id: 'my-house', name: 'My house', subtitle: '' }, heights: { ...DEF.heights }, wallThickness: { ...DEF.wallThickness },
     floor: { ...DEF.floor }, walls: [], rooms: [], splits: [], keep: {}, underlay: null });
   let S = blank();
-  let tool = 'select', wallMode = 'ext', wallAngle = false, lastMods = {}, sel = null, drag = null, draw = null, ghost = null, lenBuf = '', lastP = [0, 0], spaceDown = false;
+  let tool = 'select', dimStart = null, wallMode = 'ext', wallAngle = false, lastMods = {}, sel = null, drag = null, draw = null, ghost = null, lenBuf = '', lastP = [0, 0], spaceDown = false;
   let view = { x: -6, y: -6, w: 72 }, underURL = null, underImg = null, stepCur = 0, welcomeOff = false;
 
-  const byUid = u => S.walls.find(w => w.uid === u) || S.rooms.find(r => r.uid === u) || S.splits.find(s => s.uid === u) || (S.keep.fixtures || []).find(f => f.uid === u);
+  const byUid = u => S.walls.find(w => w.uid === u) || S.rooms.find(r => r.uid === u) || S.splits.find(s => s.uid === u) || (S.keep.fixtures || []).find(f => f.uid === u) || planItems().find(x => x.uid === u);
+  const planItems = () => { const P = S.keep.plan; return P ? [...(P.labels || []), ...(P.dims || [])] : []; };
+  const planOf = () => (S.keep.plan ||= {});
   const findOpening = u => { for (const w of S.walls) { const o = w.openings.find(x => x.uid === u); if (o) return { w, o }; } return null; };
   const isL = w => w.axis === 'l';
   const isSlant = w => isL(w) && Math.abs(w.p[2] - w.p[0]) > 1e-4 && Math.abs(w.p[3] - w.p[1]) > 1e-4;       // an angled wall that is not square to the plan
@@ -115,6 +118,7 @@
     const known = new Set(['format', 'version', 'id', 'name', 'subtitle', 'units', 'W', 'D', 'wallThickness', 'heights', 'floor', 'walls', 'rooms', 'editor']);
     s.keep = Object.fromEntries(Object.entries(src).filter(([k]) => !known.has(k)).map(([k, v]) => [k, JSON.parse(JSON.stringify(v))]));
     (s.keep.fixtures || []).forEach(f => { if (window.HouseFixtures.editable(f)) f.uid = uid(); });   // editor-only identity, stripped when saving
+    if (s.keep.plan) { (s.keep.plan.labels || []).forEach(x => { x.uid = uid(); }); (s.keep.plan.dims || []).forEach(x => { x.uid = uid(); }); }
     return s;
   }
 
@@ -152,6 +156,7 @@
       ...(r.polys && r.polys.length ? { polys: r.polys.map(pl => pl.map(q => [r4(q[0] + dx), r4(q[1] + dy)])) } : {}), ...r.extra }));
     const keep = shiftDeep(S.keep, dx, dy);
     if (keep.fixtures) keep.fixtures = keep.fixtures.map(({ uid: _u, ...rest }) => rest);
+    if (keep.plan) { const pl = keep.plan; for (const k of ['labels', 'dims']) if (pl[k]) pl[k] = pl[k].map(({ uid: _u, ...rest }) => rest); }
     const ids = new Set(rooms.map(r => r.id));
     if (keep.items) keep.items = keep.items.map(it => (!it.room || it.room === 'house' || ids.has(it.room) ? it : { ...it, room: 'house' }));
     if (keep.roomOrder) keep.roomOrder = keep.roomOrder.filter(id => ids.has(id));
@@ -343,9 +348,39 @@
     $('#lSplits').innerHTML = S.splits.map(s => { const [p, q] = s.axis === 'h' ? [[s.a, s.c], [s.b, s.c]] : [[s.c, s.a], [s.c, s.b]];
       return `<g data-kind="split" data-uid="${s.uid}"><line x1="${N(p[0])}" y1="${N(p[1])}" x2="${N(q[0])}" y2="${N(q[1])}" stroke="transparent" stroke-width="12" class="nse"/>
         <line class="splitline" x1="${N(p[0])}" y1="${N(p[1])}" x2="${N(q[0])}" y2="${N(q[1])}" stroke-width="1.5"/></g>`; }).join('');
+    renderPlan(k);
     renderSel(); renderGhost();
     renderTrace();
     svg.setAttribute('class', 't-' + tool + (drag && drag.type === 'pan' ? ' panning' : '') + (S.underlay && underURL ? ' traced' : ''));
+  }
+  // ------------------------------------------------------------------ floor plan labels, dimensions and the walkthrough start
+  const YAW = { N: 0, NE: -Math.PI / 4, E: -Math.PI / 2, SE: -3 * Math.PI / 4, S: Math.PI, SW: 3 * Math.PI / 4, W: Math.PI / 2, NW: Math.PI / 4 };
+  const yawName = y => { let best = 'N', bd = 9; for (const [k, v] of Object.entries(YAW)) { const d = Math.abs(Math.atan2(Math.sin(y - v), Math.cos(y - v))); if (d < bd) { bd = d; best = k; } } return best; };
+  const startDir = y => [-Math.sin(y), -Math.cos(y)];
+  function dimEnds(d) { return d.x1 !== undefined ? [[d.x1, d.y], [d.x2, d.y]] : [[d.x, d.y1], [d.x, d.y2]]; }
+  function renderPlan(k) {
+    const P = S.keep.plan || {}; let h = '';
+    for (const d of P.dims || []) {
+      const [a, b] = dimEnds(d), len = Math.hypot(b[0] - a[0], b[1] - a[1]), tk = 5 * k, vert = d.x !== undefined, mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      const tick = q => vert ? `<line x1="${N(q[0] - tk)}" y1="${N(q[1])}" x2="${N(q[0] + tk)}" y2="${N(q[1])}"/>` : `<line x1="${N(q[0])}" y1="${N(q[1] - tk)}" x2="${N(q[0])}" y2="${N(q[1] + tk)}"/>`;
+      h += `<g class="pdim${sel && sel.uid === d.uid ? ' on' : ''}" data-kind="plan" data-uid="${d.uid}"><line class="hit" x1="${N(a[0])}" y1="${N(a[1])}" x2="${N(b[0])}" y2="${N(b[1])}" stroke="transparent" stroke-width="12"/>`
+        + `<line x1="${N(a[0])}" y1="${N(a[1])}" x2="${N(b[0])}" y2="${N(b[1])}"/>${tick(a)}${tick(b)}`
+        + `<text x="${N(mid[0])}" y="${N(mid[1] - 5 * k)}" font-size="${N(10 * k)}" ${vert ? `transform="rotate(-90 ${N(mid[0])} ${N(mid[1])})" dy="${N(-5 * k)}" y="${N(mid[1])}"` : ''}>${esc(d.label || fmt(len))}</text></g>`;
+    }
+    for (const l of P.labels || []) {                                      // shown while the Label tool is in use (or one is selected), so they don't pile onto the room names
+      if (tool !== 'label' && !(sel && sel.uid === l.uid)) continue;
+      const fs = (l.size || 11) * k * 1.1, on = sel && sel.uid === l.uid;
+      h += `<g class="plabel${on ? ' on' : ''}" data-kind="plan" data-uid="${l.uid}"><text x="${N(l.x)}" y="${N(l.y)}" font-size="${N(fs)}" font-weight="600" stroke-width="${N(3 * k)}">${esc(l.t || '')}</text>`
+        + (l.t2 ? `<text x="${N(l.x)}" y="${N(l.y + fs * 1.15)}" font-size="${N(fs)}" font-weight="600" stroke-width="${N(3 * k)}">${esc(l.t2)}</text>` : '')
+        + (l.sub ? `<text x="${N(l.x)}" y="${N(l.y + fs * (l.t2 ? 2.3 : 1.15))}" font-size="${N(fs * 0.8)}" stroke-width="${N(3 * k)}">${esc(l.sub)}</text>` : '') + '</g>';
+    }
+    const st = S.keep.start;
+    if (st && typeof st.x === 'number') {
+      const d = startDir(st.yaw || 0), on = sel && sel.kind === 'start';
+      h += `<g class="pstart${on ? ' on' : ''}" data-kind="start" data-uid="start"><circle cx="${N(st.x)}" cy="${N(st.y)}" r="${N(8 * k)}"/><line x1="${N(st.x)}" y1="${N(st.y)}" x2="${N(st.x + d[0] * 26 * k)}" y2="${N(st.y + d[1] * 26 * k)}" stroke-width="${N(3 * k)}"/>`
+        + `<circle cx="${N(st.x + d[0] * 26 * k)}" cy="${N(st.y + d[1] * 26 * k)}" r="${N(4 * k)}"/><text x="${N(st.x)}" y="${N(st.y + 3.5 * k)}" font-size="${N(10 * k)}" text-anchor="middle">\u25b6</text></g>`;
+    }
+    $('#lPlan').innerHTML = h;
   }
   // ------------------------------------------------------------------ fixtures: plan symbols
   const FX = window.HouseFixtures;
@@ -405,6 +440,7 @@
     const k = pxFt(); let h = '';
     if (sel) {
       const it = byUid(sel.uid), op = !it && findOpening(sel.uid);
+      if (sel.kind === 'plan' && it) { /* drawn as part of its own group, outlined by CSS */ }
       if (sel.kind === 'wall' && it && isL(it)) {
         const V = levelOf(it), r = rectOf(V), [p, q] = ends(it), n = lineN(it), m = fromLocal(it, it.b / 2, -(it.t / 2 + 12 * k));
         h += `<rect class="sel-outline" transform="${lineTf(it)}" x="${N(r.x0)}" y="${N(r.y0)}" width="${N(r.x1 - r.x0)}" height="${N(r.y1 - r.y0)}" stroke-width="2"/>`;
@@ -431,6 +467,13 @@
       } else if (sel.kind === 'room' && it) {
         h += it.rects.map(q => `<rect class="sel-outline" x="${N(q[0])}" y="${N(q[1])}" width="${N(q[2] - q[0])}" height="${N(q[3] - q[1])}" stroke-width="2"/>`).join('')
           + (it.polys || []).map(pl => `<polygon class="sel-outline" points="${pl.map(q => N(q[0]) + ',' + N(q[1])).join(' ')}" stroke-width="2"/>`).join('');
+      } else if (sel.kind === 'start' && S.keep.start) {
+        const st = S.keep.start, d = startDir(st.yaw || 0);
+        h += handle(st.x + d[0] * 26 * k, st.y + d[1] * 26 * k, k, 'data-what="start" data-end="yaw"');
+      } else if (sel.kind === 'fixture' && it && SIZE_KEYS.includes(it.k)) {
+        const r = FX.footprint(it), mx = (r[0] + r[2]) / 2, my = (r[1] + r[3]) / 2;
+        h += handle(r[0], my, k, `data-uid="${it.uid}" data-what="fxedge" data-end="w"`) + handle(r[2], my, k, `data-uid="${it.uid}" data-what="fxedge" data-end="e"`)
+          + handle(mx, r[1], k, `data-uid="${it.uid}" data-what="fxedge" data-end="n"`) + handle(mx, r[3], k, `data-uid="${it.uid}" data-what="fxedge" data-end="s"`);
       } else if (sel.kind === 'split' && it) {
         const [p, q] = it.axis === 'h' ? [[it.a, it.c], [it.b, it.c]] : [[it.c, it.a], [it.c, it.b]];
         h += `<line class="sel-outline" x1="${N(p[0])}" y1="${N(p[1])}" x2="${N(q[0])}" y2="${N(q[1])}" stroke-width="3"/>`;
@@ -469,6 +512,8 @@
       const w = g.rect[2] - g.rect[0], d = g.rect[3] - g.rect[1];
       h += dimText((g.rect[0] + g.rect[2]) / 2, g.rect[1] - 8 * k, fmt(FX.width(g.f)) + ' \u00d7 ' + fmt(FX.depth(g.f)), k);
       void w; void d;
+    } else if (g && g.kind === 'dim') {
+      h += `<line class="guide" x1="${N(g.a[0])}" y1="${N(g.a[1])}" x2="${N(g.b[0])}" y2="${N(g.b[1])}" stroke-width="1.5"/>` + dimText((g.a[0] + g.b[0]) / 2, (g.a[1] + g.b[1]) / 2 - 8 * k, fmt(Math.hypot(g.b[0] - g.a[0], g.b[1] - g.a[1])), k);
     } else if (g && g.kind === 'scale') {
       for (const p of g.pts) h += `<circle class="scalept" cx="${N(p[0])}" cy="${N(p[1])}" r="${N(4 * k)}"/>`;
       if (g.pts.length && g.cur) h += `<line class="guide" x1="${N(g.pts[0][0])}" y1="${N(g.pts[0][1])}" x2="${N(g.cur[0])}" y2="${N(g.cur[1])}" stroke-width="1.5"/>`;
@@ -487,6 +532,9 @@
     split: 'Draw a line across an open space to split it into rooms (kitchen | dining). Then use Room on each side.',
     fixture: 'Pick something from the list on the right, then click where it goes. Against a wall it backs onto the wall on its own. <kbd>T</kbd> turns it when it is free-standing. <kbd>Esc</kbd> stops.',
     trace: 'Suggested walls are orange. Click one to leave it out, then press Add. Nothing you drew is touched until you do.',
+    label: 'Click to put a room name on the floor plan. Drag a label to move it; edit its text on the right.',
+    dim: 'Click two points to measure between them. A level or plumb pair of points makes a dimension line on the floor plan.',
+    start: 'Click where the walkthrough should start. Drag the dot on the arrow to turn it.',
     scale: 'Click two points a known distance apart on the blueprint.',
     move: 'Drag the blueprint to line it up. Press <kbd>Esc</kbd> when it\'s in place.'
   };
@@ -501,7 +549,7 @@
     endDraw(); tool = t; ghost = null;
     $$('[data-tool]').forEach(b => b.setAttribute('aria-pressed', b.dataset.tool === t));
     $('#wallMode').hidden = t !== 'wall';
-    $('#wallMode').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.angle ? wallAngle : b.dataset.mode === wallMode));
+    $('#wallMode').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.done ? false : b.dataset.angle ? wallAngle : b.dataset.mode === wallMode));
     $('#hint').innerHTML = HINTS[t] || ''; $('#hint').hidden = !HINTS[t];
     if (t === 'scale') ghost = { kind: 'scale', pts: [] };
     render(); renderSide();
@@ -624,7 +672,7 @@
     checkpoint(before); changed();
     toast('Made ' + made + ' room' + (made === 1 ? '' : 's') + '. Click each in the list on the left to name it.' + (leaky ? ' Some spaces leak outside and were skipped.' : ''));
   }
-  function endDraw() { draw = null; lenBuf = ''; if (ghost && (ghost.kind === 'wall' || ghost.kind === 'split')) ghost = null; }
+  function endDraw() { draw = null; dimStart = null; lenBuf = ''; if (ghost && (ghost.kind === 'wall' || ghost.kind === 'split' || ghost.kind === 'dim')) ghost = null; }
 
   // wall + split drawing: click, click, click...
   const angled = e => tool === 'wall' && wallAngle !== !!(e && e.shiftKey);              // the Angled button, turned over while Shift is held
@@ -697,6 +745,32 @@
       toast('Outside walls closed. Now draw the inside walls along their centre lines.');
     } else draw.start = g.end.map(r4);
     changed();
+  }
+
+  // labels, dimensions and the walkthrough start
+  function labelClick(p) {
+    checkpoint();
+    const q = v => r4(Math.round(v / GRID) * GRID), l = { uid: uid(), x: q(p[0]), y: q(p[1]), t: 'LABEL' };
+    (planOf().labels ||= []).push(l); sel = { kind: 'plan', uid: l.uid }; changed();
+    setTimeout(() => { const f = $('#insp [data-f="pl_t"]'); if (f) { f.focus(); f.select(); } }, 30);
+  }
+  function dimTo(p, e) {                                                // level or plumb from the first point, whichever the cursor is nearer to
+    const a = dimStart, sp = snapPoint(p, e && e.altKey).p;
+    return Math.abs(sp[0] - a[0]) >= Math.abs(sp[1] - a[1]) ? [sp[0], a[1]] : [a[0], sp[1]];
+  }
+  function dimClick(p, e) {
+    if (!dimStart) { dimStart = snapPoint(p, e.altKey).p.map(r4); return; }
+    const b = dimTo(p, e), a = dimStart; dimStart = null; ghost = null;
+    if (Math.hypot(b[0] - a[0], b[1] - a[1]) < 0.25) { renderGhost(); return; }
+    checkpoint();
+    const d = b[1] === a[1] ? { uid: uid(), x1: r4(Math.min(a[0], b[0])), x2: r4(Math.max(a[0], b[0])), y: r4(a[1]) } : { uid: uid(), y1: r4(Math.min(a[1], b[1])), y2: r4(Math.max(a[1], b[1])), x: r4(a[0]) };
+    (planOf().dims ||= []).push(d); sel = { kind: 'plan', uid: d.uid }; changed();
+  }
+  function startClick(p) {
+    checkpoint();
+    const sp = snapPoint(p, true).p, was = S.keep.start;
+    S.keep.start = { x: r4(Math.round(sp[0] / GRID) * GRID), y: r4(Math.round(sp[1] / GRID) * GRID), yaw: was && typeof was.yaw === 'number' ? was.yaw : 0, ...(was && was.z !== undefined ? { z: was.z } : {}) };
+    sel = { kind: 'start', uid: 'start' }; changed();
   }
 
   // doors, windows, openings
@@ -921,6 +995,14 @@
     const p = toFt(e); downAt = p; lastP = p;
     if (e.button === 1 || (e.button === 0 && spaceDown)) { startPan(e); return; }
     if (e.button !== 0) return;
+    if (e.pointerType === 'touch') {                                       // a finger: select and pan act at once; the tools wait for the lift, so a second finger can pinch instead
+      touches.set(e.pointerId, [e.clientX, e.clientY]);
+      if (touches.size > 1) { cancelForPinch(); return; }
+      if (tool !== 'select' && tool !== 'trace' && tool !== 'move') { tap = { id: e.pointerId, x: e.clientX, y: e.clientY }; lastP = p; svg.setPointerCapture(e.pointerId); pointerHover(e, p); return; }
+    }
+    toolDown(e, p);
+  });
+  function toolDown(e, p) {
     if (tool === 'select') return selectDown(e, p);
     if (tool === 'trace') return traceDown(e);
     if (tool === 'wall' || tool === 'split') return drawClick(p, e);
@@ -928,8 +1010,66 @@
     if (tool === 'fixture') return fixtureClick(p, e);
     if (tool === 'room') return roomClick(p);
     if (tool === 'scale') return scaleClick(snapPoint(p, true).p);
+    if (tool === 'label') return labelClick(p);
+    if (tool === 'dim') return dimClick(p, e);
+    if (tool === 'start') return startClick(p);
     if (tool === 'move' && S.underlay) { drag = { type: 'under', start: p, ox: S.underlay.ox, oy: S.underlay.oy, before: snap() }; svg.setPointerCapture(e.pointerId); }
-  });
+  }
+  // ---- touch: one finger draws or drags, two fingers pinch and pan
+  const touches = new Map(); let tap = null, pinch = null;
+  function cancelForPinch() {
+    tap = null;
+    if (drag && drag.before && drag.moved) restoreSnap(drag.before);
+    drag = null; svg.classList.remove('panning'); ghost = null;
+    const [a, b] = [...touches.values()];
+    pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), c: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] };
+    render();
+  }
+  function pinchMove() {
+    const [a, b] = [...touches.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]) || 1, c = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    const ft = toFt({ clientX: c[0], clientY: c[1] });
+    if (pinch.d > 0) zoomAt(pinch.d / d, ft[0], ft[1]);
+    const k = pxFt(); view.x -= (c[0] - pinch.c[0]) * k; view.y -= (c[1] - pinch.c[1]) * k; applyView();
+    pinch = { d, c };
+  }
+  function touchEnd(e) {
+    if (e.pointerType !== 'touch') return false;
+    touches.delete(e.pointerId);
+    if (pinch) { if (touches.size === 0) pinch = null; return true; }
+    if (tap && tap.id === e.pointerId) {
+      const t = tap; tap = null;
+      if (e.type === 'pointerup') toolDown({ altKey: false, shiftKey: false, target: e.target, pointerId: e.pointerId }, toFt(e));
+      void t; return true;
+    }
+    return false;
+  }
+  // the walls whose ends rest on this one (or, for an angled wall, on its two ends): they follow when it moves
+  function attachedEnds(w) {
+    const out = [], tol = 0.06;
+    for (const o of S.walls) {
+      if (o === w || o.status === 'removed') continue;
+      ends(o).forEach((q, i) => {
+        if (isL(w)) {
+          const hit = [[w.p[0], w.p[1]], [w.p[2], w.p[3]]].some(e => Math.hypot(e[0] - q[0], e[1] - q[1]) < tol);
+          if (hit) out.push({ o, i, q: q.slice(), p0: isL(o) ? o.p.slice() : null });
+        } else if (o.axis !== w.axis || isL(o)) {
+          const t = along(w, q), c = across(w, q);
+          if (Math.abs(c - w.c) < tol && t > w.a - tol && t < w.b + tol) out.push({ o, i, q: q.slice(), p0: isL(o) ? o.p.slice() : null });
+        }
+      });
+    }
+    return out;
+  }
+  function followAttached(w, d, dx, dy) {                                // dx, dy: how far the dragged wall has moved
+    for (const a of d.att || []) {
+      const o = a.o;
+      if (isL(o)) { const q = a.p0.slice(); q[a.i * 2] += dx; q[a.i * 2 + 1] += dy; if (Math.hypot(q[2] - q[0], q[3] - q[1]) >= 0.25) { const len0 = o.b; setLine(o, q); if (a.i === 0) o.openings.forEach(op => { op.a = r4(op.a + o.b - len0); op.b = r4(op.b + o.b - len0); }); } }
+      else {
+        const v = o.axis === 'h' ? a.q[0] + dx : a.q[1] + dy, key = a.i === 0 ? 'a' : 'b';
+        if ((key === 'a' ? o.b - v : v - o.a) >= 0.25) o[key] = r4(v);
+      }
+    }
+  }
   function startPan(e) { drag = { type: 'pan', sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y }; svg.setPointerCapture(e.pointerId); svg.classList.add('panning'); }
   function selectDown(e, p) {
     const t = e.target.closest('[data-kind]');
@@ -937,16 +1077,21 @@
     const kind = t.dataset.kind, u = t.dataset.uid, before = snap();
     if (kind === 'handle') {
       const w0 = t.dataset.what === 'wall' ? byUid(u) : null;
-      drag = { type: 'end', what: t.dataset.what, uid: u, end: t.dataset.end, before, len0: w0 && isL(w0) ? w0.b : 0, ops0: w0 && isL(w0) ? w0.openings.map(o => [o.a, o.b]) : null };
+      drag = { type: 'end', what: t.dataset.what, uid: u, end: t.dataset.end, before, rect0: t.dataset.what === 'fxedge' ? FX.footprint(fxBy(u)) : null, len0: w0 && isL(w0) ? w0.b : 0, ops0: w0 && isL(w0) ? w0.openings.map(o => [o.a, o.b]) : null };
     } else if (kind === 'wall') {
       const w = byUid(u); sel = { kind: 'wall', uid: u };
-      drag = { type: 'wall', uid: u, start: p, c0: w.c, p0: isL(w) ? w.p.slice() : null, before };
+      drag = { type: 'wall', uid: u, start: p, c0: w.c, p0: isL(w) ? w.p.slice() : null, att: attachedEnds(w), before };
     } else if (kind === 'opening') {
       const { w, o } = findOpening(u); sel = { kind: 'opening', uid: u };
       drag = { type: 'opening', uid: u, start: along(w, p), a0: o.a, b0: o.b, before };
     } else if (kind === 'fixture') {
       const g = fxBy(u); sel = { kind: 'fixture', uid: u };
       drag = { type: 'fixture', uid: u, start: p, rect0: FX.footprint(g), before };
+    } else if (kind === 'plan') {
+      const it = byUid(u); sel = { kind: 'plan', uid: u };
+      drag = { type: 'plan', uid: u, start: p, orig: JSON.parse(JSON.stringify(it)), before };
+    } else if (kind === 'start') {
+      sel = { kind: 'start', uid: 'start' }; drag = { type: 'startmove', start: p, orig: { ...S.keep.start }, before };
     } else if (kind === 'room' || kind === 'split') {
       sel = { kind, uid: u };
       drag = { type: 'pan-later', sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y };
@@ -956,8 +1101,13 @@
   }
   svg.addEventListener('pointermove', e => {
     const p = toFt(e); lastP = p; lastMods = { altKey: e.altKey, shiftKey: e.shiftKey };
+    if (e.pointerType === 'touch') { if (touches.has(e.pointerId)) touches.set(e.pointerId, [e.clientX, e.clientY]); if (pinch && touches.size > 1) return pinchMove(); }
     $('#cursor').textContent = `${fmt(p[0])}, ${fmt(p[1])}`;
     if (drag) return dragMove(e, p);
+    pointerHover(e, p);
+  });
+  function pointerHover(e, p) {
+    if (tool === 'dim' && dimStart) { ghost = { kind: 'dim', a: dimStart, b: dimTo(p, e) }; renderGhost(); return; }
     if (tool === 'wall' || tool === 'split') {
       if (draw) { ghost = Object.assign({ kind: tool, t: tool === 'wall' ? (wallMode === 'ext' ? S.wallThickness.exterior : S.wallThickness.interior) : 0 }, drawTarget(p, e)); }
       else { const sp = snapPoint(p, e.altKey); ghost = { kind: 'point', snap: sp.kind ? sp.p : null }; }
@@ -965,7 +1115,7 @@
     } else if (tool === 'door' || tool === 'window' || tool === 'cased') { ghost = openingGhost(p); renderGhost(); }
     else if (tool === 'fixture') { ghost = fixtureGhost(p, e); renderGhost(); }
     else if (tool === 'scale' && ghost) { ghost.cur = p; renderGhost(); }
-  });
+  }
   function dragMove(e, p) {
     const d = drag;
     if (d.type === 'pan' || d.type === 'pan-later') {
@@ -974,17 +1124,40 @@
     }
     d.moved = true;
     if (d.type === 'under') { S.underlay.ox = d.ox + p[0] - d.start[0]; S.underlay.oy = d.oy + p[1] - d.start[1]; render(); return; }
+    if (d.type === 'plan') {
+      const it = byUid(d.uid), dx = p[0] - d.start[0], dy = p[1] - d.start[1], o = d.orig;
+      if (!e.altKey) { /* snapping is to the inch, below */ }
+      const q = v => r4(Math.round(v / GRID) * GRID);
+      if (it.x1 !== undefined) { it.x1 = q(o.x1 + dx); it.x2 = q(o.x2 + dx); it.y = q(o.y + dy); }
+      else if (it.y1 !== undefined) { it.y1 = q(o.y1 + dy); it.y2 = q(o.y2 + dy); it.x = q(o.x + dx); }
+      else { it.x = q(o.x + dx); it.y = q(o.y + dy); }
+      render(); renderSide(); return;
+    }
+    if (d.type === 'startmove') { const st = S.keep.start; st.x = r4(d.orig.x + p[0] - d.start[0]); st.y = r4(d.orig.y + p[1] - d.start[1]); render(); renderSide(); return; }
+    if (d.type === 'end' && d.what === 'start') {
+      const st = S.keep.start; let yaw = Math.atan2(-(p[0] - st.x), -(p[1] - st.y));
+      if (!e.altKey) yaw = Math.round(yaw / (Math.PI / 12)) * (Math.PI / 12);
+      st.yaw = r4(yaw); render(); renderSide(); return;
+    }
+    if (d.type === 'end' && d.what === 'fxedge') {
+      const g = fxBy(d.uid), r = d.rect0.slice(), side = d.end, axis = side === 'w' || side === 'e' ? 'x' : 'y';
+      const v = snapC(axis === 'x' ? p[0] : p[1], fxEdges(axis, d.uid), e.altKey), i = { w: 0, n: 1, e: 2, s: 3 }[side];
+      r[i] = v;
+      if (r[2] - r[0] < 0.25 || r[3] - r[1] < 0.25) return;
+      FX.place(g, r); render(); renderSide(); return;
+    }
     if (d.type === 'wall' && d.p0) {                                       // an angled wall moves as it is
       const w = byUid(d.uid); let dx = p[0] - d.start[0], dy = p[1] - d.start[1];
       if (!e.altKey) {
         dx = Math.round(dx / GRID) * GRID; dy = Math.round(dy / GRID) * GRID;
         for (const i of [0, 2]) { const sp = snapPoint([d.p0[i] + dx, d.p0[i + 1] + dy], false, w); if (sp.kind === 'end') { dx = sp.p[0] - d.p0[i]; dy = sp.p[1] - d.p0[i + 1]; break; } }
       }
-      setLine(w, [d.p0[0] + dx, d.p0[1] + dy, d.p0[2] + dx, d.p0[3] + dy]); render(); return;
+      setLine(w, [d.p0[0] + dx, d.p0[1] + dy, d.p0[2] + dx, d.p0[3] + dy]); followAttached(w, d, dx, dy); render(); return;
     }
     if (d.type === 'wall') {
       const w = byUid(d.uid), v = d.c0 + across(w.axis, p) - across(w.axis, d.start);
-      w.c = r4(snapC(v, coordCands(w.axis === 'h' ? 'y' : 'x', w), e.altKey)); render(); return;
+      w.c = r4(snapC(v, coordCands(w.axis === 'h' ? 'y' : 'x', w), e.altKey));
+      const dc = w.c - d.c0; followAttached(w, d, w.axis === 'v' ? dc : 0, w.axis === 'h' ? dc : 0); render(); return;
     }
     if (d.type === 'end' && d.what === 'wall' && isL(byUid(d.uid))) {      // one end of an angled wall: to another wall's end, else every 15 degrees
       const w = byUid(d.uid), fixed = d.end === 'a' ? [w.p[2], w.p[3]] : [w.p[0], w.p[1]];
@@ -1028,7 +1201,9 @@
       render(); renderSide();
     }
   }
+  svg.addEventListener('pointercancel', e => { touchEnd(e); if (drag) { drag = null; svg.classList.remove('panning'); } });
   svg.addEventListener('pointerup', e => {
+    if (touchEnd(e)) return;
     const d = drag; drag = null; svg.classList.remove('panning');
     if (d && d.moved && d.before) {
       if (d.type === 'end' && d.what === 'wall') { const w = byUid(d.uid); w.openings.forEach(o => { o.a = Math.max(o.a, w.a); o.b = Math.min(o.b, w.b); }); w.openings = w.openings.filter(o => o.b - o.a >= 0.5); }
@@ -1045,7 +1220,7 @@
   $('#zFit').onclick = fit;
 
   // ------------------------------------------------------------------ keyboard
-  const KEYTOOL = { v: 'select', w: 'wall', d: 'door', n: 'window', o: 'cased', r: 'room', l: 'split', f: 'fixture', a: 'trace' };
+  const KEYTOOL = { v: 'select', w: 'wall', d: 'door', n: 'window', o: 'cased', r: 'room', l: 'split', f: 'fixture', a: 'trace', b: 'label', m: 'dim', g: 'start' };
   document.addEventListener('keydown', e => {
     const typing = /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName) || !$('#dialog').hidden;
     if ((e.ctrlKey || e.metaKey) && !typing) {
@@ -1063,6 +1238,7 @@
     }
     if (e.key === ' ') { spaceDown = true; e.preventDefault(); return; }
     if (e.key === 'Escape') {
+      if (dimStart) { dimStart = null; ghost = null; render(); return; }
       if (draw) { endDraw(); render(); } else if (tool !== 'select') setTool('select'); else if (sel) { sel = null; render(); renderSide(); }
       return;
     }
@@ -1078,7 +1254,7 @@
   });
   document.addEventListener('keyup', e => { if (e.key === ' ') spaceDown = false; });
   $$('[data-tool]').forEach(b => b.onclick = () => setTool(b.dataset.tool));
-  $('#wallMode').addEventListener('click', e => { const b = e.target.closest('[data-mode],[data-angle]'); if (!b) return; if (b.dataset.angle) wallAngle = !wallAngle; else wallMode = b.dataset.mode; endDraw(); setTool('wall'); });
+  $('#wallMode').addEventListener('click', e => { const b = e.target.closest('[data-mode],[data-angle],[data-done]'); if (!b) return; if (b.dataset.done) { endDraw(); render(); return; } if (b.dataset.angle) wallAngle = !wallAngle; else wallMode = b.dataset.mode; endDraw(); setTool('wall'); });
 
   // ------------------------------------------------------------------ fixtures: placing and moving
   const SIZE_KEYS = ['box', 'upper', 'range', 'tub', 'shower', 'front', 'shelf', 'pumps', 'sink2', 'steps', 'deck'];
@@ -1171,6 +1347,8 @@
     if (sel.kind === 'wall') S.walls = S.walls.filter(w => w.uid !== sel.uid);
     if (sel.kind === 'room') S.rooms = S.rooms.filter(r => r.uid !== sel.uid);
     if (sel.kind === 'split') S.splits = S.splits.filter(s => s.uid !== sel.uid);
+    if (sel.kind === 'plan' && S.keep.plan) { const P = S.keep.plan; P.labels = (P.labels || []).filter(x => x.uid !== sel.uid); P.dims = (P.dims || []).filter(x => x.uid !== sel.uid); }
+    if (sel.kind === 'start') delete S.keep.start;
     if (sel.kind === 'fixture') S.keep.fixtures = fxs().filter(f => f.uid !== sel.uid);
     if (sel.kind === 'opening') { const f = findOpening(sel.uid); if (f) f.w.openings = f.w.openings.filter(o => o !== f.o); }
     sel = null; changed();
@@ -1344,6 +1522,23 @@
         <div class="pair">${field('Wall ID prefix', 'short', r.short, { ph: r.id.toUpperCase() })}${field('Room id', 'id', r.id)}</div>
         <p class="note">Walls are named from the prefix: ${esc((r.short || r.id.toUpperCase()) + '-N')}, ${esc((r.short || r.id.toUpperCase()) + '-E')}\u2026 Changing it after you've painted renames those walls, and their saved colours won't show.</p>
         <div class="actions"><button class="btn danger" data-act="delete">Delete room</button></div>`;
+    } else if (sel && sel.kind === 'plan' && it && it.t !== undefined) {
+      title = 'Floor plan label';
+      h += `<h3>${esc(it.t || 'Label')}</h3>${field('Text', 'pl_t', it.t)}${field('Second line', 'pl_t2', it.t2 || '', { ph: 'optional' })}${field('Small text underneath', 'pl_sub', it.sub || '', { ph: 'e.g. 12\'-0" \u00d7 14\'-0"' })}
+        ${field('Size', 'pl_size', it.size || 11, { type: 'number' })}<div class="pair">${field('x', 'pl_x', it.x, { len: 1 })}${field('y', 'pl_y', it.y, { len: 1 })}</div>
+        <p class="note">This is only for the floor plan page. Room names in the Paint Studio come from the rooms.</p>
+        <div class="actions"><button class="btn danger" data-act="delete">Delete label</button></div>`;
+    } else if (sel && sel.kind === 'plan' && it) {
+      title = 'Dimension';
+      const [a, b] = dimEnds(it);
+      h += `<h3>${fmt(Math.hypot(b[0] - a[0], b[1] - a[1]))} dimension</h3>${field('Text (blank = the measured length)', 'pl_label', it.label || '')}
+        <div class="actions"><button class="btn danger" data-act="delete">Delete dimension</button></div>`;
+    } else if (sel && sel.kind === 'start' && S.keep.start) {
+      const st = S.keep.start; title = 'Walkthrough start';
+      h += `<h3>Walkthrough start</h3><div class="pair">${field('x', 'st_x', st.x, { len: 1 })}${field('y', 'st_y', st.y, { len: 1 })}</div>
+        ${field('Facing', 'st_face', yawName(st.yaw || 0), { select: Object.keys(YAW).map(k => [k, { N: 'North (up the page)', NE: 'Northeast', E: 'East', SE: 'Southeast', S: 'South', SW: 'Southwest', W: 'West', NW: 'Northwest' }[k]]) })}
+        <p class="note">Where the Paint Studio's walkthrough begins. Drag the dot on the arrow to turn it by 15\u00b0.</p>
+        <div class="actions"><button class="btn danger" data-act="delete">Use the default start</button></div>`;
     } else if (sel && sel.kind === 'split' && it) {
       title = 'Split line';
       h += `<h3>${fmt(it.b - it.a)} split line</h3><p class="note">Divides an open space into two rooms without a wall. Make the rooms after drawing it.</p>
@@ -1362,7 +1557,12 @@
         ${field('Flooring', 'fl_mode', floorMode(F), { select: FLOOR_OPTIONS.concat(floorMode(F) === 'photo' ? [['photo', 'My own photo']] : [['photo', 'My own photo\u2026']]) })}
         ${floorMode(F) === 'photo' ? '<div class="actions"><button class="btn" data-act="floorphoto">Choose another photo\u2026</button></div>' : ''}
         <div class="pair">${field('Name', 'fl_name', F.name)}${field('Colour (plain)', 'fl_color', F.color, { type: 'color' })}</div>
-        <p class="note">Wood floors are drawn the way the cabinet veneers are. A photo should show one plank, or a close-up of the grain, with the grain running up the picture.</p>`;
+        <p class="note">Wood floors are drawn the way the cabinet veneers are. A photo should show one plank, or a close-up of the grain, with the grain running up the picture.</p>
+        <h3 style="font-size:14px">Floor plan notes</h3>
+        ${(S.keep.plan && S.keep.plan.notes || []).map((c, i) => `<div class="notecard"><div class="pair">${field('Title', 'nt_title_' + i, c.title)}<label class="field">Style<select data-f="nt_ord_${i}"><option value=""${c.ordered ? '' : ' selected'}>Bullets</option><option value="1"${c.ordered ? ' selected' : ''}>Numbered</option></select></label></div>
+          <label class="field">One line per item<textarea data-f="nt_items_${i}" rows="4">${esc((c.items || []).join('\n'))}</textarea></label><div class="actions"><button class="btn danger" data-act="delnote" data-i="${i}">Delete this note</button></div></div>`).join('')}
+        <div class="actions"><button class="btn" data-act="addnote">Add a note</button></div>
+        <p class="note">Notes show beside the floor plan page. Use the Label tool for names on the plan itself, and Dimension for measurements.</p>`;
     }
     $('#inspTitle').textContent = title;
     box.innerHTML = h;
@@ -1392,6 +1592,8 @@
     if (a === 'dup') duplicateSelected();
     if (a === 'newgroup') newGroup();
     if (a === 'delete') deleteSel();
+    if (a === 'addnote') { checkpoint(); (planOf().notes ||= []).push({ title: 'Note', items: ['First item'] }); changed(); }
+    if (a === 'delnote') { checkpoint(); S.keep.plan.notes.splice(+e.target.closest('[data-i]').dataset.i, 1); changed(); }
     if (a === 'wall') { const f = findOpening(sel.uid); if (f) { sel = { kind: 'wall', uid: f.w.uid }; render(); renderSide(); } }
   });
   // flooring: plain colour, the bundled Desert Sand photo, a wood species drawn like the cabinet veneers, or your own photo
@@ -1450,6 +1652,23 @@
       if (f === 'a') { if (v >= w.b) return false; w.a = r4(v); return; }
       if (f === 'b') { if (v <= w.a) return false; w.b = r4(v); return; }
       if (f === 'c') { w.c = r4(v); return; }
+    }
+    if (sel && sel.kind === 'plan' && it) {
+      const map = { pl_t: 't', pl_t2: 't2', pl_sub: 'sub' };
+      if (map[f]) { if (f === 'pl_t' && !v.trim()) return false; if (v.trim()) it[map[f]] = v; else delete it[map[f]]; return; }
+      if (f === 'pl_size') { const n = +v; if (!(n >= 6 && n <= 40)) return false; it.size = n; return; }
+      if (f === 'pl_x' || f === 'pl_y') { if (v == null) return false; it[f === 'pl_x' ? 'x' : 'y'] = r4(v); return; }
+      if (f === 'pl_label') { if (v.trim()) it.label = v; else delete it.label; return; }
+    }
+    if (sel && sel.kind === 'start' && S.keep.start) {
+      const st = S.keep.start;
+      if (f === 'st_x' || f === 'st_y') { if (v == null) return false; st[f === 'st_x' ? 'x' : 'y'] = r4(v); return; }
+      if (f === 'st_face') { st.yaw = YAW[v]; return; }
+    }
+    if (/^nt_/.test(f)) {
+      const m = /^nt_(title|ord|items)_(\d+)$/.exec(f), c = m && S.keep.plan && S.keep.plan.notes[+m[2]]; if (!c) return false;
+      if (m[1] === 'title') c.title = v; else if (m[1] === 'ord') { if (v) c.ordered = true; else delete c.ordered; } else c.items = v.split('\n').map(x => x.trim()).filter(Boolean);
+      return;
     }
     if (op) {
       const { w, o } = op;

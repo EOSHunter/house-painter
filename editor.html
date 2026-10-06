@@ -137,6 +137,17 @@
   .dim { font-family: var(--f-mono); font-weight: 500; fill: var(--select); text-anchor: middle; paint-order: stroke; stroke: var(--stage); stroke-linejoin: round; pointer-events: none; }
   .ghost { fill: var(--select-soft); stroke: var(--select); stroke-dasharray: 4 3; pointer-events: none; }
   .ghost.bad { fill: rgba(214, 69, 61, .12); stroke: var(--removed); }
+  .plabel text { fill: var(--ink); text-anchor: middle; paint-order: stroke; stroke: var(--stage); stroke-linejoin: round; cursor: grab; }
+  .plabel.on text { fill: var(--select); }
+  .pdim line, .pdim text { stroke: var(--select); stroke-width: 1px; fill: none; vector-effect: non-scaling-stroke; }
+  .pdim text { fill: var(--select); stroke: none; text-anchor: middle; font-family: var(--f-mono); }
+  .pdim.on line { stroke-width: 2px; }
+  .pstart circle { fill: var(--select); stroke: var(--stage); stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
+  .pstart line { stroke: var(--select); }
+  .pstart text { fill: #fff; pointer-events: none; }
+  .pstart.on circle:first-child { stroke: var(--ink); }
+  .notecard { padding: 8px; margin: 6px 0; border: 1px solid var(--line); border-radius: var(--r); }
+  .field textarea { width: 100%; font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--r); background: var(--raised); color: var(--ink); resize: vertical; }
   .snapmark { fill: none; stroke: var(--snap); pointer-events: none; }
   .guide { stroke: var(--snap); stroke-dasharray: 2 3; pointer-events: none; }
   .scalept { fill: var(--snap); pointer-events: none; }
@@ -220,10 +231,13 @@
       <button data-tool="room" aria-pressed="false" title="Click inside a space to make it a room (R)">Room<kbd>R</kbd></button>
       <button data-tool="split" aria-pressed="false" title="Split an open-plan space into rooms (L)">Split<kbd>L</kbd></button>
       <button data-tool="fixture" aria-pressed="false" title="Place cabinets, appliances and bath fixtures (F)">Fixture<kbd>F</kbd></button>
+      <button data-tool="label" aria-pressed="false" title="Add a name to the floor plan (B)">Label<kbd>B</kbd></button>
+      <button data-tool="dim" aria-pressed="false" title="Add a dimension to the floor plan (M)">Measure<kbd>M</kbd></button>
+      <button data-tool="start" aria-pressed="false" title="Set where the walkthrough starts (G)">Start<kbd>G</kbd></button>
     </div>
     <div class="seg" id="wallMode" role="group" aria-label="Wall type" hidden>
       <button data-mode="ext" aria-pressed="true">Outside wall</button><button data-mode="int" aria-pressed="false">Inside wall</button>
-      <button data-angle="1" aria-pressed="false" title="Draw walls at any angle (or hold Shift)">Angled</button>
+      <button data-angle="1" aria-pressed="false" title="Draw walls at any angle (or hold Shift)">Angled</button><button data-done="1" title="Finish this run of walls (Esc)">Done</button>
     </div>
     <span class="spacer"></span>
     <div class="group">
@@ -263,7 +277,7 @@
         <g id="lUnder"></g>
         <rect id="gridA" x="-1000" y="-1000" width="2000" height="2000" fill="url(#gridMinor)" pointer-events="none"/>
         <rect id="gridB" x="-1000" y="-1000" width="2000" height="2000" fill="url(#gridMajor)" pointer-events="none"/>
-        <g id="lRooms"></g><g id="lFix"></g><g id="lWalls"></g><g id="lOpen"></g><g id="lSplits"></g><g id="lTrace"></g><g id="lSel"></g><g id="lGhost"></g>
+        <g id="lRooms"></g><g id="lFix"></g><g id="lWalls"></g><g id="lOpen"></g><g id="lSplits"></g><g id="lPlan"></g><g id="lTrace"></g><g id="lSel"></g><g id="lGhost"></g>
       </svg>
       <div class="zoom"><button id="zIn" aria-label="Zoom in">+</button><button id="zOut" aria-label="Zoom out">−</button><button id="zFit" aria-label="Fit to drawing" title="Fit (H)">⤢</button></div>
       <div class="hint" id="hint" hidden></div>
