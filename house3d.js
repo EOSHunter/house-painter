@@ -40,11 +40,77 @@
     }
     return mats[key];
   }
-  function setPaint(key, hex, sheen) {
+  function setPaint(key, hex, sheen, woodId) {
     const m = material(key);
-    m.color.copy(lin(hex || defaultHex(key)));
+    const tex = woodId && WOODS[woodId] ? woodTexture(woodId) : null;
+    if (m.map !== tex) { m.map = tex; m.needsUpdate = true; }
+    m.color.copy(tex ? new T.Color(0xffffff) : lin(hex || defaultHex(key)));     // wood: the texture carries the colour
     m.roughness = SHEEN[sheen] ?? m.roughness;
-    m.needsUpdate = true;
+  }
+
+  // ---------------------------------------------------------------- wood finishes (procedural, tileable veneer)
+  // One tile covers 2.5' x 5' of surface; box UVs are in feet, so grain is the same scale on a drawer and on a wall.
+  const WOODS = {
+    walnut:   { n: 'Walnut',        light: '#8C5D3E', dark: '#3A2215', freq: 9,  warp: 0.55, pores: 0.30 },
+    teak:     { n: 'Teak',          light: '#B57E49', dark: '#6A4220', freq: 7,  warp: 0.45, pores: 0.22 },
+    whiteoak: { n: 'White oak',     light: '#CDAA7C', dark: '#8C6A45', freq: 12, warp: 0.35, pores: 0.35 },
+    redoak:   { n: 'Red oak',       light: '#C48D63', dark: '#86513A', freq: 10, warp: 0.6,  pores: 0.35 },
+    cherry:   { n: 'Cherry',        light: '#A8603F', dark: '#6A3322', freq: 8,  warp: 0.4,  pores: 0.12 },
+    maple:    { n: 'Maple',         light: '#E2C99E', dark: '#BE9C70', freq: 14, warp: 0.3,  pores: 0.08 },
+    rosewood: { n: 'Rosewood',      light: '#743A26', dark: '#29120B', freq: 7,  warp: 0.7,  pores: 0.25 },
+    ebonized: { n: 'Ebonized oak',  light: '#3E3630', dark: '#191513', freq: 12, warp: 0.35, pores: 0.35 }
+  };
+  const TILE_W = 2.5, TILE_H = 5;
+  const hexRGB = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+  for (const w of Object.values(WOODS)) {                    // average colour, for swatch dots and paint totals
+    const a = hexRGB(w.light), b = hexRGB(w.dark);
+    w.avg = '#' + a.map((v, i) => Math.round(v * 0.62 + b[i] * 0.38).toString(16).padStart(2, '0')).join('').toUpperCase();
+  }
+  function hash(ix, iy, s) { let h = (ix * 374761393 + iy * 668265263 + s * 982451653) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); h ^= h >>> 16; return (h >>> 0) / 4294967295; }
+  function vnoise(x, y, px, py, s) {                         // value noise that repeats every px by py cells, so tiles join
+    const x0 = Math.floor(x), y0 = Math.floor(y), fx = x - x0, fy = y - y0, sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+    const m = (a, p) => ((a % p) + p) % p, X0 = m(x0, px), X1 = m(x0 + 1, px), Y0 = m(y0, py), Y1 = m(y0 + 1, py);
+    const a = hash(X0, Y0, s), b = hash(X1, Y0, s), c = hash(X0, Y1, s), d = hash(X1, Y1, s);
+    return a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy;
+  }
+  function fbm(u, v, fx, fy, oct, s) { let sum = 0, amp = 0.5, f = 1, norm = 0; for (let o = 0; o < oct; o++) { sum += amp * vnoise(u * fx * f, v * fy * f, fx * f, fy * f, s + o); norm += amp; amp *= 0.5; f *= 2; } return sum / norm; }
+  function woodCanvas(w, W, H) {
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const ctx = c.getContext('2d'), img = ctx.createImageData(W, H), d = img.data;
+    const L = hexRGB(w.light), D = hexRGB(w.dark);
+    for (let y = 0; y < H; y++) {
+      const v = y / H;
+      for (let x = 0; x < W; x++) {
+        const u = x / W;
+        const f = w.freq * 2.6;                                                                                       // growth rings across one 2.5' tile
+        const warp = fbm(u, v, 3, 2, 3, 1) - 0.5;
+        const r = u * f + warp * w.warp * f * 0.22 + (fbm(u, v, 4, 6, 2, 7) - 0.5) * 0.9;
+        const g = r - Math.floor(r);
+        const band = 0.7 * Math.exp(-(((g - 0.82) / 0.07) ** 2)) + 0.35 * Math.exp(-(((g - 0.75) / 0.22) ** 2));   // latewood lines
+        const streak = fbm(u, v, 96, 3, 2, 31) - 0.5;                                                                 // fine straight streaks
+        const pore = vnoise(u * 220, v * 14, 220, 14, 11) > 0.78 ? 1 : 0;                                            // long open pores
+        const tone = fbm(u, v, 2, 1, 2, 21) - 0.5;                                                                    // slow colour drift
+        const t = Math.max(0, Math.min(1, band * 0.45 + streak * 0.5 + pore * w.pores * 0.7 + tone * 0.4 + 0.22));
+        const i = (y * W + x) * 4;
+        d[i] = L[0] + (D[0] - L[0]) * t; d[i + 1] = L[1] + (D[1] - L[1]) * t; d[i + 2] = L[2] + (D[2] - L[2]) * t; d[i + 3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    return c;
+  }
+  const woodTex = {}, woodSw = {};
+  function woodTexture(id) {
+    if (!woodTex[id]) {
+      const t = new T.CanvasTexture(woodCanvas(WOODS[id], 384, 768));
+      t.wrapS = t.wrapT = T.RepeatWrapping; t.repeat.set(1 / TILE_W, 1 / TILE_H);
+      t.encoding = T.sRGBEncoding; t.anisotropy = 8;
+      woodTex[id] = t;
+    }
+    return woodTex[id];
+  }
+  function woodSwatch(id) {                                  // small image for colour chips
+    if (!woodSw[id]) woodSw[id] = woodCanvas(WOODS[id], 96, 192).toDataURL('image/png');
+    return woodSw[id];
   }
 
   // fixed (non-paintable) materials
@@ -63,7 +129,11 @@
   function box(x0, y0, z0, x1, y1, z1, mat, parent = root) {
     if (x1 < x0) [x0, x1] = [x1, x0]; if (y1 < y0) [y0, y1] = [y1, y0]; if (z1 < z0) [z0, z1] = [z1, z0];
     if (x1 - x0 < 1e-4 || y1 - y0 < 1e-4 || z1 - z0 < 1e-4) return null;
-    const m = new T.Mesh(new T.BoxGeometry(x1 - x0, z1 - z0, y1 - y0), mat);
+    const g = new T.BoxGeometry(x1 - x0, z1 - z0, y1 - y0);
+    // UVs in feet (face width x face height), so textures keep real-world scale on every box
+    const sx = x1 - x0, sy = z1 - z0, sz = y1 - y0, dims = [[sz, sy], [sz, sy], [sx, sz], [sx, sz], [sx, sy], [sx, sy]], uv = g.attributes.uv;
+    for (let f = 0; f < 6; f++) for (let i = 0; i < 4; i++) { const k = f * 4 + i; uv.setXY(k, uv.getX(k) * dims[f][0], uv.getY(k) * dims[f][1]); }
+    const m = new T.Mesh(g, mat);
     m.position.set((x0 + x1) / 2, (z0 + z1) / 2, (y0 + y1) / 2);
     m.castShadow = m.receiveShadow = true;
     parent.add(m);
@@ -451,7 +521,7 @@
   }
 
   window.House3D = {
-    root, ceilings, pickables, material, setPaint, defaultHex, keyAt, roomInfo, surfaceView, loadFloorTexture, SHEEN, cabParts,
+    root, ceilings, pickables, material, setPaint, defaultHex, keyAt, roomInfo, surfaceView, loadFloorTexture, SHEEN, cabParts, WOODS, woodSwatch,
     center: new T.Vector3(H.W / 2, 0, H.D / 2)
   };
 })();

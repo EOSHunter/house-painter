@@ -40,12 +40,14 @@
     .sort((a, b) => (DIR_ORDER[a.s.dir] - DIR_ORDER[b.s.dir]) || a.key.localeCompare(b.key, 'en', { numeric: true }));
   const defaultSheen = t => ({ ceiling: 'flat', trim: 'semigloss', door: 'semigloss', cabinet: 'satin', cabdoor: 'satin', siding: 'satin' }[t.kind] || 'eggshell');
   const SHEEN_LABEL = { flat: 'Flat', eggshell: 'Eggshell', satin: 'Satin', semigloss: 'Semi-gloss' };
-  const BRAND_LABEL = { sw: 'Sherwin-Williams', behr: 'Behr', custom: 'Custom' };
+  const BRAND_LABEL = { sw: 'Sherwin-Williams', behr: 'Behr', wood: 'Wood', custom: 'Custom' };
 
   // colour books \u2192 objects
-  const BOOK = { sw: C.sw.map(([c, n, h]) => ({ b: 'sw', c, n, h })), behr: C.behr.map(([c, n, h]) => ({ b: 'behr', c, n, h })) };
+  const BOOK = { sw: C.sw.map(([c, n, h]) => ({ b: 'sw', c, n, h })), behr: C.behr.map(([c, n, h]) => ({ b: 'behr', c, n, h })),
+    wood: Object.entries(B.WOODS).map(([c, w]) => ({ b: 'wood', c, n: w.n, h: w.avg })) };
   const byCode = {}; for (const b of ['sw', 'behr']) BOOK[b].forEach(x => { byCode[b + '|' + x.c] = x; });
-  const POPULAR = { sw: C.popular.sw.map(c => byCode['sw|' + c]), behr: C.popular.behr.map(c => byCode['behr|' + c]) };
+  BOOK.wood.forEach(x => { byCode['wood|' + x.c] = x; });
+  const POPULAR = { sw: C.popular.sw.map(c => byCode['sw|' + c]), behr: C.popular.behr.map(c => byCode['behr|' + c]), wood: BOOK.wood };
 
   // ------------------------------------------------------------------ state
   let schemes = [];            // [{id, name, a, created, updated, by}]
@@ -404,7 +406,7 @@
   const effective = k => A[k] || (TARGETS[k] && TARGETS[k].group ? A[TARGETS[k].group] : undefined);
   function hexOf(k) { return effective(k)?.h || B.defaultHex(k); }
   function applyMaterial(k) {
-    const v = effective(k); B.setPaint(k, v?.h, v?.s || defaultSheen(TARGETS[k]));
+    const v = effective(k); B.setPaint(k, v?.h, v?.s || defaultSheen(TARGETS[k]), v?.b === 'wood' ? v.c : null);
     if (PARTS_OF[k]) PARTS_OF[k].forEach(applyMaterial);              // a run's doors follow it unless they have their own colour
   }
   function applyAll() { for (const k in TARGETS) applyMaterial(k); glow(false); }
@@ -436,7 +438,7 @@
   const openRooms = new Set();
   function rowHTML(t) {
     const v = A[t.key], ev = effective(t.key);
-    const sub = v ? `${esc(v.n)}${v.b !== 'custom' ? ' \u00b7 ' + esc(v.c) : ''}` : (t.kind === 'cabdoor' ? (ev ? 'Same as cabinets \u00b7 ' + esc(ev.n) : 'Same as cabinets') : 'Primer white');
+    const sub = v ? `${esc(v.n)}${v.b === 'wood' ? ' \u00b7 wood' : v.b !== 'custom' ? ' \u00b7 ' + esc(v.c) : ''}` : (t.kind === 'cabdoor' ? (ev ? 'Same as cabinets \u00b7 ' + esc(ev.n) : 'Same as cabinets') : 'Primer white');
     return `<button class="row${sel.has(t.key) ? ' on' : ''}" data-key="${esc(t.key)}" style="--c:${hexOf(t.key)}">
       <span class="dot"></span><span class="lbl">${esc(t.label)}<small>${sub}</small></span><span class="sf">${t.area ? Math.round(t.area) + ' sf' : ''}</span></button>`;
   }
@@ -500,7 +502,7 @@
     const title = keys.length === 1 ? TARGETS[keys[0]].full : `${keys.length} surfaces`;
     const area = keys.reduce((s, k) => s + (TARGETS[k].area || 0), 0);
     const names = keys.length > 1 ? keys.slice(0, 4).map(k => TARGETS[k].full).join(', ') + (keys.length > 4 ? ` and ${keys.length - 4} more` : '') : '';
-    const colourLine = !same ? 'Mixed colours' : first ? `${esc(first.n)} <code>${esc(first.b === 'custom' ? first.h : first.c)}</code> \u00b7 ${BRAND_LABEL[first.b]}` : 'Primer white (not painted yet)';
+    const colourLine = !same ? 'Mixed colours' : first ? (first.b === 'wood' ? `${esc(first.n)} \u00b7 wood finish` : `${esc(first.n)} <code>${esc(first.b === 'custom' ? first.h : first.c)}</code> \u00b7 ${BRAND_LABEL[first.b]}`) : 'Primer white (not painted yet)';
     box.innerHTML = `
       <div class="sel-head"><div class="bigchip" style="--c:${same ? hexOf(keys[0]) : 'linear-gradient(135deg,' + keys.slice(0, 4).map(hexOf).join(',') + ')'}${same ? '' : ';background:var(--c)'}"></div>
         <div><div class="sel-title">${esc(title)}</div><div class="sel-sub">${colourLine}${area ? ` \u00b7 ${Math.round(area)} sq ft` : ''}</div>${names ? `<div class="sel-sub">${esc(names)}</div>` : ''}</div></div>
@@ -517,7 +519,7 @@
   // ------------------------------------------------------------------ colour picker
   function chipHTML(x) {
     const cur = sel.size && [...sel].every(k => A[k] && A[k].b === x.b && A[k].c === x.c);
-    return `<button class="chip${cur ? ' cur' : ''}" data-b="${x.b}" data-c="${esc(x.c)}" style="--c:${x.h}" title="${esc(x.n)} \u00b7 ${esc(x.c)} \u00b7 ${x.h}"${sel.size && canWrite ? '' : ' disabled'}>
+    return `<button class="chip${cur ? ' cur' : ''}" data-b="${x.b}" data-c="${esc(x.c)}" style="--c:${x.h}${x.b === 'wood' ? `;--img:url(${B.woodSwatch(x.c)})` : ''}" title="${esc(x.n)} \u00b7 ${esc(x.c)} \u00b7 ${x.h}"${sel.size && canWrite ? '' : ' disabled'}>
       <span class="sw"></span><span class="meta"><span class="nm">${esc(x.n)}</span><span class="cd">${esc(x.c)}</span></span></button>`;
   }
   const hexRGB = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
@@ -574,20 +576,23 @@
   // ------------------------------------------------------------------ totals
   function renderTotals() {
     const groups = new Map();
+    const woods = new Map();
     for (const k in A) {
       const v = A[k], t = TARGETS[k], id = v.b + '|' + v.c + '|' + v.h;
+      if (v.b === 'wood') { if (!woods.has(v.n)) woods.set(v.n, new Set()); woods.get(v.n).add(t.kind === 'cabdoor' ? TARGETS[t.group].label + ' (some doors)' : t.label); continue; }
       if (!groups.has(id)) groups.set(id, { v, area: 0, items: new Set(), sheens: new Set() });
       const g = groups.get(id); g.sheens.add(v.s);
       if (t.area) g.area += t.area; else g.items.add(t.kind === 'cabdoor' ? TARGETS[t.group].label + ' (some doors)' : t.label);
     }
-    if (!groups.size) { $('#totals').innerHTML = `<p class="empty">Gallons per colour appear here as you paint: 2 coats at about 350 sq ft per gallon.</p>`; return; }
+    const woodHTML = woods.size ? `<p class="note"><b>Wood finishes (not paint):</b> ${[...woods].map(([n, set]) => esc(n) + ' on ' + esc([...set].join(', '))).join('; ')}.</p>` : '';
+    if (!groups.size) { $('#totals').innerHTML = woodHTML; if (woodHTML) return; $('#totals').innerHTML = `<p class="empty">Gallons per colour appear here as you paint: 2 coats at about 350 sq ft per gallon.</p>`; return; }
     const rows = [...groups.values()].sort((a, b) => b.area - a.area).map(g => {
       const gal = g.area ? Math.max(0.25, Math.ceil(g.area * 2 / 350 * 4) / 4) : 0;
       const qty = g.area ? `${gal.toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1')} gal` : '\u2014';
       return `<tr><td><span class="dot" style="--c:${g.v.h}"></span>${esc(g.v.n)}<br><small style="color:var(--muted)">${esc(g.v.b === 'custom' ? 'Custom ' + g.v.h : g.v.c)} \u00b7 ${[...g.sheens].map(s => SHEEN_LABEL[s]).join(', ')}${g.items.size ? ' \u00b7 ' + esc([...g.items].join(', ')) : ''}</small></td>
         <td class="num">${g.area ? Math.round(g.area) + ' sf' : ''}</td><td class="num">${qty}</td></tr>`;
     }).join('');
-    $('#totals').innerHTML = `<table>${rows}</table><p class="note">Walls and ceilings only. Cabinets, doors and trim usually take a quart to a gallon each; measure before buying.</p>`;
+    $('#totals').innerHTML = `<table>${rows}</table><p class="note">Walls and ceilings only. Cabinets, doors and trim usually take a quart to a gallon each; measure before buying.</p>` + woodHTML;
   }
 
   // ------------------------------------------------------------------ schemes: store
@@ -838,6 +843,62 @@
       else status('Lost connection to saved schemes. Reload to reconnect.', 'warn');
     });
   }
-  window.__studio = { camera, controls, renderer, setLighting, LIGHTS, requestRender, walk, enterWalk, blocked, stepWalk, openPicker, enterImmersive, A: () => A };   // debug handle (camera checks)
+  // ------------------------------------------------------------------ export for Blender
+  // A small JSON file: every surface's final colour / wood / sheen, plus the exact camera you are looking through.
+  // build_house.py --scheme <file> rebuilds the house with it and renders that view (and any others).
+  function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => { t.hidden = true; }, 3500); }
+  function exportPayload() {
+    const plan = v => [+v.x.toFixed(3), +v.z.toFixed(3), +v.y.toFixed(3)];          // three.js (x, up, z) -> plan feet (x, y, z up)
+    const dir = new T.Vector3(); camera.getWorldDirection(dir);
+    const target = walk.on ? camera.position.clone().add(dir.multiplyScalar(4)) : controls.target.clone();
+    const resolved = {};
+    for (const k in TARGETS) {
+      const t = TARGETS[k], v = effective(k);
+      resolved[k] = { hex: v?.h || B.defaultHex(k), sheen: v?.s || defaultSheen(t), brand: v?.b || 'primer', code: v?.c || null, name: v?.n || 'Primer white',
+        wood: v?.b === 'wood' ? v.c : null, kind: t.kind, room: t.room, label: t.full };
+    }
+    return {
+      format: 'house-painter/scheme', version: 1, exportedAt: new Date().toISOString(),
+      scheme: { id: curId, name: curName },
+      view: { kind: view.kind, room: view.room || null, wall: view.key || null, lighting: lightMode, fov: +camera.fov.toFixed(1),
+              camera: { position: plan(camera.position), target: plan(target), eyeHeight: walk.on ? 5.3 : null } },
+      assignments: JSON.parse(JSON.stringify(A)),
+      resolved,
+      woods: B.WOODS
+    };
+  }
+  async function exportForBlender() {
+    const data = JSON.stringify(exportPayload(), null, 1);
+    const slug = (curName || 'scheme').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'scheme';
+    const filename = `house-${slug}.json`;
+    const use = window.claude && window.claude.use;
+    if (use) {
+      let dl = null; try { dl = await use.call(window.claude, 'downloads'); } catch { dl = null; }
+      if (dl) {
+        try { await dl.save({ filename, data }); toast('Saved ' + filename + '. Give this file to Claude to render it in Blender.'); }
+        catch (e) { if (e && e.code !== 'declined') showExportText(filename, data); }
+        return;
+      }
+      return showExportText(filename, data);
+    }
+    try { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([data], { type: 'application/json' })); a.download = filename; a.click(); toast('Saved ' + filename); }
+    catch { showExportText(filename, data); }
+  }
+  function showExportText(filename, data) {                // fallback: copy the file's text
+    const d = $('#dialog');
+    d.innerHTML = `<div class="box exportbox"><h3>Export for Blender</h3><p style="margin:0;color:var(--muted)">Saving isn't available here. Copy this text into a file named <b>${esc(filename)}</b>, or paste it straight to Claude.</p>
+      <textarea id="exportText" readonly></textarea><div class="row-btns"><button class="btn" id="dlgCancel">Close</button><button class="btn primary" id="dlgCopy">Copy</button></div></div>`;
+    $('#exportText').value = data; d.hidden = false;
+    $('#dlgCancel').onclick = closeDialog;
+    $('#dlgCopy').onclick = () => {
+      const ta = $('#exportText');
+      const done = () => { $('#dlgCopy').textContent = 'Copied'; };
+      try { navigator.clipboard.writeText(data).then(done, () => { ta.select(); }); } catch { ta.select(); }
+    };
+  }
+  $('#exportBtn').onclick = exportForBlender;
+  $('#ihExport').onclick = () => { if (document.pointerLockElement === canvas) { try { document.exitPointerLock(); } catch { } } exportForBlender(); };
+
+  window.__studio = { camera, controls, renderer, setLighting, LIGHTS, requestRender, walk, enterWalk, blocked, stepWalk, openPicker, enterImmersive, A: () => A, exportPayload };   // debug handle (camera checks)
   boot();
 })();
