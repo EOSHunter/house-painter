@@ -23,9 +23,31 @@ Open the **plan editor**. The steps down the left side follow this order, and ti
 
 **Get a blueprint.** Any picture of the floor plan works: a phone photo of the paper plan, a scan, or a PDF from the builder. A straight-on photo is best. It doesn't have to be perfect. You can straighten a skewed one with the **Rotate** slider afterwards. If you have no plan at all, press **Draw from measurements** and type the lengths of your walls instead.
 
+**Tip: let the editor do the tracing.** After step 2 you can press **Suggest walls…** (or `A`), and the editor draws a first pass for you: see [Let the editor suggest the walls](#let-the-editor-suggest-the-walls) below. You then keep the steps from 3 to 6 for checking and fixing what it found.
+
 **1. Upload it.** Press **Upload a blueprint** and choose the file. For a PDF with several pages, pick the page that has the floor plan. The image appears under the grid and fades with the **Opacity** slider. Use **Move** to drag it into a comfortable place.
 
 **2. Set the scale.** Click two points on the blueprint whose real distance you know, like the two ends of the overall width, then type it: `56'`, `26'8"`, or `12.5` for feet. Pick the longest dimension you can find, because small errors in the points matter less over a long distance. You can set the scale again at any time.
+
+#### Let the editor suggest the walls
+
+![Suggested walls over a blueprint](img/editor-suggest.png)
+
+This is optional, and it works on the picture only: nothing is sent anywhere, and no AI service is involved. It finds the long, straight, solid bars that walls are made of, and ignores text, dimension lines, door swings and furniture.
+
+1. In the **Blueprint** box on the left, press **Straighten**. The editor measures how tilted the picture is and levels it (you can still fine-tune with the Rotate slider).
+2. Make sure the scale is set, then press **Suggest walls…** and **Find walls**. It takes a second or two.
+3. Suggested walls appear in orange, with gaps in them marked as doors (orange) and windows (blue). **Click a wall to leave it out**, and click it again to bring it back.
+4. If it picked up too much or too little, change the settings and press **Find again**:
+   - *How the walls are drawn*: **Solid** (filled in, the usual case), **Outlined** (two thin lines) or **Thin** (a single line, the least reliable).
+   - *Shortest wall*: lower it to catch short stubs.
+   - *Sensitivity*: raise it for a faint photo, lower it when it picks up too much.
+5. Press **Add N walls**. Your existing walls are never touched, and walls you've already drawn aren't added twice.
+6. Press **Find all rooms** in the Rooms list: every closed space becomes a room, ready to name.
+
+![The same house after Add and Find all rooms](img/editor-traced.png)
+
+It is a helper, not a finished tracer. Expect to fix a few things: short walls beside doors can be missed, the gaps are only *guesses* at doors and windows (an outside gap is called a window, so change your front and back doors), and rooms with a missing wall run together until you add it. On a test set made from the two example houses (with noise, shading, blur and tilt added) it finds roughly 90% of the wall area, and about 90% of what it draws is real wall.
 
 **3. Outside walls.** Press `W` (Wall) with **Outside wall** selected and click each corner of the house in turn.
 - Walls lock to horizontal or vertical, and end on the corners of other walls.

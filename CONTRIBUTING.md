@@ -19,6 +19,7 @@ house.json ──► house-core.js ──► HOUSE + ROOMS ──► editor.js  
 ```
 
 - **`house-core.js`** turns a house file into walls, rooms and paint surfaces. It runs in the browser and in Node, and it is the one place that decides surface IDs like `BR1-N`.
+- **`tracer.js`** finds walls in a picture of a floor plan. It is pure image processing on a grey-scale array, so it is tested in Node against blueprints drawn from the example houses (`tests/helpers/blueprint.js`). If you change it, check the numbers in `tests/tracer.test.js` still hold.
 - **`fixtures.js`** is the fixture catalogue and the geometry (any facing) shared by everything.
 - **`house3d.js`** and **`build_house.py`** build the same model twice, once in Three.js and once in Blender. They have to agree.
 - **`storage.js`** is where schemes are kept. Add a backend there if you want your own.

@@ -93,7 +93,25 @@ Still to do by hand:
 
 ## Phase 5: later
 
-- [ ] Assisted tracing: suggest walls from a scanned blueprint, using classic line detection, a model trained on CubiCasa5K, or a vision model. The user confirms or fixes every suggestion in the editor.
+### Assisted tracing ✅ (first version)
+
+The editor can suggest the walls in a blueprint (`tracer.js`). It uses classic image processing, so it needs no AI account, no upload and no model download, and it runs in the browser.
+
+- [x] **Straighten:** measures the tilt of a photo (projection profile search, accurate to about 0.1° on the test set) and levels it.
+- [x] **Suggest walls:** finds long, straight, thick bars (solid walls, double-line walls, or thin lines), ignores text, dimension lines, door swings and fixture outlines, lines up centre lines, measures thickness to a fraction of a pixel, joins corners, and bridges door and window gaps.
+- [x] **Outside or inside:** works out which walls are on the outside (so siding is right) and sets the house's typical wall thicknesses.
+- [x] **Doors and windows from gaps** (a guess: change the type of each one if needed), including a doorway at the very end of a wall.
+- [x] **Review, don't trust:** every suggestion is shown over the blueprint, and you click out the wrong ones before adding. Nothing already drawn is touched.
+- [x] **Find all rooms:** turns every closed space into a room in one press.
+- [x] Tested in Node on blueprints drawn from both example houses, with noise, shading, blur, text, dimension lines, fixture outlines and tilt (`tests/tracer.test.js`). On those: roughly 90% or more of the wall area is found (85% in the blurriest photos), and about 90% of what is drawn is real wall. The same flow worked in the browser on a tilted, shaded, JPEG-compressed picture with lettering.
+- [ ] Not tested on real scans of many different plans. Hand-drawn plans, curved lines and low-contrast photos are the likely weak spots; please send examples.
+- [ ] Walls drawn at an angle (not horizontal or vertical) are not found; that waits for angled walls (below).
+- [ ] Scale from the dimension text on the plan (needs lettering recognition).
+- [ ] Telling doors from windows by their symbols (door swing arcs, window panes) instead of by wall type and width.
+- [ ] A learned model (for example one trained on the CubiCasa5K data set) as an optional extra for plans the classic method can't read. It would be an opt-in download that runs on your own computer, never a paid service.
+
+### Other ideas
+
 - [ ] Imports: Apple RoomPlan (iPhone LiDAR) USDZ/JSON, DXF, and SVG.
 - [ ] Vaulted and sloped ceilings, and a ceiling height per room.
 - [ ] Walls that aren't straight lines: angled and curved walls.
@@ -102,5 +120,5 @@ Still to do by hand:
 
 ## Known limits today
 
-- Walls must be horizontal or vertical. Ceilings are flat, at one height for the whole house, and there is one storey.
+- Walls must be horizontal or vertical (so the tracer also only finds those). Ceilings are flat, at one height for the whole house, and there is one storey.
 - Saved colours are tied to surface IDs (such as `BR1-N`). If walls change in a way that renames surfaces, the colours on the renamed walls are lost.

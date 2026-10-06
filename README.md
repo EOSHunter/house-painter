@@ -4,7 +4,7 @@ Trace your house from a blueprint, try a colour on every wall, ceiling, cabinet 
 
 ![A cutaway of the example house, rendered in Blender](renders/cozy-deco-emerald-brass/doll.png)
 
-- **Plan editor.** Upload a photo or PDF of a floor plan, set the scale, click the walls, drop in doors, windows, rooms, cabinets and fixtures.
+- **Plan editor.** Upload a photo or PDF of a floor plan, set the scale, then either click the walls yourself or let the editor suggest them (it levels a tilted photo, finds the walls, and you keep the ones that are right). Drop in doors, windows, rooms, cabinets and fixtures.
 - **Paint studio.** Every wall face has its own colour. See it in true colour or under daylight, overcast and evening light, share a scheme as a link, and walk through with WASD.
 - **Blender.** Export a scheme and the Blender add-on rebuilds the house with the same colours, ready to render.
 
@@ -103,6 +103,7 @@ The script writes `house_<scheme>.blend` and `renders/<scheme>/<view>.png`. The 
 | `floorplan.html` + `floorplan.js` | The 2D floor plan: after / before / changes views and the paint-surface map. |
 | `house-core.js` | The shared pipeline, for browser and Node: wall joinery, room zones, paintable wall surfaces, room shapes, and the Blender export. |
 | `house-loader.js` | Picks the house for a page (`?house=…`, an opened file, or the example) and builds it. |
+| `tracer.js` | Assisted tracing: levels a tilted blueprint and finds its walls with plain image processing (no AI service). Runs in the browser and in Node. |
 | `fixtures.js` | The fixture library and the geometry shared by the editor, studio, walkthrough and Blender: every fixture can face any way. |
 | `storage.js` | Where schemes are kept: this browser, or the Claude artifact runtime's shared database. It also makes share links and saves files. |
 | `paint-colors.js` | The House Painter palette. |

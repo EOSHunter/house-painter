@@ -47,7 +47,7 @@
     floor: { ...DEF.floor }, walls: [], rooms: [], splits: [], keep: {}, underlay: null });
   let S = blank();
   let tool = 'select', wallMode = 'ext', sel = null, drag = null, draw = null, ghost = null, lenBuf = '', lastP = [0, 0], spaceDown = false;
-  let view = { x: -6, y: -6, w: 72 }, underURL = null, stepCur = 0, welcomeOff = false;
+  let view = { x: -6, y: -6, w: 72 }, underURL = null, underImg = null, stepCur = 0, welcomeOff = false;
 
   const byUid = u => S.walls.find(w => w.uid === u) || S.rooms.find(r => r.uid === u) || S.splits.find(s => s.uid === u) || (S.keep.fixtures || []).find(f => f.uid === u);
   const findOpening = u => { for (const w of S.walls) { const o = w.openings.find(x => x.uid === u); if (o) return { w, o }; } return null; };
@@ -295,6 +295,7 @@
       return `<g data-kind="split" data-uid="${s.uid}"><line x1="${N(p[0])}" y1="${N(p[1])}" x2="${N(q[0])}" y2="${N(q[1])}" stroke="transparent" stroke-width="12" class="nse"/>
         <line class="splitline" x1="${N(p[0])}" y1="${N(p[1])}" x2="${N(q[0])}" y2="${N(q[1])}" stroke-width="1.5"/></g>`; }).join('');
     renderSel(); renderGhost();
+    renderTrace();
     svg.setAttribute('class', 't-' + tool + (drag && drag.type === 'pan' ? ' panning' : '') + (S.underlay && underURL ? ' traced' : ''));
   }
   // ------------------------------------------------------------------ fixtures: plan symbols
@@ -416,11 +417,18 @@
     room: 'Click inside a closed space to make it a room. Doorways count as closed.',
     split: 'Draw a line across an open space to split it into rooms (kitchen | dining). Then use Room on each side.',
     fixture: 'Pick something from the list on the right, then click where it goes. Against a wall it backs onto the wall on its own. <kbd>T</kbd> turns it when it is free-standing. <kbd>Esc</kbd> stops.',
+    trace: 'Suggested walls are orange. Click one to leave it out, then press Add. Nothing you drew is touched until you do.',
     scale: 'Click two points a known distance apart on the blueprint.',
     move: 'Drag the blueprint to line it up. Press <kbd>Esc</kbd> when it\'s in place.'
   };
   function setTool(t) {
     if (t === 'scale' && !S.underlay) { toast('Upload a blueprint first.'); return; }
+    if (t === 'trace') {
+      if (!S.underlay) { toast('Upload a blueprint first: the editor traces the picture.'); return; }
+      if (!S.underlay.calibrated) { toast('Set the scale first, so the editor knows how big the walls are.'); t = 'scale'; }
+      else if (!underImg) { toast('The blueprint image is not loaded in this browser: upload it again (its scale is kept).'); return; }
+    }
+    if (tool === 'trace' && t !== 'trace') TR.res = null;
     endDraw(); tool = t; ghost = null;
     $$('[data-tool]').forEach(b => b.setAttribute('aria-pressed', b.dataset.tool === t));
     $('#wallMode').hidden = t !== 'wall';
@@ -428,6 +436,123 @@
     $('#hint').innerHTML = HINTS[t] || ''; $('#hint').hidden = !HINTS[t];
     if (t === 'scale') ghost = { kind: 'scale', pts: [] };
     render(); renderSide();
+  }
+
+  // ------------------------------------------------------------------ assisted tracing (tracer.js does the finding)
+  const TR = { opts: { style: 'solid', minLen: 2.5, sensitivity: 0.8, openings: true }, res: null, off: new Set(), busy: false, ms: 0 };
+  // the blueprint as a grey picture with its axes level: scaled, shifted and rotated into plan feet, so one pixel is 1/ppf ft
+  function rasterUnderlay(maxSide) {
+    const u = S.underlay, c = underCorners();
+    const minx = Math.min(...c.map(p => p[0])), maxx = Math.max(...c.map(p => p[0])), miny = Math.min(...c.map(p => p[1])), maxy = Math.max(...c.map(p => p[1]));
+    const ppf = Math.min(14, (maxSide || 2600) / Math.max(maxx - minx, maxy - miny)), W = Math.ceil((maxx - minx) * ppf), H = Math.ceil((maxy - miny) * ppf);
+    const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    const ctx = cv.getContext('2d', { willReadFrequently: true });
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H); ctx.imageSmoothingQuality = 'high';
+    ctx.setTransform(ppf, 0, 0, ppf, -minx * ppf, -miny * ppf); ctx.translate(u.ox, u.oy); ctx.rotate(u.rot * Math.PI / 180); ctx.scale(u.s, u.s);
+    ctx.drawImage(underImg, 0, 0);
+    return { gray: toGray(ctx.getImageData(0, 0, W, H).data, W * H), W, H, ppf, minx, miny };
+  }
+  function toGray(d, n) { const g = new Uint8ClampedArray(n); for (let i = 0; i < n; i++) g[i] = 0.299 * d[4 * i] + 0.587 * d[4 * i + 1] + 0.114 * d[4 * i + 2]; return g; }
+  // turn the picture about its own middle (so it doesn't swing off elsewhere)
+  function setRotAboutCentre(u, rot) {
+    const cx = u.w / 2 * u.s, cy = u.h / 2 * u.s, rd = Math.PI / 180;
+    const wx = u.ox + Math.cos(u.rot * rd) * cx - Math.sin(u.rot * rd) * cy, wy = u.oy + Math.sin(u.rot * rd) * cx + Math.cos(u.rot * rd) * cy;
+    u.ox = wx - (Math.cos(rot * rd) * cx - Math.sin(rot * rd) * cy); u.oy = wy - (Math.sin(rot * rd) * cx + Math.cos(rot * rd) * cy); u.rot = rot;
+  }
+  function straighten() {
+    if (!S.underlay || !underImg) { toast('The blueprint image is not loaded.'); return; }
+    const k = Math.min(1, 1400 / Math.max(underImg.naturalWidth, underImg.naturalHeight)), W = Math.round(underImg.naturalWidth * k), H = Math.round(underImg.naturalHeight * k);
+    const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    const ctx = cv.getContext('2d', { willReadFrequently: true }); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H); ctx.imageSmoothingQuality = 'high'; ctx.drawImage(underImg, 0, 0, W, H);
+    const r = HouseTracer.estimateSkew(toGray(ctx.getImageData(0, 0, W, H).data, W * H), W, H);
+    if (r.confidence < 0.1) { toast('Could not find a clear tilt in this picture. Use the Rotate slider by hand.'); return; }
+    if (Math.abs(r.angle) < 0.15) { toast('The picture is already level.'); return; }
+    checkpoint(); setRotAboutCentre(S.underlay, Math.max(-30, Math.min(30, -r.angle)));
+    changed(); toast('The picture was tilted ' + Math.abs(r.angle).toFixed(1) + '\u00b0 ' + (r.angle > 0 ? 'clockwise' : 'anticlockwise') + ': levelled.');
+  }
+  function runTrace() {
+    if (!underImg || TR.busy) return;
+    TR.busy = true; TR.res = null; renderSide(); toast('Finding walls\u2026');
+    setTimeout(() => {
+      try {
+        const t0 = performance.now(), r = rasterUnderlay(), out = HouseTracer.detect(r.gray, r.W, r.H, r.ppf, TR.opts);
+        TR.res = out.walls.map(w => { const ox = w.axis === 'h' ? r.minx : r.miny, oc = w.axis === 'h' ? r.miny : r.minx;
+          return { ...w, a: w.a + ox, b: w.b + ox, c: w.c + oc, openings: w.openings.map(o => ({ ...o, a: o.a + ox, b: o.b + ox })) }; });
+        TR.off.clear(); TR.ms = performance.now() - t0;
+        if (!TR.res.length) toast('No walls found. Try another wall style or a lower "Shortest wall".');
+        else toast(TR.res.length + ' walls suggested. Click any that are wrong to leave them out.');
+      } catch (err) { toast('Tracing failed: ' + (err.message || err)); TR.res = null; }
+      TR.busy = false; render(); renderSide();
+    }, 40);
+  }
+  function applyTrace() {
+    const todo = (TR.res || []).filter((w, i) => !TR.off.has(i));
+    if (!todo.length) { toast('Nothing selected to add.'); return; }
+    checkpoint();
+    const first = !S.walls.length; let added = 0, skipped = 0, ops = 0;
+    for (const w of todo) {
+      if (S.walls.some(e => e.axis === w.axis && Math.abs(e.c - w.c) < 0.35 && Math.min(e.b, w.b) - Math.max(e.a, w.a) > 0.5 * (w.b - w.a))) { skipped++; continue; }   // already drawn
+      const openings = w.openings.map(o => {
+        const op = { uid: uid(), a: r4(o.a), b: r4(o.b), type: o.type };
+        if (o.type === 'door') { op.hinge = 'a'; op.swing = w.axis === 'h' ? 's' : 'e'; }
+        if (o.type === 'window') op.panes = Math.max(1, Math.min(4, Math.round((o.b - o.a) / 2.5)));
+        return op;
+      });
+      ops += openings.length;
+      S.walls.push({ uid: uid(), axis: w.axis, c: r4(w.c), a: r4(w.a), b: r4(w.b), t: r4(w.t), ext: !!w.ext, status: 'keep', extra: {}, openings }); added++;
+    }
+    if (first) {                                                   // the house's own typical wall thickness, for walls drawn later
+      const med = ext => { const v = todo.filter(w => !!w.ext === ext).map(w => w.t).sort((p, q) => p - q); return v.length ? v[v.length >> 1] : null; };
+      const e = med(true), i = med(false); if (e) S.wallThickness.exterior = r4(e); if (i) S.wallThickness.interior = r4(i);
+    }
+    TR.res = null; tool = 'select'; setTool('select'); changed(); if (first) fit();
+    toast('Added ' + added + ' walls' + (ops ? ' and ' + ops + ' doors and windows' : '') + (skipped ? ' (' + skipped + ' were already drawn)' : '') + '. Check the corners and the door and window types, then press Find all rooms.');
+  }
+  function renderTrace() {
+    const k = pxFt();
+    $('#lTrace').innerHTML = !(TR.res && tool === 'trace') ? '' : TR.res.map((w, i) => {
+      const off = TR.off.has(i), r = w.axis === 'h' ? [w.a, w.c - w.t / 2, w.b - w.a, w.t] : [w.c - w.t / 2, w.a, w.t, w.b - w.a];
+      let h = `<g class="sugg${off ? ' off' : ''}" data-kind="sugg" data-i="${i}"><rect class="sbody" x="${N(r[0])}" y="${N(r[1])}" width="${N(r[2])}" height="${N(r[3])}"/><rect class="shit" x="${N(r[0] - 4 * k)}" y="${N(r[1] - 4 * k)}" width="${N(r[2] + 8 * k)}" height="${N(r[3] + 8 * k)}"/>`;
+      if (!off) for (const o of w.openings) {
+        const q = w.axis === 'h' ? [o.a, w.c - w.t / 2 - 2 * k, o.b - o.a, w.t + 4 * k] : [w.c - w.t / 2 - 2 * k, o.a, w.t + 4 * k, o.b - o.a];
+        h += `<rect class="sgap ${o.type}" x="${N(q[0])}" y="${N(q[1])}" width="${N(q[2])}" height="${N(q[3])}"/>`;
+      }
+      return h + '</g>';
+    }).join('');
+  }
+  function traceDown(e) {
+    const t = e.target.closest('[data-kind="sugg"]');
+    if (t) { const i = +t.dataset.i; if (TR.off.has(i)) TR.off.delete(i); else TR.off.add(i); render(); renderSide(); return; }
+    startPan(e);
+  }
+  function traceField(f, v) {
+    if (f === 'tr_style') TR.opts.style = v;
+    if (f === 'tr_minlen') { const n = parseLen(v); if (n >= 1.5 && n <= 12) TR.opts.minLen = n; }
+    if (f === 'tr_sens') TR.opts.sensitivity = +v;
+    if (f === 'tr_open') TR.opts.openings = v === '1';
+    TR.res = null; render(); renderSide();
+  }
+
+  // ------------------------------------------------------------------ find every closed space and make it a room
+  function newRoomFrom(rects) {
+    const name = 'Room ' + (S.rooms.length + 1);
+    const r = { uid: uid(), id: uniqueId(slug(name), new Set(S.rooms.map(x => x.id))), name, short: shortFor(name, new Set(S.rooms.map(x => x.short))), rects, extra: {}, fresh: true };
+    S.rooms.push(r); return r;
+  }
+  function findRooms() {
+    const ws = live().map(rectOf); if (!ws.length) { toast('Draw the walls first.'); return; }
+    const x0 = Math.min(...ws.map(r => r.x0)), x1 = Math.max(...ws.map(r => r.x1)), y0 = Math.min(...ws.map(r => r.y0)), y1 = Math.max(...ws.map(r => r.y1));
+    const before = snap(); let made = 0, leaky = 0;
+    for (let y = y0 + 0.75; y < y1; y += 1) for (let x = x0 + 0.75; x < x1; x += 1) {
+      if (roomAt(x, y)) continue;
+      const res = fillRoom([x, y]);
+      if (res.error) { if (/leaks/.test(res.error)) leaky++; continue; }
+      if (res.area < 10) continue;                                     // a gap between walls, not a room
+      newRoomFrom(res.rects); made++;
+    }
+    if (!made) { toast(leaky ? 'The open spaces leak outside: check for gaps between walls (a door or window is fine).' : 'No new closed spaces to turn into rooms.'); return; }
+    checkpoint(before); changed();
+    toast('Made ' + made + ' room' + (made === 1 ? '' : 's') + '. Click each in the list on the left to name it.' + (leaky ? ' Some spaces leak outside and were skipped.' : ''));
   }
   function endDraw() { draw = null; lenBuf = ''; if (ghost && (ghost.kind === 'wall' || ghost.kind === 'split')) ghost = null; }
 
@@ -609,6 +734,7 @@
     if (e.button === 1 || (e.button === 0 && spaceDown)) { startPan(e); return; }
     if (e.button !== 0) return;
     if (tool === 'select') return selectDown(e, p);
+    if (tool === 'trace') return traceDown(e);
     if (tool === 'wall' || tool === 'split') return drawClick(p, e);
     if (tool === 'door' || tool === 'window' || tool === 'cased') return openingClick(p);
     if (tool === 'fixture') return fixtureClick(p, e);
@@ -708,7 +834,7 @@
   $('#zFit').onclick = fit;
 
   // ------------------------------------------------------------------ keyboard
-  const KEYTOOL = { v: 'select', w: 'wall', d: 'door', n: 'window', o: 'cased', r: 'room', l: 'split', f: 'fixture' };
+  const KEYTOOL = { v: 'select', w: 'wall', d: 'door', n: 'window', o: 'cased', r: 'room', l: 'split', f: 'fixture', a: 'trace' };
   document.addEventListener('keydown', e => {
     const typing = /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName) || !$('#dialog').hidden;
     if ((e.ctrlKey || e.metaKey) && !typing) {
@@ -842,6 +968,7 @@
   const STEPS = [
     { t: 'Blueprint', hint: 'Upload a photo, scan or PDF of the floor plan. Optional: you can draw from measurements instead.', done: () => !!S.underlay, go: () => $('#underFile').click() },
     { t: 'Scale', hint: 'Click two points a known distance apart on the blueprint (an overall dimension works best), then type the distance.', done: () => !!(S.underlay && S.underlay.calibrated) || (!S.underlay && S.walls.length > 0), go: () => setTool('scale') },
+    { t: 'Suggest walls', hint: 'Optional: let the editor find the walls in your blueprint. Straighten a skewed picture first, then keep the suggestions that are right.', done: () => S.walls.length > 0, go: () => { if (S.underlay && S.underlay.calibrated) setTool('trace'); else if (S.underlay) setTool('scale'); else toast('Upload a blueprint first.'); } },
     { t: 'Outside walls', hint: 'Click corner to corner around the outside and close the loop. Type a length and press Enter for exact walls.', done: () => S.walls.filter(w => w.ext).length >= 3, go: () => { wallMode = 'ext'; setTool('wall'); } },
     { t: 'Inside walls', hint: 'Draw each inside wall along its centre line. Ends snap to the walls they meet.', done: () => S.walls.some(w => !w.ext), go: () => { wallMode = 'int'; setTool('wall'); } },
     { t: 'Doors & windows', hint: 'Pick Door, Window or Opening and click on a wall. Drag the ends to size it; flip the swing in the panel on the right.', done: () => S.walls.some(w => w.openings.length), go: () => setTool('door') },
@@ -862,11 +989,13 @@
         <div class="actions"><button class="btn" data-u="upload">Upload image or PDF</button></div>` :
       `<div class="name" title="${esc(u.name)}">${esc(u.name)}</div>
        <div class="row2"><span>Opacity</span><input type="range" min="0.1" max="1" step="0.05" value="${u.opacity}" data-u="opacity" aria-label="Blueprint opacity"></div>
-       <div class="row2"><span>Rotate</span><input type="range" min="-15" max="15" step="0.1" value="${u.rot}" data-u="rot" aria-label="Rotate blueprint"></div>
+       <div class="row2"><span>Rotate</span><input type="range" min="-30" max="30" step="0.1" value="${u.rot}" data-u="rot" aria-label="Rotate blueprint"></div>
        <div class="note" style="margin:0">${u.calibrated ? `Scale set \u00b7 ${(1 / u.s).toFixed(1)} px per foot` : '<b>Scale not set yet.</b>'} \u00b7 rotated ${(+u.rot).toFixed(1)}\u00b0</div>
+       <div class="actions"><button class="btn" data-u="straighten" title="Measure how tilted the picture is and level it">Straighten</button><button class="btn primary" data-u="trace" title="Let the editor suggest the walls it can see">Suggest walls\u2026</button></div>
        <div class="actions"><button class="btn" data-u="scale">${u.calibrated ? 'Re-scale' : 'Set scale'}</button><button class="btn" data-u="move" aria-pressed="${tool === 'move'}">Move</button>
          <button class="btn" data-u="upload">Replace</button><button class="btn danger" data-u="remove">Remove</button></div>`;
     // rooms
+    $('#findRoomsBtn').hidden = !live().length;
     $('#roomList').innerHTML = S.rooms.length ? S.rooms.map((r, i) => `<button class="roomrow${sel && sel.uid === r.uid ? ' on' : ''}" data-room="${r.uid}" style="--c:hsl(${roomHue(i)} 60% 55%)"><i></i><span>${esc(r.name)}</span><small>${esc(r.short || r.id)}</small></button>`).join('')
       : '<p class="empty">No rooms yet. Use the Room tool and click inside each space.</p>';
     const fl = fxs().filter(f => FX.editable(f));
@@ -883,6 +1012,7 @@
     renderInspector(); renderStatus();
   }
   $('#steps').addEventListener('click', e => { const b = e.target.closest('[data-step]'); if (b) STEPS[+b.dataset.step].go(); });
+  $('#findRoomsBtn').addEventListener('click', findRooms);
   $('#fxList').addEventListener('click', e => { const b = e.target.closest('[data-fx]'); if (b) { setTool('select'); sel = { kind: 'fixture', uid: b.dataset.fx }; render(); renderSide(); } });
   $('#roomList').addEventListener('click', e => { const b = e.target.closest('[data-room]'); if (b) { sel = { kind: 'room', uid: b.dataset.room }; render(); renderSide(); } });
   $('#restoreBox').addEventListener('click', e => {
@@ -892,7 +1022,7 @@
   });
   $('#underBox').addEventListener('input', e => {
     const f = e.target.dataset.u; if (!f || !S.underlay) return;
-    S.underlay[f] = +e.target.value; render();
+    if (f === 'rot') setRotAboutCentre(S.underlay, +e.target.value); else S.underlay[f] = +e.target.value; render();
     if (f === 'rot') $('#underBox .note').textContent = ($('#underBox .note').textContent || '').replace(/rotated .*$/, `rotated ${(+e.target.value).toFixed(1)}\u00b0`);
   });
   $('#underBox').addEventListener('change', e => { if (e.target.dataset.u) { autosave(); renderSide(); } });
@@ -902,7 +1032,9 @@
     if (a === 'upload') $('#underFile').click();
     if (a === 'scale') setTool('scale');
     if (a === 'move') setTool(tool === 'move' ? 'select' : 'move');
-    if (a === 'remove') { checkpoint(); S.underlay = null; underURL = null; changed(); }
+    if (a === 'remove') { checkpoint(); S.underlay = null; underURL = null; underImg = null; changed(); }
+    if (a === 'straighten') straighten();
+    if (a === 'trace') setTool('trace');
   });
 
   // inspector: whatever is selected, else the house settings
@@ -914,6 +1046,21 @@
   function renderInspector() {
     const box = $('#insp'), it = sel && byUid(sel.uid), op = sel && sel.kind === 'opening' && findOpening(sel.uid);
     let h = '', title = 'House';
+    if (tool === 'trace') {
+      title = 'Suggest walls';
+      const r = TR.res, kept = r ? r.filter((w, i) => !TR.off.has(i)) : [];
+      h += `<p class="note">The editor looks for long, straight, solid bars in the picture, which is what walls are. Dimension lines, text, door swings and fixtures are left alone. Nothing you have drawn changes until you press Add.</p>
+        ${field('How the walls are drawn', 'tr_style', TR.opts.style, { select: [['solid', 'Solid, filled in'], ['outlined', 'Outlined: two thin lines'], ['thin', 'Thin: one line (least reliable)']] })}
+        ${field('Shortest wall', 'tr_minlen', TR.opts.minLen, { len: 1 })}
+        <label class="field">Sensitivity<input type="range" min="0.6" max="0.95" step="0.01" value="${TR.opts.sensitivity}" data-f="tr_sens" aria-label="Sensitivity"></label>
+        <p class="note" style="margin-top:-6px">Raise it for a faint photo, lower it when too much is picked up.</p>
+        ${field('Doors and windows', 'tr_open', TR.opts.openings ? '1' : '0', { select: [['1', 'Suggest them from the gaps in walls'], ['0', 'Walls only']] })}
+        <div class="actions"><button class="btn primary" data-act="trace-run"${TR.busy ? ' disabled' : ''}>${r ? 'Find again' : 'Find walls'}</button></div>`;
+      if (r) h += `<h3 style="font-size:14px">${kept.length} of ${r.length} walls kept</h3>
+        <p class="note">${r.filter(w => w.ext).length} outside, ${r.filter(w => !w.ext).length} inside, ${r.reduce((t, w) => t + w.openings.length, 0)} gaps (as doors and windows). Found in ${(TR.ms / 1000).toFixed(1)} s. Click an orange wall to leave it out, click it again to bring it back. Door and window types are guesses: you can change each one afterwards.</p>
+        <div class="actions"><button class="btn primary" data-act="trace-add"${kept.length ? '' : ' disabled'}>Add ${kept.length} walls</button><button class="btn" data-act="trace-cancel">Cancel</button></div>`;
+      $('#inspTitle').textContent = title; box.innerHTML = h; return;
+    }
     if (tool === 'fixture') {
       title = 'Fixtures';
       const groups = [...new Set(FX.CATALOG.map(c => c.group))];
@@ -1005,6 +1152,7 @@
   }
   $('#insp').addEventListener('change', e => {
     const el = e.target, f = el.dataset.f; if (!f) return;
+    if (f.startsWith('tr_')) { traceField(f, el.value); return; }
     let v = el.value;
     if (el.dataset.len) { if (v.trim() === '') v = null; else { v = parseLen(v); if (!isFinite(v)) { el.classList.add('bad'); return; } } }
     el.classList.remove('bad');
@@ -1019,6 +1167,9 @@
     const lib = e.target.closest('[data-lib]'); if (lib) { fxItem = lib.dataset.lib; ghost = fixtureGhost(lastP, {}); renderGhost(); renderSide(); return; }
     const face = e.target.closest('[data-face]'); if (face) { fxFace = face.dataset.face; ghost = fixtureGhost(lastP, {}); renderGhost(); renderSide(); return; }
     const a = e.target.closest('[data-act]')?.dataset.act;
+    if (a === 'trace-run') runTrace();
+    if (a === 'trace-add') applyTrace();
+    if (a === 'trace-cancel') { TR.res = null; setTool('select'); }
     if (a === 'floorphoto') $('#floorFile').click();
     if (a === 'turn') turnSelected();
     if (a === 'dup') duplicateSelected();
@@ -1192,16 +1343,20 @@
       const s = (S.walls.length ? 60 : view.w * 0.8) / img.naturalWidth;
       S.underlay = { key, name: file.name, w: img.naturalWidth, h: img.naturalHeight, s, ox: S.walls.length ? 0 : view.x + view.w * 0.1, oy: S.walls.length ? 0 : view.y + vh() * 0.1, rot: 0, opacity: 0.6, calibrated: false };
       if (underURL) URL.revokeObjectURL(underURL);
-      underURL = url; changed(); fit();
+      underURL = url; underImg = img; changed(); fit();
       toast('Blueprint loaded. Next, set its scale: click two points a known distance apart.');
       setTool('scale');
     } catch (err) { toast(err.message || 'Could not load that file.'); }
   });
   async function loadUnderlayImage() {
     if (underURL) { URL.revokeObjectURL(underURL); underURL = null; }
+    underImg = null;
     if (!S.underlay) return;
     const blob = await idb.get(S.underlay.key);
-    if (blob) { underURL = URL.createObjectURL(blob); render(); }
+    if (blob) {
+      underURL = URL.createObjectURL(blob); render();
+      const i = new Image(); i.onload = () => { underImg = i; renderSide(); }; i.src = underURL;
+    }
     else toast(`The blueprint image (${S.underlay.name}) isn't in this browser. Upload it again: its scale and position are kept.`);
   }
 
@@ -1238,7 +1393,7 @@
     if (!S.walls.length && !S.underlay) return;
     dialog(`<div class="box"><h3>Start a new house?</h3><p class="note">The current drawing is backed up in this browser, and you can restore it from the panel on the left.</p>
       <div class="row-btns"><button class="btn" id="dlgCancel">Cancel</button><button class="btn primary" id="dlgOk">New house</button></div></div>`, true);
-    $('#dlgOk').onclick = () => { closeDialog(); lsSet(BACKUP, snap()); checkpoint(); S = blank(); sel = null; underURL = null; wallMode = 'ext'; changed(); fit(); setTool('select'); };
+    $('#dlgOk').onclick = () => { closeDialog(); lsSet(BACKUP, snap()); checkpoint(); S = blank(); sel = null; underURL = null; underImg = null; wallMode = 'ext'; changed(); fit(); setTool('select'); };
   };
   $('#undoBtn').onclick = undo; $('#redoBtn').onclick = redo;
   $('#wUpload').onclick = () => $('#underFile').click();
@@ -1318,6 +1473,6 @@
     used.forEach(m => { const n = parseInt(m.slice(8, -1), 36); if (n >= uidN) uidN = n + 1; });
     applyView(); fit(); setTool('select'); changed(); loadUnderlayImage();
   }
-  window.__editor = { P3, get S() { return S; }, toHouse, fromHouse, fillRoom, parseLen, fmt, setTool, view: () => view };   // debug handle
+  window.__editor = { TR, runTrace, applyTrace, findRooms, straighten, P3, get S() { return S; }, toHouse, fromHouse, fillRoom, parseLen, fmt, setTool, view: () => view };   // debug handle
   boot();
 })();

@@ -95,7 +95,7 @@
   .stage.split { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .planwrap { position: relative; min-height: 0; min-width: 0; }
   #plan { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; user-select: none; }
-  #plan.t-select { cursor: default; } #plan.t-pan, #plan.panning { cursor: grabbing; }
+  #plan.t-select, #plan.t-trace { cursor: default; } #plan.t-pan, #plan.panning { cursor: grabbing; }
   #plan.t-wall, #plan.t-split, #plan.t-scale, #plan.t-room, #plan.t-door, #plan.t-window, #plan.t-cased, #plan.t-fixture { cursor: crosshair; }
   #plan.t-move { cursor: move; }
   .p3 { position: relative; min-height: 0; border-left: 1px solid var(--line); background: var(--stage); }
@@ -140,6 +140,14 @@
   .snapmark { fill: none; stroke: var(--snap); pointer-events: none; }
   .guide { stroke: var(--snap); stroke-dasharray: 2 3; pointer-events: none; }
   .scalept { fill: var(--snap); pointer-events: none; }
+  /* suggested walls from the tracer */
+  .sugg .sbody { fill: #E8731A; fill-opacity: .55; stroke: #E8731A; stroke-width: 1; }
+  .sugg .shit { fill: transparent; }
+  .sugg:hover .sbody { fill-opacity: .8; }
+  .sugg.off .sbody { fill: none; stroke-dasharray: 3 3; stroke-opacity: .5; }
+  .sgap { fill: none; stroke: #E8731A; stroke-width: 1.5; stroke-dasharray: 3 2; pointer-events: none; }
+  .sgap.window { stroke: #1D8FD6; } .sgap.cased { stroke: #8A5CD1; }
+  #plan .sugg .sbody, #plan .sgap { vector-effect: non-scaling-stroke; }
   /* fixtures */
   .fxs .body { fill: var(--raised); fill-opacity: .9; stroke: var(--muted); stroke-width: 1; }
   .fxs .front { stroke: var(--wall-ext); stroke-width: 3; stroke-linecap: round; pointer-events: none; }
@@ -238,6 +246,7 @@
     <input type="file" id="floorFile" accept="image/*" hidden>
     <h2>Rooms</h2>
     <div class="roomlist" id="roomList"></div>
+    <div class="actions" style="padding: 6px 16px 0"><button class="btn" id="findRoomsBtn" title="Fill every closed space that is not a room yet" hidden>Find all rooms</button></div>
     <h2>Fixtures</h2>
     <div class="roomlist" id="fxList"></div>
     <p class="empty" id="restoreBox" hidden></p>
@@ -253,7 +262,7 @@
         <g id="lUnder"></g>
         <rect id="gridA" x="-1000" y="-1000" width="2000" height="2000" fill="url(#gridMinor)" pointer-events="none"/>
         <rect id="gridB" x="-1000" y="-1000" width="2000" height="2000" fill="url(#gridMajor)" pointer-events="none"/>
-        <g id="lRooms"></g><g id="lFix"></g><g id="lWalls"></g><g id="lOpen"></g><g id="lSplits"></g><g id="lSel"></g><g id="lGhost"></g>
+        <g id="lRooms"></g><g id="lFix"></g><g id="lWalls"></g><g id="lOpen"></g><g id="lSplits"></g><g id="lTrace"></g><g id="lSel"></g><g id="lGhost"></g>
       </svg>
       <div class="zoom"><button id="zIn" aria-label="Zoom in">+</button><button id="zOut" aria-label="Zoom out">−</button><button id="zFit" aria-label="Fit to drawing" title="Fit (H)">⤢</button></div>
       <div class="hint" id="hint" hidden></div>
@@ -261,7 +270,7 @@
       <div class="welcome" id="welcome" hidden>
         <div class="card">
           <h1>Trace your house</h1>
-          <p>Put your blueprint underneath, set its scale, then click corner to corner to draw the walls. Doors, windows and rooms come next, and the steps on the left walk you through it.</p>
+          <p>Put your blueprint underneath and set its scale. Then let the editor suggest the walls, or click corner to corner to draw them yourself. Doors, windows and rooms come next, and the steps on the left walk you through it.</p>
           <div class="group">
             <button class="btn primary" id="wUpload">Upload a blueprint</button>
             <button class="btn" id="wOpen">Open a house file</button>
@@ -287,6 +296,7 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script src="house-core.js"></script>
 <script src="fixtures.js"></script>
+<script src="tracer.js"></script>
 <script src="storage.js"></script>
 <script src="house3d.js"></script>
 <script src="editor.js"></script>
