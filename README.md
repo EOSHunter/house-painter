@@ -107,7 +107,7 @@ The script writes `house_<scheme>.blend` and `renders/<scheme>/<view>.png`. The 
 | `fixtures.js` | The fixture library and the geometry shared by the editor, studio, walkthrough and Blender: every fixture can face any way. |
 | `storage.js` | Where schemes are kept: this browser, or the Claude artifact runtime's shared database. It also makes share links and saves files. |
 | `paint-colors.js` | The House Painter palette. |
-| `houses/<id>/house.json` | A house. `waterford-4563c` is the example (with seven schemes in `schemes/`); `starter-cottage` is a small template; `bay-cottage` has angled walls (a cut corner and a bay). |
+| `houses/<id>/house.json` | A house. `waterford-4563c` is the example (with seven schemes in `schemes/`); `starter-cottage` is a small template; `bay-cottage` has angled walls (a cut corner and a bay), `round-cottage` curved ones, `vaulted-cabin` sloped ceilings, a roof and a porch, and `two-storey` two floors with a staircase. |
 | `build_house.py` | Builds the Blender model, applies an exported scheme, and renders views. |
 | `blender_addon/` | The Blender add-on (File > Import). |
 | `export_house_json.js` | Compiles a house file for Blender and checks it for problems. |

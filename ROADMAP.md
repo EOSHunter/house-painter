@@ -156,5 +156,5 @@ Walls at any angle: a cut corner, a bay window, a diagonal partition. The exampl
 
 ## Known limits today
 
-- Walls are straight or circular arcs. They can run at any angle. Ceilings are flat, at one height for the whole house, and there is one storey.
+- Walls are straight or circular arcs, at any angle. A room's ceiling is flat, one slope or a vault (one or two planes across its bounding box). Floors are whole storeys stacked on each other, with straight stairs. The roof covers the bounding box of the top floor. The tracer finds level, plumb and angled straight walls, not curves.
 - Saved colours are tied to surface IDs (such as `BR1-N`). If walls change in a way that renames surfaces, the colours on the renamed walls are lost.
