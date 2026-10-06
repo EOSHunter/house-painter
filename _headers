@@ -1,0 +1,43 @@
+# Cloudflare Pages headers (https://developers.cloudflare.com/pages/configuration/headers/). tools/build.js checks this file and copies it to dist/.
+# Pages MERGES the headers of every rule a URL matches (it does not override), so Cache-Control is never set in /* : each URL
+# gets it from exactly one rule below.
+
+# All pages and files: allow embedding on r7orbit.io only (frame-ancestors is the modern X-Frame-Options; do not add X-Frame-Options, it cannot
+# express "these two origins"). There is deliberately no script-src/default-src policy: see docs/DEPLOY.md before adding one.
+/*
+  Content-Security-Policy: frame-ancestors 'self' https://r7orbit.io https://www.r7orbit.io
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+
+# The pages: always revalidate, so a new deploy shows at once. (Pages also serves /paint for /paint.html.)
+/
+  Cache-Control: no-cache
+/index.html
+  Cache-Control: no-cache
+/paint
+  Cache-Control: no-cache
+/paint.html
+  Cache-Control: no-cache
+/editor
+  Cache-Control: no-cache
+/editor.html
+  Cache-Control: no-cache
+/floorplan
+  Cache-Control: no-cache
+/floorplan.html
+  Cache-Control: no-cache
+/404.html
+  Cache-Control: no-cache
+
+# Content-hashed files (assets/<name>.<hash>.<ext>) and vendored libraries (the version is in the folder name) never change in place.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+/vendor/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Data fetched by name (house files, the floor photo): cached, but checked every time.
+/houses/*
+  Cache-Control: no-cache
+/textures/*
+  Cache-Control: no-cache

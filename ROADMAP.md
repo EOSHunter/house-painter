@@ -80,13 +80,13 @@ Still to do:
 - [x] **Licence:** MIT, with third-party notices in [NOTICE.md](NOTICE.md).
 - [x] **Paint brands:** the project ships its own palette, 124 original colours (`paint-colors.js`, built by `data/build_palette.js`). Sherwin-Williams and Behr are no longer part of it. A paint maker's book is an optional extra that you build from data you download yourself (`paint-colors-extra.js`, git-ignored): see [data/README.md](data/README.md). The studio shows the palette, plus an extra tab for each book it finds. The seven example schemes and the example export were remapped to the nearest palette colours (the biggest shift is 6 dE).
 - [x] **Blender add-on** (`blender_addon/`, Blender 4.2+ extension): **File > Import > House Painter scheme (.json)**. Tested end to end, from the source tree and from the packaged zip (`python tools/build_addon.py`, then `blender -b --factory-startup -P tools/test_addon.py`), and the manifest validates with Blender's own checker.
-- [x] **GitHub Pages:** `index.html` is the start page, `tools/build_site.js` assembles the site, and `.github/workflows/pages.yml` deploys it.
+- [x] **Static site and deployment:** `index.html` is the start page; `npm run build` (`tools/build.js`) writes the deployable site to `dist/`, with the libraries vendored in `vendor/` (no CDN), content-hashed assets, a 404 page and `_headers`. It is meant for Cloudflare Pages, embedded in an iframe on r7orbit.io: [docs/DEPLOY.md](docs/DEPLOY.md). `.github/workflows/pages.yml` can still publish the same `dist/` to GitHub Pages.
 - [x] **Tests and CI:** 119 unit tests (`npm test`) run on every push. The surface IDs and areas of both example houses are locked by snapshot, and the tests also check the palette, the shipped schemes and every file a page loads.
 - [x] **Community files:** CONTRIBUTING, a code of conduct, issue and pull request templates.
 - [x] **Docs:** a [getting-started guide](docs/getting-started.md) with pictures, including "trace your house in 15 minutes".
 
 Still to do by hand:
-- [ ] Turn on GitHub Pages (Settings > Pages > Source: GitHub Actions).
+- [ ] Create the Cloudflare Pages project and the `housepainter.r7orbit.io` custom domain ([docs/DEPLOY.md](docs/DEPLOY.md)); optionally turn on GitHub Pages too (Settings > Pages > Source: GitHub Actions).
 - [ ] Tag a release (`git tag v0.1.0 && git push --tags`): `.github/workflows/addon.yml` attaches the add-on zip. Neither workflow could be run from here, so the first run is the real test.
 - [ ] The earlier commits still contain the Sherwin-Williams and Behr colour books. Removing them from the history needs a history rewrite and a force push, which is the owner's call.
 - [ ] Confirm you are happy to publish `textures/desert_sand_plank.png`, a crop of a flooring reference photo, and the traced Fleetwood plan.

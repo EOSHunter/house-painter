@@ -1,0 +1,13 @@
+745eb7c0ce6f18a6aa521971b2877babc7ffb27eecb58ab3bc6e5ef4692672e8 onnxruntime-web-1.20.1/ort-wasm-simd-threaded.mjs
+207d02be4591c156b0a98f024f3d58005b5b04c92274d759fb390338c63559ea onnxruntime-web-1.20.1/ort-wasm-simd-threaded.wasm
+e66568724f8848e57cc2a56e4bea3a5b86ce3ff81b2da11eac8ed7ab02b27bd4 onnxruntime-web-1.20.1/ort.wasm.min.js
+5b5799e6f8c680663207ac5b42ee14eed2a406fa7af48f50c154f0c0b1566946 pdfjs-3.11.174/pdf.min.js
+feabdf309770ed24bba31a5467836cdc8cf639c705af27d52b585b041bb8527b pdfjs-3.11.174/pdf.worker.min.js
+8f04aa0cc81e7bde33f80e92fa01a7a665f0b4884d098acf5de9c7104a11dfaa tesseract-5.1.1/core/tesseract-core-lstm.wasm.js
+ce20eda9533cbed1e6c2b4276fbae1e0adc61b6754b5513084be601787b457cf tesseract-5.1.1/core/tesseract-core-simd-lstm.wasm.js
+45b4cb346724ac1774f1c36f42f182b887bcdb28ebe63e6fff90ac41f3fcff91 tesseract-5.1.1/lang/eng.traineddata.gz
+a8e29918d098b2b06e1012bdaeffb4aec0445c5d5654709023e0bd1f442a80e8 tesseract-5.1.1/tesseract.min.js
+aca1229639fc9907d86f96e825955a2b7c5716d17f3bc3acd71f9c7ab66181fc tesseract-5.1.1/worker.min.js
+02bb4ade710f3e607329e37a21f098bc3ac70eb6e33daf8a65e79f4db785e7b2 three-r128/OrbitControls.js
+94fd17363598048cb3faf3b3d7d663e561e8bc929b0162716f33424af30695ad three-r128/RoomEnvironment.js
+9274bbcec8d96168626c732b5d31c775aa8cfb7eaa0599bec0c175908a2c1ce2 three-r128/three.min.js
