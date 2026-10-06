@@ -1,10 +1,11 @@
 /*
- * Paint Studio app: selection, colour picker, camera views, schemes (shared `db` store), totals.
- * Scheme document (collection "schemes"): { name, a: { <targetKey>: {b, c, n, h, s} }, created, updated, by }
- *   b = brand ('sw' | 'behr' | 'custom'), c = code, n = name, h = hex, s = sheen
+ * Paint Studio app: selection, colour picker, camera views, schemes, totals, share links, export for Blender.
+ * Reads the house from window.HOUSE / window.ROOMS (house-loader.js) and keeps schemes through storage.js.
+ * Scheme assignments: { <targetKey>: {b, c, n, h, s} }  b = brand ('sw' | 'behr' | 'wood' | 'custom'), c = code, n = name, h = hex, s = sheen
  */
 (function () {
   const H = window.HOUSE, R = window.ROOMS, C = window.PAINT_COLORS, B = window.House3D, T = THREE;
+  const SRC = window.HOUSE_SOURCE || { kind: 'default', id: H.id };
   const $ = s => document.querySelector(s);
   const esc = s => String(s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -18,13 +19,11 @@
       full: ext ? `Exterior siding \u00b7 ${s.dir} side` : s.name };
   });
   R.rooms.forEach(r => { TARGETS['C:' + r.id] = { key: 'C:' + r.id, room: r.id, kind: 'ceiling', area: r.area, label: 'Ceiling', full: r.name + ' \u00b7 Ceiling' }; });
-  const ITEMS = [
-    ['kbase', 'Base cabinets', 'kitchen'], ['island', 'Island', 'kitchen'], ['pantry', 'Pantry cabinet', 'kitchen'],
-    ['uppers', 'Upper cabinets', 'kitchen'], ['deskbase', 'Desk base cabinet', 'kitchen'], ['deskup', 'Desk upper cabinets', 'kitchen'],
-    ['hvanity', 'Vanity', 'hbath'], ['mvanity', 'Vanities & linen cabinet', 'mbath'], ['barn', 'Barn door', 'hall'],
-    ['trim', 'Trim & baseboards', 'house'], ['doors', 'Interior doors', 'house'], ['extdoors', 'Exterior doors', 'house'], ['exttrim', 'Exterior trim', 'house']
-  ];
-  ITEMS.forEach(([k, l, room]) => { TARGETS[k] = { key: k, room, kind: /door|barn/.test(k) ? 'door' : (/trim/.test(k) ? 'trim' : 'cabinet'), area: 0, label: l,
+  // the house's own items (cabinet runs, special doors) plus the whole-house groups every house has
+  const ITEMS = H.items.map(it => [it.key, it.name || it.key, it.room || 'house', it.kind === 'door' ? 'door' : 'cabinet']).concat([
+    ['trim', 'Trim & baseboards', 'house', 'trim'], ['doors', 'Interior doors', 'house', 'door'], ['extdoors', 'Exterior doors', 'house', 'door'], ['exttrim', 'Exterior trim', 'house', 'trim']
+  ]);
+  ITEMS.forEach(([k, l, room, kind]) => { TARGETS[k] = { key: k, room, kind, area: 0, label: l,
     full: (room === 'house' ? 'Whole house' : R.byId[room].name) + ' \u00b7 ' + l }; });
   // individual cabinet doors and drawers (built by house3d.js); each falls back to its cabinet run's colour
   const PARTS_OF = {};
@@ -34,7 +33,8 @@
     TARGETS[p.key] = { key: p.key, room: g.room, kind: 'cabdoor', group: p.group, area: 0, label, full: g.full + ' \u00b7 ' + label };
     (PARTS_OF[p.group] ||= []).push(p.key);
   }
-  const ROOM_ORDER = ['living', 'dining', 'kitchen', 'foyer', 'hall', 'master', 'mbath', 'mtoil', 'mcl', 'bed1', 'wic1', 'bed2', 'wic2', 'hbath', 'gcl', 'laundry', 'whcl'];
+  const ROOM_ORDER = R.order;
+  const SPAN = Math.max(H.W, H.D), K = SPAN / 56;            // camera distances were tuned on a 56' house; scale for others
   const DIR_ORDER = { North: 0, East: 1, South: 2, West: 3, 'Wall end': 4 };
   const roomWalls = id => Object.values(TARGETS).filter(t => t.room === id && (t.kind === 'wall' || t.kind === 'end'))
     .sort((a, b) => (DIR_ORDER[a.s.dir] - DIR_ORDER[b.s.dir]) || a.key.localeCompare(b.key, 'en', { numeric: true }));
@@ -54,7 +54,7 @@
   let curId = null, curName = 'Scheme A';
   let A = {};                  // working assignments of the current scheme
   let dirty = false, saving = Promise.resolve(), saveTimer = 0;
-  let db = null, user = null, me = null, canWrite = true, mode = 'loading';   // 'db' | 'local' | 'loading'
+  let store = null, canWrite = true, held = false;           // held: a scheme opened from a link/file stays up until you pick another
   const sel = new Set();
   let brand = 'sw', query = '', undoStack = [];
   let view = { kind: 'doll' };
@@ -75,9 +75,9 @@
   const head = new T.DirectionalLight(0xffffff, 0);           // follows the camera: faces you look at get the same light
   camera.add(head); head.position.set(0, 0, 0); head.target.position.set(0, 0, -1); camera.add(head.target); scene.add(camera);
   const sun = new T.DirectionalLight(0xfff3e0, 0);
-  sun.position.set(H.W / 2 + 34, 70, H.D / 2 + 46); sun.target.position.copy(B.center);
+  sun.position.set(H.W / 2 + 34 * K, 70 * K, H.D / 2 + 46 * K); sun.target.position.copy(B.center);
   sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -0.0004;
-  Object.assign(sun.shadow.camera, { left: -45, right: 45, top: 45, bottom: -45, near: 1, far: 220 });
+  Object.assign(sun.shadow.camera, { left: -45 * K, right: 45 * K, top: 45 * K, bottom: -45 * K, near: 1, far: 220 * K });
   scene.add(sun, sun.target);
   const fill = { intensity: 0, position: new T.Vector3() };   // (kept for view code; lighting modes do the work now)
   B.ceilings.visible = false;
@@ -153,8 +153,10 @@
   new ResizeObserver(() => {
     const w = stage.clientWidth, h = stage.clientHeight; if (!w || !h) return;
     renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); requestRender();
+    if (!sized) { sized = true; if (view.kind === 'doll') dollhouse(); else if (view.kind === 'top') topDown(); }   // fit to the real shape once known
   }).observe(stage);
-  B.loadFloorTexture('textures/desert_sand_plank.png', requestRender);
+  let sized = false;
+  if (H.floor.texture) B.loadFloorTexture(H.floor.texture, requestRender);
 
   // ------------------------------------------------------------------ views
   const C3 = B.center;
@@ -220,7 +222,7 @@
     view = { kind: 'walk', room: roomId || null };
     B.ceilings.visible = true; fill.intensity = 0;
     camera.fov = insideFov; camera.updateProjectionMatrix();
-    let x = 21.9, y = 24.4, yaw = 0;                          // just inside the front door, facing into the house
+    let { x, y, yaw } = H.start;                              // just inside the front door, facing into the house
     if (roomId) {
       const ri = B.roomInfo[roomId]; x = ri.cx; y = ri.cy;
       for (let r = 0; blocked(x, y) && r < 6; r += 0.25)       // nudge off furniture if the centre is taken
@@ -257,17 +259,20 @@
     b.addEventListener('pointerdown', on); ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => b.addEventListener(ev, off));
   });
 
+  const hfov = () => 2 * Math.atan(Math.tan(camera.fov * Math.PI / 360) * camera.aspect);   // horizontal field of view, radians
   function dollhouse() {
     exitWalk(); view = { kind: 'doll' }; B.ceilings.visible = false; fill.intensity = 0; camera.fov = 40; camera.updateProjectionMatrix(); setOrbit(true);
-    flyTo(new T.Vector3(C3.x + 22, 44, C3.z + 40), C3.clone()); pressView('vDoll'); hud();
+    const dir = new T.Vector3(22, 44, 40).normalize(), dist = Math.max(63 * K, SPAN * 0.55 / Math.tan(hfov() / 2));
+    flyTo(C3.clone().addScaledVector(dir, dist), C3.clone()); pressView('vDoll'); hud();
   }
   function topDown() {
     exitWalk(); view = { kind: 'top' }; B.ceilings.visible = false; fill.intensity = 0; camera.fov = 40; camera.updateProjectionMatrix(); setOrbit(true);
-    flyTo(new T.Vector3(C3.x, 82, C3.z + 0.5), C3.clone()); pressView('vTop'); hud();
+    const h = Math.max(82 * K, H.W * 0.55 / Math.tan(hfov() / 2), H.D * 0.55 / Math.tan(camera.fov * Math.PI / 360));
+    flyTo(new T.Vector3(C3.x, h, C3.z + 0.5), C3.clone()); pressView('vTop'); hud();
   }
   function outside() {
     exitWalk(); view = { kind: 'out' }; B.ceilings.visible = false; fill.intensity = 0; camera.fov = 40; camera.updateProjectionMatrix(); setOrbit(true);
-    flyTo(new T.Vector3(C3.x - 26, 9, C3.z + 52), new T.Vector3(C3.x, 3, C3.z)); pressView('vOut'); hud();
+    flyTo(new T.Vector3(C3.x - 26 * K, 9, C3.z + 52 * K), new T.Vector3(C3.x, 3, C3.z)); pressView('vOut'); hud();
   }
   function roomView(id, wallKey) {
     const walls = roomWalls(id).filter(t => t.kind === 'wall');
@@ -595,11 +600,10 @@
     $('#totals').innerHTML = `<table>${rows}</table><p class="note">Walls and ceilings only. Cabinets, doors and trim usually take a quart to a gallon each; measure before buying.</p>` + woodHTML;
   }
 
-  // ------------------------------------------------------------------ schemes: store
-  const LS = 'paintstudio.schemes.v1';
-  const lsRead = () => { try { return JSON.parse(localStorage.getItem(LS) || '[]'); } catch { return []; } };
-  const lsWrite = list => { try { localStorage.setItem(LS, JSON.stringify(list)); } catch { } };
+  // ------------------------------------------------------------------ schemes (kept by storage.js)
   function status(text, cls) { const s = $('#saveState'); s.textContent = text; s.className = 'status' + (cls ? ' ' + cls : ''); }
+  const savedLabel = () => (store && store.kind === 'local' ? ['Saved on this device', 'warn'] : ['Saved', 'ok']);
+  const onlyKnown = a => { const out = {}; for (const k in a || {}) if (TARGETS[k]) out[k] = JSON.parse(JSON.stringify(a[k])); return out; };
   function renderSchemes() {
     const opts = schemes.map(s => `<option value="${esc(s.id)}"${s.id === curId ? ' selected' : ''}>${esc(s.name)}</option>`);
     if (!curId) opts.unshift(`<option value="" selected>${esc(curName)} (not saved yet)</option>`);
@@ -608,54 +612,57 @@
     ['newScheme', 'dupScheme', 'renameScheme', 'delScheme'].forEach(id => { $('#' + id).disabled = !canWrite; });
     $('#delScheme').disabled = !canWrite || !curId;
   }
+  function showScheme() { applyAll(); renderRooms(); renderSel(); renderChips(); renderTotals(); renderSchemes(); }
   function loadScheme(s) {
+    held = false;
     curId = s ? s.id : null; curName = s ? s.name : nextName();
-    A = s ? JSON.parse(JSON.stringify(s.a || {})) : {}; dirty = false; undoStack = []; $('#undoBtn').disabled = true;
-    try { localStorage.setItem(LS + '.cur', curId || ''); } catch { }
-    applyAll(); renderRooms(); renderSel(); renderChips(); renderTotals(); renderSchemes(); lastEdited();
+    A = onlyKnown(s && s.a); dirty = false; undoStack = []; $('#undoBtn').disabled = true;
+    store && store.setCurrent(curId);
+    showScheme(); lastEdited();
+  }
+  // a scheme from a share link or a file: shown unsaved; the first change saves it as a new scheme
+  function openUnsaved(name, a, note) {
+    held = true; curId = null; curName = name;
+    A = onlyKnown(a); dirty = false; undoStack = []; $('#undoBtn').disabled = true;
+    showScheme(); status(note);
   }
   function nextName() { const used = new Set(schemes.map(s => s.name)); for (const ch of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ') if (!used.has('Scheme ' + ch)) return 'Scheme ' + ch; return 'Scheme ' + (schemes.length + 1); }
   async function lastEdited() {
-    if (mode !== 'db') return;
+    if (!store || dirty) return;
     const s = schemes.find(x => x.id === curId);
-    if (!s || !s.by || !user) { if (!dirty) status(curId ? 'Saved' : 'Nothing saved yet', curId ? 'ok' : ''); return; }
-    const ps = await user.profiles([s.by]), who = ps[s.by]?.isMe ? 'you' : (ps[s.by]?.name || 'someone');
-    if (!dirty) status(`Saved \u00b7 last change by ${who}`, 'ok');
+    const who = s ? await store.who(s) : null;
+    if (dirty) return;
+    if (!curId) { if (!held) status(store.kind === 'local' ? 'Saving on this device only' : 'Nothing saved yet', store.kind === 'local' ? 'warn' : ''); }
+    else if (who) status(`Saved \u00b7 last change by ${who}`, 'ok');
+    else status(...savedLabel());
   }
   function scheduleSave() {
-    if (mode === 'loading') return;
+    if (!store) return;
     status('Saving\u2026'); clearTimeout(saveTimer);
     saveTimer = setTimeout(() => { saving = saving.then(saveNow).catch(() => { }); }, 700);
   }
   async function saveNow() {
-    if (!dirty) return;
-    const now = new Date().toISOString();
-    if (mode === 'local') {
-      const list = lsRead();
-      if (!curId) { curId = 'local-' + Date.now(); list.push({ id: curId, name: curName, a: {}, created: now }); }
-      const s = list.find(x => x.id === curId); s.a = A; s.updated = now; lsWrite(list); schemes = list;
-      dirty = false; status('Saved on this device', 'warn'); renderSchemes(); return;
-    }
+    if (!dirty || !store) return;
     try {
-      const body = { name: curName, a: JSON.parse(JSON.stringify(A)), updated: now, by: me || null };
-      if (!curId) { const ref = db.collection('schemes').doc(); curId = ref.id; await ref.set({ ...body, created: now }); }
-      else { const s = schemes.find(x => x.id === curId); await db.collection('schemes').doc(curId).set({ ...body, created: s?.created || now }); }
-      dirty = false; status('Saved', 'ok'); renderSchemes();
+      const s = schemes.find(x => x.id === curId);
+      const id = await store.save({ id: curId, name: curName, a: A, created: s && s.created });
+      curId = id; held = false; store.setCurrent(id);
+      dirty = false; status(...savedLabel()); renderSchemes();
     } catch (err) {
       if (err && err.code === 'invalid_argument') { canWrite = false; status('View only: your changes were not saved', 'warn'); renderSchemes(); renderSel(); renderChips(); }
       else if (err && err.code === 'quota_exceeded') status('Storage is full. Delete an old scheme to save.', 'warn');
       else { status('Could not save. Retrying\u2026', 'warn'); setTimeout(scheduleSave, 1500); }
     }
   }
-  function onSchemes(snap) {
-    schemes = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => String(a.created).localeCompare(String(b.created)));
+  function onSchemes(list) {
+    schemes = list.slice().sort((a, b) => String(a.created).localeCompare(String(b.created)));
     const cur = schemes.find(s => s.id === curId);
-    if (!curId && !dirty) {
-      let want = null; try { want = localStorage.getItem(LS + '.cur'); } catch { }
+    if (!curId && !dirty && !held) {
+      const want = store.current;
       const pickS = schemes.find(s => s.id === want) || schemes[0];
       if (pickS) return loadScheme(pickS);
-    } else if (cur && !dirty && JSON.stringify(cur.a) !== JSON.stringify(A)) {
-      A = JSON.parse(JSON.stringify(cur.a || {})); curName = cur.name; applyAll(); renderRooms(); renderSel(); renderChips(); renderTotals();
+    } else if (cur && !dirty && JSON.stringify(onlyKnown(cur.a)) !== JSON.stringify(A)) {
+      A = onlyKnown(cur.a); curName = cur.name; applyAll(); renderRooms(); renderSel(); renderChips(); renderTotals();
     } else if (curId && !cur && !dirty) {                     // someone deleted the scheme we were on
       return loadScheme(schemes[0] || null);
     }
@@ -676,10 +683,9 @@
     const a = JSON.parse(JSON.stringify(A)); curId = null; curName = name; A = a; dirty = true; renderSchemes(); scheduleSave();
   });
   $('#renameScheme').onclick = () => askName('Rename scheme', curName, name => { curName = name; dirty = true; renderSchemes(); scheduleSave(); });
-  $('#delScheme').onclick = () => confirmBox(`Delete \u201c${curName}\u201d?`, 'This removes it for everyone who has this page. It cannot be undone.', 'Delete scheme', async () => {
+  $('#delScheme').onclick = () => confirmBox(`Delete \u201c${curName}\u201d?`, store && store.kind === 'shared' ? 'This removes it for everyone who has this page. It cannot be undone.' : 'This removes it from this browser. It cannot be undone.', 'Delete scheme', async () => {
     const id = curId; if (!id) return;
-    if (mode === 'db') { try { await db.collection('schemes').doc(id).delete(); } catch { status('Could not delete', 'warn'); return; } }
-    else { lsWrite(lsRead().filter(s => s.id !== id)); schemes = lsRead(); }
+    try { await store.remove(id); } catch { status('Could not delete', 'warn'); return; }
     curId = null; loadScheme(schemes.filter(s => s.id !== id)[0] || null);
   });
 
@@ -812,40 +818,82 @@
   });
 
   // ------------------------------------------------------------------ boot
-  function localMode(note) {
-    mode = 'local'; schemes = lsRead();
-    let want = null; try { want = localStorage.getItem(LS + '.cur'); } catch { }
-    loadScheme(schemes.find(s => s.id === want) || schemes[0] || null);
-    status(note || 'Saving on this device only', 'warn');
-  }
   document.querySelectorAll('[data-light]').forEach(b => b.onclick = () => setLighting(b.dataset.light));
   $('#exposure').value = exposure;
   $('#exposure').addEventListener('input', e => { exposure = +e.target.value; try { localStorage.setItem('paintstudio.exposure', exposure); } catch { }
     renderer.toneMappingExposure = LIGHTS[lightMode].exp * (lightMode === 'true' ? 1 : exposure); requestRender(); });
 
+  const ftin = v => { const ft = Math.floor(v + 1e-6), inch = Math.round((v - ft) * 12); return inch === 12 ? `${ft + 1}'-0"` : `${ft}'` + (inch ? `-${inch}"` : ''); };
+  function header() {
+    document.title = H.name + ' \u00b7 Paint Studio';
+    const sub = $('#houseName');
+    sub.textContent = `${H.name} \u00b7 ${ftin(H.W)} \u00d7 ${ftin(H.D)}`;
+    if (SRC.kind !== 'default') sub.insertAdjacentHTML('beforeend', ' \u00b7 <a href="?" style="color:inherit">example house</a>');
+  }
+
   async function boot() {
+    header();
     setLighting(lightMode);
     applyAll(); renderRooms(); renderSel(); renderChips(); renderTotals(); renderSchemes();
     dollhouse();
     if (location.hash === '#walk') enterImmersive();
-    const use = window.claude && window.claude.use;
-    if (!use) return localMode();
-    try {
-      [db, user] = await Promise.all([use.call(window.claude, 'db'), use.call(window.claude, 'user')]);
-    } catch { db = null; }
-    if (!db) return localMode();
-    mode = 'db';
-    if (user) { const cw = await user.can('data.write'); canWrite = cw !== false; me = await user.id(); }
-    if (!canWrite) status('View only', 'warn'); else status('Loading schemes\u2026');
+    try { store = await PaintStore.open(SRC); } catch { store = null; }
+    if (!store) { status('Saving is unavailable here', 'warn'); return; }
+    canWrite = store.canWrite;
+    $('#shareBtn').hidden = store.kind === 'shared';           // shared pages already show everyone the same schemes
+    if (!canWrite) status('View only', 'warn'); else if (store.kind === 'local') status('Saving on this device only', 'warn'); else status('Loading schemes\u2026');
+    const shared = window.SHARED_SCHEME;                       // opened from a share link (house-loader.js unpacked it)
+    if (shared) {
+      openUnsaved((shared.name || 'Shared scheme') + ' (shared)', shared.a, 'Opened from a link \u00b7 paint anything to keep a copy');
+      try { const u = new URL(location.href); u.hash = ''; if (SRC.kind === 'local') u.searchParams.set('house', 'local'); history.replaceState(null, '', u.toString()); } catch { }
+    }
     renderSchemes(); renderSel(); renderChips();
-    db.collection('schemes').onSnapshot(onSchemes, err => {
-      if (err.code === 'revoked' || err.code === 'not_granted') { canWrite = false; status('Saved schemes are unavailable here', 'warn'); }
+    store.watch(onSchemes, err => {
+      if (err && (err.code === 'revoked' || err.code === 'not_granted')) { canWrite = false; status('Saved schemes are unavailable here', 'warn'); }
       else status('Lost connection to saved schemes. Reload to reconnect.', 'warn');
     });
   }
+
+  // ------------------------------------------------------------------ share link
+  // The scheme travels in the link itself (#scheme=...). A house opened from a file travels with it.
+  async function shareLink() {
+    const payload = { v: 1, name: curName, a: A };
+    if (SRC.kind === 'local') payload.house = SRC.src;
+    const u = new URL(location.href);
+    if (SRC.kind === 'local') u.searchParams.delete('house');
+    u.hash = 'scheme=' + await PaintStore.pack(payload);
+    const link = u.toString();
+    let copied = false;
+    try { await navigator.clipboard.writeText(link); copied = true; } catch { copied = false; }
+    if (copied) { toast('Link copied. Anyone who opens it sees this scheme' + (SRC.kind === 'local' ? ' and this house.' : '.')); return; }
+    showText('Share link', 'Copy this link. Anyone who opens it sees this scheme.', link, 90);
+  }
+  $('#shareBtn').onclick = shareLink;
+
+  // ------------------------------------------------------------------ open a file: a house, or a scheme to import
+  $('#openBtn').onclick = () => $('#fileIn').click();
+  $('#fileIn').addEventListener('change', async e => {
+    const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+    let text, j;
+    try { text = await f.text(); j = JSON.parse(text); } catch { toast('That file is not valid JSON.'); return; }
+    if (j.format === HouseCore.FORMAT) {
+      confirmBox(`Open \u201c${j.name || f.name}\u201d?`, 'The page switches to this house. Schemes are kept separately for each house, and the example house is one click away.', 'Open house', () => {
+        try { HouseLoader.openHouseText(text); } catch (x) { showText('This house file has problems', 'Fix these and open it again.', x.message, 160); }
+      });
+      return;
+    }
+    const a = j.assignments || j.a;
+    if (a && typeof a === 'object') {
+      const other = j.house && j.house.id && j.house.id !== H.id;
+      openUnsaved((j.scheme?.name || j.name || f.name.replace(/\.json$/i, '')) + ' (imported)', a, 'Imported \u00b7 paint anything to keep it');
+      if (other) toast('This scheme was made for another house. Only surfaces with matching names were painted.');
+      return;
+    }
+    toast('That file is neither a house nor a scheme.');
+  });
   // ------------------------------------------------------------------ export for Blender
-  // A small JSON file: every surface's final colour / wood / sheen, plus the exact camera you are looking through.
-  // build_house.py --scheme <file> rebuilds the house with it and renders that view (and any others).
+  // One self-contained JSON file: the built house, every surface's final colour / wood / sheen, and the exact camera
+  // you are looking through. build_house.py --scheme <file> rebuilds the house from it and renders that view (and others).
   function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => { t.hidden = true; }, 3500); }
   function exportPayload() {
     const plan = v => [+v.x.toFixed(3), +v.z.toFixed(3), +v.y.toFixed(3)];          // three.js (x, up, z) -> plan feet (x, y, z up)
@@ -861,39 +909,32 @@
       format: 'house-painter/scheme', version: 1, exportedAt: new Date().toISOString(),
       scheme: { id: curId, name: curName },
       view: { kind: view.kind, room: view.room || null, wall: view.key || null, lighting: lightMode, fov: +camera.fov.toFixed(1),
-              camera: { position: plan(camera.position), target: plan(target), eyeHeight: walk.on ? 5.3 : null } },
+              camera: { position: plan(camera.position), target: plan(target), eyeHeight: walk.on ? EYE : null } },
       assignments: JSON.parse(JSON.stringify(A)),
       resolved,
-      woods: B.WOODS
+      woods: B.WOODS,
+      house: HouseCore.forBlender(H, R)
     };
   }
   async function exportForBlender() {
     const data = JSON.stringify(exportPayload(), null, 1);
     const slug = (curName || 'scheme').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'scheme';
     const filename = `house-${slug}.json`;
-    const use = window.claude && window.claude.use;
-    if (use) {
-      let dl = null; try { dl = await use.call(window.claude, 'downloads'); } catch { dl = null; }
-      if (dl) {
-        try { await dl.save({ filename, data }); toast('Saved ' + filename + '. Give this file to Claude to render it in Blender.'); }
-        catch (e) { if (e && e.code !== 'declined') showExportText(filename, data); }
-        return;
-      }
-      return showExportText(filename, data);
-    }
-    try { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([data], { type: 'application/json' })); a.download = filename; a.click(); toast('Saved ' + filename); }
-    catch { showExportText(filename, data); }
+    try {
+      const r = await PaintStore.saveFile(filename, data);
+      if (r === 'saved') toast(`Saved ${filename}. Render it with build_house.py --scheme ${filename}`);
+    } catch { showText('Export for Blender', `Saving files isn't available here. Copy this text into a file named ${filename}.`, data, 200); }
   }
-  function showExportText(filename, data) {                // fallback: copy the file's text
+  function showText(title, note, text, rows) {                // fallback when the clipboard or downloads are blocked
     const d = $('#dialog');
-    d.innerHTML = `<div class="box exportbox"><h3>Export for Blender</h3><p style="margin:0;color:var(--muted)">Saving isn't available here. Copy this text into a file named <b>${esc(filename)}</b>, or paste it straight to Claude.</p>
-      <textarea id="exportText" readonly></textarea><div class="row-btns"><button class="btn" id="dlgCancel">Close</button><button class="btn primary" id="dlgCopy">Copy</button></div></div>`;
-    $('#exportText').value = data; d.hidden = false;
+    d.innerHTML = `<div class="box exportbox"><h3>${esc(title)}</h3><p style="margin:0;color:var(--muted)">${esc(note)}</p>
+      <textarea id="exportText" readonly style="height:${rows}px"></textarea><div class="row-btns"><button class="btn" id="dlgCancel">Close</button><button class="btn primary" id="dlgCopy">Copy</button></div></div>`;
+    $('#exportText').value = text; d.hidden = false;
     $('#dlgCancel').onclick = closeDialog;
     $('#dlgCopy').onclick = () => {
       const ta = $('#exportText');
       const done = () => { $('#dlgCopy').textContent = 'Copied'; };
-      try { navigator.clipboard.writeText(data).then(done, () => { ta.select(); }); } catch { ta.select(); }
+      try { navigator.clipboard.writeText(text).then(done, () => { ta.select(); }); } catch { ta.select(); }
     };
   }
   $('#exportBtn').onclick = exportForBlender;

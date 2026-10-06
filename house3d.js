@@ -1,5 +1,5 @@
 /*
- * Browser 3D build of the house (Three.js r128), from house-data.js + rooms.js.
+ * Browser 3D build of the house (Three.js r128), from window.HOUSE + window.ROOMS (house-core.js).
  * Mirrors build_house.py, with one difference that matters for painting: every wall is cut at the
  * paint-surface boundaries, so each face of each box carries the material of exactly one surface.
  *
@@ -8,7 +8,7 @@
  */
 (function () {
   const H = window.HOUSE, R = window.ROOMS, T = THREE;
-  const CEIL = R.ceilingHeight, DOOR_H = R.doorHeight, HEAD = R.windowHead, SILL = 3.0;
+  const CEIL = R.ceilingHeight;                              // openings carry their own z0/z1 (house-core.js)
   const T_HALF = H.T / 2;
   const BASE_H = 0.375, BASE_T = 0.03, CASE_W = 0.29, CASE_T = 0.035, DOOR_T = 0.115, DOOR_OPEN = 68;
   const SHEEN = { flat: 0.96, matte: 0.92, eggshell: 0.82, satin: 0.64, semigloss: 0.42, gloss: 0.24 };
@@ -17,11 +17,9 @@
   const std = (hex, rough = 0.6, metal = 0, extra = {}) => new T.MeshStandardMaterial(Object.assign({ color: lin(hex), roughness: rough, metalness: metal }, extra));
 
   // ---------------------------------------------------------------- paintable materials (one per key)
-  const DEFAULTS = {
-    wall: '#F1EFEA', ceiling: '#F5F4F0', trim: '#F6F6F3', exttrim: '#F4F4F0', doors: '#F3F3EF', extdoors: '#F3F3EF', barn: '#F3F3EF',
-    siding: '#E9E8E2', kbase: '#4F6779', island: '#4F6779', pantry: '#4F6779', deskbase: '#4F6779',
-    uppers: '#F1F0EC', deskup: '#F1F0EC', hvanity: '#F1F0EC', mvanity: '#F1F0EC'
-  };
+  const DEFAULTS = { wall: '#F1EFEA', ceiling: '#F5F4F0', trim: '#F6F6F3', exttrim: '#F4F4F0', doors: '#F3F3EF', extdoors: '#F3F3EF', siding: '#E9E8E2' };
+  const ITEM = {};                                           // the house's paintable items (cabinet runs, special doors)
+  for (const it of H.items) { ITEM[it.key] = it; DEFAULTS[it.key] = it.default || (it.kind === 'door' ? '#F3F3EF' : '#F1F0EC'); }
   const mats = {};
   const partGroup = key => { const m = /^(\w+):(door|drawer)\d+$/.exec(key); return m ? m[1] : null; };   // "kbase:door3" -> "kbase"
   function defaultHex(key) {
@@ -33,7 +31,7 @@
   }
   function material(key) {
     if (!mats[key]) {
-      const sheen = key.startsWith('C:') ? 'flat' : (/^(trim|exttrim|doors|extdoors|barn)$/.test(key) ? 'semigloss' : (DEFAULTS[key] || partGroup(key) ? 'satin' : 'eggshell'));
+      const sheen = key.startsWith('C:') ? 'flat' : (/^(trim|exttrim|doors|extdoors)$/.test(key) || ITEM[key]?.kind === 'door' ? 'semigloss' : (ITEM[key] || partGroup(key) ? 'satin' : 'eggshell'));
       const m = std(defaultHex(key), SHEEN[sheen]);
       m.userData.key = key;
       mats[key] = m;
@@ -120,7 +118,7 @@
     porc: std('#FBFBFA', 0.12), winframe: std('#F7F7F5', 0.45), wire: std('#E8E8E6', 0.5), heater: std('#E2E4E6', 0.4),
     pump: std('#35607F', 0.45), skirt: std('#C9C6BD', 0.85), deck: std('#7A5A3B', 0.8), ground: std('#7E8A6A', 1), reveal: std('#3A3C40', 0.6),
     glass: new T.MeshStandardMaterial({ color: lin('#CFE3EE'), roughness: 0.05, metalness: 0, transparent: true, opacity: 0.22, depthWrite: false }),
-    floor: std('#B09672', 0.55)
+    floor: std(H.floor.color || '#B09672', 0.55)
   };
 
   // ---------------------------------------------------------------- helpers
@@ -160,30 +158,11 @@
     return g;
   }
 
-  // ---------------------------------------------------------------- rooms (cells \u2192 rects, centroids)
-  const G = 0.25, roomCells = {};
-  for (let y = G / 2; y < H.D; y += G) {
-    let run = null;
-    const close = x => { if (run) (roomCells[run.id] ||= []).push([run.x0, y - G / 2, x, y + G / 2]); run = null; };
-    for (let x = G / 2; x < H.W; x += G) {
-      const id = R.roomAt(x, y);
-      const ok = id && id !== 'exterior';
-      if (run && (!ok || id !== run.id)) close(x - G / 2);
-      if (ok && !run) run = { id, x0: x - G / 2 };
-    }
-    close(H.W);
-  }
-  for (const id in roomCells) {                             // merge identical runs on consecutive rows
-    const out = [];
-    for (const r of roomCells[id]) {
-      const prev = out.find(p => Math.abs(p[0] - r[0]) < 1e-6 && Math.abs(p[2] - r[2]) < 1e-6 && Math.abs(p[3] - r[1]) < 1e-6);
-      if (prev) prev[3] = r[3]; else out.push(r.slice());
-    }
-    roomCells[id] = out;
-  }
+  // ---------------------------------------------------------------- rooms (shapes from the core, centroids)
   const roomInfo = {};
   for (const r of R.rooms) {
-    const rects = roomCells[r.id] || [];
+    const rects = r.shape;
+    if (!rects.length) continue;
     let a = 0, sx = 0, sy = 0, bx0 = 1e9, by0 = 1e9, bx1 = -1e9, by1 = -1e9;
     rects.forEach(([x0, y0, x1, y1]) => { const ar = (x1 - x0) * (y1 - y0); a += ar; sx += ar * (x0 + x1) / 2; sy += ar * (y0 + y1) / 2;
       bx0 = Math.min(bx0, x0); by0 = Math.min(by0, y0); bx1 = Math.max(bx1, x1); by1 = Math.max(by1, y1); });
@@ -225,7 +204,7 @@
       const t0 = ts[i], t1 = ts[i + 1];
       if (t1 - t0 < 1e-3) continue;
       const tm = (t0 + t1) / 2, o = ops.find(q => tm > q.a && tm < q.b);
-      const zr = !o ? [[0, CEIL]] : o.type === 'window' ? [[0, o.sill || SILL], [HEAD, CEIL]] : [[DOOR_H, CEIL]];
+      const zr = !o ? [[0, CEIL]] : o.type === 'window' ? [[0, o.z0], [o.z1, CEIL]] : [[o.z1, CEIL]];
       const lo = faceKey('lo', tm), hi = faceKey('hi', tm);
       const fallback = lo || hi;
       // end faces: a jamb takes trim; a face that lines up with another wall's face (an outside corner) takes that
@@ -269,7 +248,7 @@
     ops.forEach((o, k) => {
       const roomL = k > 0 ? (o.a - ops[k - 1].b) / 2 : CASE_W, roomR = k + 1 < ops.length ? (ops[k + 1].a - o.b) / 2 : CASE_W;
       const el = Math.min(CASE_W, roomL) - 0.002, er = Math.min(CASE_W, roomR) - 0.002;
-      const z0 = o.type === 'window' ? (o.sill || SILL) : 0, z1 = o.type === 'window' ? HEAD : DOOR_H;
+      const z0 = o.z0, z1 = o.z1;
       for (const side of ['lo', 'hi']) {
         const fk = faceKey(side, (o.a + o.b) / 2) || faceKey(side, o.a - 0.05);
         const key = isExt(fk) ? 'exttrim' : 'trim', mat = material(key);
@@ -308,8 +287,9 @@
     const g = new T.Group();
     g.position.set(hinge[0] + d[0] * 0.006, 0, hinge[1] + d[1] * 0.006);
     g.rotation.y = Math.atan2(-dr[1], dr[0]);
-    pick(box(0, -t2, 0.03, L, t2, DOOR_H - 0.05, mat, g), key);           // local: x along the leaf, "y" across it
-    const cols = [[0.3, L / 2 - 0.08], [L / 2 + 0.08, L - 0.3]], rows = [[0.9, 2.5], [2.9, 4.3], [4.7, 6.1]];
+    const DH = o.z1, k = DH / 6.667;
+    pick(box(0, -t2, 0.03, L, t2, DH - 0.05, mat, g), key);               // local: x along the leaf, "y" across it
+    const cols = [[0.3, L / 2 - 0.08], [L / 2 + 0.08, L - 0.3]], rows = [[0.9, 2.5], [2.9, 4.3], [4.7, 6.1]].map(([a, b]) => [a * k, b * k]);
     for (const sgn of [1, -1]) {
       for (const [u0, u1] of cols) for (const [z0, z1] of rows) pick(box(u0, sgn * t2, z0, u1, sgn * (t2 + 0.012), z1, mat, g), key);
       box(L - 0.32, sgn * (t2 + 0.01), 2.95, L - 0.24, sgn * (t2 + 0.08), 3.05, M.brass, g);
@@ -350,7 +330,7 @@
   }
   // countertop: overhangs the front (past the doors) \u2014 and every side of the island \u2014 so slabs never overlap at corners
   function counterTop(f, z) {
-    const o = 0.1, all = f.label === 'ISLAND';
+    const o = 0.1, all = f.counter === 'all';
     let x0 = f.x, y0 = f.y, x1 = f.x + f.w, y1 = f.y + f.h;
     if (all || f.front === 'w') x0 -= o; if (all || f.front === 'e') x1 += o;
     if (all || f.front === 'n') y0 -= o; if (all || f.front === 's') y1 += o;
@@ -363,11 +343,11 @@
     switch (f.k) {
       case 'box': {
         if (f.paint) {
-          const m = material(f.paint), tall = f.label === 'PANTRY' || f.label === 'LINEN';
-          const zt = tall ? (f.label === 'PANTRY' ? 7.0 : 6.5) : (f.c === 'cabW' ? 2.8 : (f.paint === 'deskbase' ? 2.5 : 3.0));
+          // z1: cabinet height (default 3' kitchen, 2'-9.6" bath); counter: false for tall units, 'all' to overhang every side
+          const m = material(f.paint), zt = f.z1 ?? (f.c === 'cabW' ? 2.8 : 3.0), counter = f.counter ?? zt <= 4;
           pick(box(x0, y0, 0, x1, y1, zt, m), f.paint);
-          cabinetFront(f, 0, zt, !tall);
-          if (!tall) counterTop(f, zt);
+          cabinetFront(f, 0, zt, !!counter);
+          if (counter) counterTop(f, zt);
         } else if (f.c === 'app') {
           box(x0, y0, 0, x1, y1, 5.9, M.appWhite);
           box(x1, (y0 + y1) / 2 - 0.01, 0.4, x1 + 0.01, (y0 + y1) / 2 + 0.01, 5.8, M.black);
@@ -454,14 +434,14 @@
   }
 
   // ---------------------------------------------------------------- floor, ceiling shell, outside
-  const floorMesh = new T.Mesh(rectsGeometry([[H.E, H.E, H.W - H.E, H.D - H.E]], 0, false), M.floor);
+  const floorMesh = new T.Mesh(rectsGeometry(H.floorRects, 0, false), M.floor);
   floorMesh.receiveShadow = true;
   root.add(floorMesh);
   box(-0.05, -0.05, -2.0, H.W + 0.05, H.D + 0.05, -0.02, M.skirt);
   const ground = new T.Mesh(rectsGeometry([[-150, -150, H.W + 150, H.D + 150]], -2.0, false), M.ground);
   ground.receiveShadow = true; root.add(ground);
 
-  // plank texture: drawn once from the Desert Sand photo crop, then tiled in world feet
+  // plank texture: drawn once from a photo crop of one plank (floor.texture), then tiled in world feet
   function loadFloorTexture(url, onReady) {
     const img = new Image();
     img.onload = () => {

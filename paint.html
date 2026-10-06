@@ -1,5 +1,5 @@
 <meta charset="utf-8">
-<title>House Reno Paint Studio</title>
+<title>Paint Studio</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -197,7 +197,7 @@
 
 <div class="app">
   <header class="top">
-    <div class="brand">Paint Studio <small>Waterford Park 4563C · 56' × 26'-8"</small></div>
+    <div class="brand">Paint Studio <small id="houseName">Loading the house…</small></div>
     <div class="scheme">
       <label for="schemeSel">Scheme</label>
       <select id="schemeSel" aria-label="Paint scheme"></select>
@@ -206,6 +206,9 @@
       <button class="btn" id="renameScheme">Rename</button>
       <button class="btn" id="delScheme">Delete</button>
       <button class="btn" id="undoBtn" title="Undo (Ctrl+Z)">Undo</button>
+      <button class="btn" id="shareBtn" title="Copy a link that opens this scheme">Share link</button>
+      <button class="btn" id="openBtn" title="Open a house file, or import a scheme file">Open file…</button>
+      <input type="file" id="fileIn" accept=".json,application/json" hidden>
       <button class="btn" id="exportBtn" title="Save this scheme and view as a file for the Blender renderer">Export for Blender</button>
       <span class="status" id="saveState" aria-live="polite">Loading schemes…</span>
     </div>
@@ -316,8 +319,7 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/environments/RoomEnvironment.js"></script>
-<script src="house-data.js"></script>
-<script src="rooms.js"></script>
-<script src="paint-colors.js"></script>
-<script src="house3d.js"></script>
-<script src="paint-app.js"></script>
+<script src="storage.js"></script>
+<script src="house-core.js"></script>
+<!-- picks the house (?house=<url> | ?house=local | the example), builds it, then loads the rest -->
+<script src="house-loader.js" data-default="houses/waterford-4563c/house.json" data-then="paint-colors.js house3d.js paint-app.js"></script>

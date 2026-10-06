@@ -1,7 +1,7 @@
 // Adds accent walls (one per room) to every scheme, using colours from that scheme's own palette.
 //   bed wall: master MBR-W1, bedroom 1 BR1-W, bedroom 2 BR2-N   feature wall: living LIV-E3   vanity wall: HB-E, MB-W
 //   node data/add_accent_walls.js <dir with live scheme json>
-global.window = {}; require('../paint-colors.js');
+const { SCHEMES_DIR } = require('./example-house.js'); require('../paint-colors.js');
 const C = window.PAINT_COLORS, fs = require('fs'), path = require('path');
 const p = (b, code) => { const x = C[b].find(c => c[0] === code); if (!x) throw new Error('missing ' + b + ' ' + code); return { b, c: x[0], n: x[1], h: x[2] }; };
 const sw = c => p('sw', c), behr = c => p('behr', c);
@@ -19,6 +19,6 @@ for (const [id, acc] of Object.entries(ACCENTS)) {
   const doc = JSON.parse(fs.readFileSync(path.join(dir, id + '.json'), 'utf8'));
   const a = { ...doc.a };
   for (const [k, col] of Object.entries(acc)) a[k] = { ...col, s: /^(HB|MB)-/.test(k) ? 'satin' : 'eggshell' };
-  fs.writeFileSync(path.join(__dirname, 'schemes', id + '.json'), JSON.stringify({ name: doc.name, a, created: doc.created, updated: new Date().toISOString(), by: doc.by || null }));
+  fs.writeFileSync(path.join(SCHEMES_DIR, id + '.json'), JSON.stringify({ name: doc.name, a, created: doc.created, updated: new Date().toISOString(), by: doc.by || null }));
   console.log(id.padEnd(20), Object.entries(acc).map(([k, v]) => `${k}=${v.n}`).join(', '));
 }

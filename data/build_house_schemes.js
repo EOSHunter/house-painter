@@ -1,7 +1,7 @@
 // Extends the three mid-century schemes to the whole house. Starts from the live documents (so edits made on the
 // page are kept) and only fills surfaces that have no colour yet.
 //   node data/build_house_schemes.js <dir with live scheme json>
-global.window = {}; require('../house-data.js'); require('../rooms.js'); require('../paint-colors.js');
+const { SCHEMES_DIR } = require('./example-house.js'); require('../paint-colors.js');
 const R = window.ROOMS, C = window.PAINT_COLORS, fs = require('fs'), path = require('path');
 const liveDir = process.argv[2];
 const p = (b, code) => { const x = C[b].find(c => c[0] === code); if (!x) throw new Error('missing ' + b + ' ' + code); return { b, c: x[0], n: x[1], h: x[2] }; };
@@ -35,6 +35,6 @@ for (const [id, plan] of Object.entries(PLANS)) {
   for (const [k, col] of Object.entries(plan.items)) fill([k], col, /door|barn|trim/.test(k) ? 'semigloss' : 'satin');
   fill(siding, plan.siding, 'satin');
   const out = { name: doc.name, a, created: doc.created, updated: new Date().toISOString(), by: doc.by || null };
-  fs.writeFileSync(path.join(__dirname, 'schemes', id + '.json'), JSON.stringify(out));
+  fs.writeFileSync(path.join(SCHEMES_DIR, id + '.json'), JSON.stringify(out));
   console.log(id, 'added', added, 'total', Object.keys(a).length);
 }

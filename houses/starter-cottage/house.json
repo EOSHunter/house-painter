@@ -1,0 +1,61 @@
+{
+  "format": "house-painter/house",
+  "version": 1,
+  "id": "starter-cottage",
+  "name": "Starter Cottage",
+  "subtitle": "Template house · 2 BR · 1 BA · 9' ceilings",
+  "units": "ft",
+  "W": 36,
+  "D": 24,
+  "wallThickness": { "exterior": 0.5, "interior": 0.33 },
+  "heights": { "ceiling": 9, "door": 6.833, "windowHead": 7, "windowSill": 3 },
+  "floor": { "name": "Natural oak", "color": "#B58E62", "plankW": 0.5, "plankL": 4, "dir": "x" },
+  "walls": [
+    {"x0":0,"y0":0,"x1":36,"y1":0.5,"ext":1,"openings":[{"a":4,"b":8,"type":"window","sill":3.6},{"a":25,"b":29,"type":"window"}]},
+    {"x0":0,"y0":23.5,"x1":36,"y1":24,"ext":1,"openings":[{"a":8,"b":11,"type":"door","hinge":"a","swing":"n"},{"a":13,"b":18,"type":"window","panes":3},{"a":23,"b":26,"type":"window"}]},
+    {"x0":0,"y0":0.5,"x1":0.5,"y1":23.5,"ext":1,"openings":[{"a":14,"b":18,"type":"window","panes":2}]},
+    {"x0":35.5,"y0":0.5,"x1":36,"y1":23.5,"ext":1,"openings":[{"a":4,"b":8,"type":"window"},{"a":17,"b":19,"type":"window","sill":4.5}]},
+    {"x0":19.835,"y0":0.5,"x1":20.165,"y1":23.5,"openings":[{"a":8,"b":10.6,"type":"door","hinge":"a","swing":"e"},{"a":17,"b":19.6,"type":"door","hinge":"b","swing":"e"}]},
+    {"x0":20,"y0":11.835,"x1":35.5,"y1":12.165,"openings":[{"a":31,"b":33.4,"type":"door","hinge":"a","swing":"s","height":6.667}]},
+    {"x0":28.835,"y0":12,"x1":29.165,"y1":23.5}
+  ],
+  "rooms": [
+    {"id":"kitchen","name":"Kitchen","short":"KIT","rects":[[0,0,20,10]]},
+    {"id":"living","name":"Living room","short":"LIV","rects":[[0,10,20,24]]},
+    {"id":"bed1","name":"Bedroom 1","short":"BR1","rects":[[20,0,36,12]]},
+    {"id":"bed2","name":"Bedroom 2","short":"BR2","rects":[[20,12,29,24]]},
+    {"id":"bath","name":"Bathroom","short":"BA","rects":[[29,12,36,24]]}
+  ],
+  "roomOrder": ["living", "kitchen", "bed1", "bed2", "bath"],
+  "items": [
+    {"key":"base","name":"Base cabinets","room":"kitchen","kind":"cabinet","default":"#E8E4DA"},
+    {"key":"uppers","name":"Upper cabinets","room":"kitchen","kind":"cabinet","default":"#E8E4DA"},
+    {"key":"island","name":"Island","room":"kitchen","kind":"cabinet","default":"#3E5A4C"},
+    {"key":"vanity","name":"Vanity","room":"bath","kind":"cabinet","default":"#F1F0EC"}
+  ],
+  "fixtures": [
+    {"k":"box","c":"cabB","x":2,"y":0.5,"w":10,"h":2,"paint":"base","front":"s","z1":3},
+    {"k":"sink2","x":4.8,"y":0.75,"w":2.4,"h":1.4},
+    {"k":"splash","x":2,"y":0.5,"w":10,"h":0.02,"z0":3.125,"z1":3.55},
+    {"k":"upper","x":2,"y":0.5,"w":2,"h":1,"z0":4.5,"z1":7.5,"paint":"uppers","front":"s"},
+    {"k":"upper","x":8,"y":0.5,"w":4,"h":1,"z0":4.5,"z1":7.5,"paint":"uppers","front":"s"},
+    {"k":"box","c":"app","x":12.2,"y":0.5,"w":2.6,"h":2.6,"label":"FRIDGE","size":8},
+    {"k":"box","c":"cabB","x":5.5,"y":5,"w":5,"h":2.5,"label":"ISLAND","size":9,"paint":"island","front":"s","z1":3,"counter":"all"},
+    {"k":"box","c":"cabW","x":33.4,"y":13.5,"w":1.95,"h":3.6,"paint":"vanity","front":"w","z1":2.8},
+    {"k":"oval","cx":34.4,"cy":15.3,"rx":0.55,"ry":0.78},
+    {"k":"toilet","cx":34.6,"cy":19.2,"dir":"w"},
+    {"k":"shower","x":29.17,"y":20.5,"w":4,"h":3}
+  ],
+  "plan": {
+    "labels": [
+      {"x":10,"y":4.2,"t":"KITCHEN"},
+      {"x":10,"y":17,"t":"LIVING ROOM"},
+      {"x":28,"y":6.5,"t":"BEDROOM 1"},
+      {"x":24.5,"y":18,"t":"BEDROOM 2","size":10},
+      {"x":31.5,"y":17.5,"t":"BATH","size":10}
+    ],
+    "notes": [
+      {"title":"About this house","items":["A small made-up house to copy when you set up your own: every field in it is explained in docs/house-format.md."]}
+    ]
+  }
+}

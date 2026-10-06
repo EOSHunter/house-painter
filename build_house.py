@@ -1,19 +1,22 @@
 """
-House Painter: Blender build + render (v2).
+House Painter: Blender build + render.
 
-Builds the remodelled Waterford Park 4563C from house.json with the same paint surfaces as the web studio
-(every wall face, ceiling, cabinet door/drawer, door and trim piece has its own material, keyed exactly as on the page),
-applies a scheme exported from the page ("Export for Blender"), and renders views.
+Builds a house with the same paint surfaces as the web studio (every wall face, ceiling, cabinet door/drawer, door and
+trim piece has its own material, keyed exactly as on the page), applies a scheme exported from the page
+("Export for Blender"), and renders views.
 
-  blender -b -P build_house.py -- [--scheme FILE.json] [--views export,doll,top,rooms,kitchen,...]
+  blender -b -P build_house.py -- [--scheme FILE.json] [--house houses/<id>/house.json]
+                                 [--views export,doll,top,rooms,kitchen,...]
                                  [--light day|overcast|evening|true] [--samples 64] [--res 1600x1000] [--render]
 
-  --scheme   JSON from the page's "Export for Blender" button. Without it, the house is primer white with the
-             current blue/white cabinets.
+  --scheme   JSON from the page's "Export for Blender" button. It contains the house too, so nothing else is needed.
+             Without it, the house is primer white with its cabinets in their default colours.
+  --house    a house file to build when the scheme doesn't carry one (default: the example house). House files are
+             compiled with Node.js (export_house_json.js), so Node must be installed for this.
   --views    export   the camera you were looking through when you exported
              doll     dollhouse three-quarter view      top    top-down plan      out   front exterior
-             rooms    an eye-level corner shot of every main room
-             <room>   one room: living dining kitchen foyer hall master mbath mtoil mcl bed1 wic1 bed2 wic2 hbath gcl laundry whcl
+             rooms    an eye-level corner shot of every main room (the house file's renderRooms)
+             <room>   one room, by its id in the house file
              (default: export if the file has a camera, plus doll and rooms)
   --render   render the views (otherwise just build and save the .blend)
 
@@ -31,20 +34,37 @@ def arg(name, default=None):
         return ARGS[i + 1] if i + 1 < len(ARGS) and not ARGS[i + 1].startswith('--') else True
     return default
 
-H = json.load(open(os.path.join(HERE, 'house.json'), encoding='utf-8'))
 SCHEME = json.load(open(arg('--scheme'), encoding='utf-8')) if arg('--scheme') else None
+
+def load_house():
+    """The compiled house: from the scheme file, or compiled from a house file with Node (house-core.js)."""
+    if SCHEME and SCHEME.get('house'): return SCHEME['house']
+    path = arg('--house') or os.path.join(HERE, 'houses', 'waterford-4563c', 'house.json')
+    data = json.load(open(path, encoding='utf-8'))
+    if data.get('surfaces'): return data                     # already compiled
+    import subprocess
+    try:
+        out = subprocess.run(['node', os.path.join(HERE, 'export_house_json.js'), path, '-'], capture_output=True, check=True)
+    except FileNotFoundError:
+        sys.exit('Reading a house file needs Node.js (https://nodejs.org). Or pass a scheme exported from the page: it includes the house.')
+    except subprocess.CalledProcessError as e:
+        sys.exit(e.stderr.decode('utf-8', 'replace'))
+    return json.loads(out.stdout.decode('utf-8'))
+
+H = load_house()
 RESOLVED = (SCHEME or {}).get('resolved', {})
 SLUG = re.sub(r'[^a-z0-9]+', '-', ((SCHEME or {}).get('scheme', {}).get('name') or 'default').lower()).strip('-') or 'default'
 
 FT = 0.3048
 W, D, E, T = H['W'], H['D'], H['E'], H['T']
-CEIL, DOOR_H, HEAD, SILL = H['ceilingHeight'], H['doorHeight'], H['windowHead'], 3.0
+CEIL = H['ceilingHeight']                                   # openings carry their own z0 / z1 (sill-head, 0-door height)
+K = max(W, D) / 56                                          # camera distances were tuned on a 56' house
 BASE_H, BASE_T, CASE_W, CASE_T, DOOR_T, DOOR_OPEN = 0.375, 0.03, 0.29, 0.035, 0.115, 68
 GROUND_Z = -2.0
 SHEEN = {'flat': 0.96, 'matte': 0.92, 'eggshell': 0.82, 'satin': 0.64, 'semigloss': 0.42, 'gloss': 0.24}
-DEFAULTS = {'wall': '#F1EFEA', 'ceiling': '#F5F4F0', 'trim': '#F6F6F3', 'exttrim': '#F4F4F0', 'doors': '#F3F3EF', 'extdoors': '#F3F3EF',
-            'barn': '#F3F3EF', 'siding': '#E9E8E2', 'kbase': '#4F6779', 'island': '#4F6779', 'pantry': '#4F6779', 'deskbase': '#4F6779',
-            'uppers': '#F1F0EC', 'deskup': '#F1F0EC', 'hvanity': '#F1F0EC', 'mvanity': '#F1F0EC'}
+DEFAULTS = {'wall': '#F1EFEA', 'ceiling': '#F5F4F0', 'trim': '#F6F6F3', 'exttrim': '#F4F4F0', 'doors': '#F3F3EF', 'extdoors': '#F3F3EF', 'siding': '#E9E8E2'}
+ITEM = {it['key']: it for it in H.get('items', [])}           # the house's cabinet runs and special doors
+for it in ITEM.values(): DEFAULTS[it['key']] = it.get('default') or ('#F3F3EF' if it.get('kind') == 'door' else '#F1F0EC')
 WOODS = {   # same species and parameters as house3d.js
     'walnut':   ('Walnut', '#8C5D3E', '#3A2215', 9, 0.55, 0.30), 'teak': ('Teak', '#B57E49', '#6A4220', 7, 0.45, 0.22),
     'whiteoak': ('White oak', '#CDAA7C', '#8C6A45', 12, 0.35, 0.35), 'redoak': ('Red oak', '#C48D63', '#86513A', 10, 0.6, 0.35),
@@ -99,8 +119,8 @@ def default_hex(key):
     return DEFAULTS['wall']
 def default_sheen(key):
     if key.startswith('C:'): return 'flat'
-    if key in ('trim', 'exttrim', 'doors', 'extdoors', 'barn'): return 'semigloss'
-    if key in DEFAULTS or part_group(key): return 'satin'
+    if key in ('trim', 'exttrim', 'doors', 'extdoors') or ITEM.get(key, {}).get('kind') == 'door': return 'semigloss'
+    if key in ITEM or part_group(key): return 'satin'
     return 'eggshell'
 
 # --- wood: the same tileable procedural veneer as the web page, generated with numpy
@@ -177,7 +197,10 @@ def paint_mat(key):
 
 def floor_material():
     fl = H['floor']
-    m = bpy.data.materials.new('Floor_DesertSand_LVP'); m.use_nodes = True
+    m = bpy.data.materials.new('Floor_' + re.sub(r'\W+', '_', fl.get('name') or 'Plank')); m.use_nodes = True
+    if not fl.get('texture') or not os.path.exists(os.path.join(HERE, fl['texture'])):   # no plank photo: plain colour
+        b = m.node_tree.nodes['Principled BSDF']; b.inputs['Base Color'].default_value = lin(fl.get('color') or '#B09672')
+        b.inputs['Roughness'].default_value = 0.42; return m
     nt = m.node_tree; nt.nodes.clear(); N = nt.nodes.new
     out = N('ShaderNodeOutputMaterial'); bsdf = N('ShaderNodeBsdfPrincipled'); nt.links.new(bsdf.outputs['BSDF'], out.inputs['Surface'])
     pw, pl = fl['plankW'] * FT, fl['plankL'] * FT
@@ -294,7 +317,7 @@ def build_walls():
             if t1 - t0 < 1e-3: continue
             tm = (t0 + t1) / 2
             o = next((q for q in ops if q['a'] < tm < q['b']), None)
-            zr = [(0, top)] if not o else [(0, o.get('sill') or SILL), (HEAD, top)] if o['type'] == 'window' else [(DOOR_H, top)]
+            zr = [(0, top)] if not o else [(0, o['z0']), (o['z1'], top)] if o['type'] == 'window' else [(o['z1'], top)]
             lo, hi = face_key('lo', tm), face_key('hi', tm)
             fallback = lo or hi
             def end_mat(t, d):
@@ -329,7 +352,7 @@ def build_walls():
             room_l = (o['a'] - ops[k - 1]['b']) / 2 if k > 0 else CASE_W
             room_r = (ops[k + 1]['a'] - o['b']) / 2 if k + 1 < len(ops) else CASE_W
             el, er = min(CASE_W, room_l) - 0.002, min(CASE_W, room_r) - 0.002
-            z0 = (o.get('sill') or SILL) if o['type'] == 'window' else 0; z1 = HEAD if o['type'] == 'window' else DOOR_H
+            z0, z1 = o['z0'], o['z1']
             tc = obj('Trim', 'Casings')
             for side in ('lo', 'hi'):
                 fk = face_key(side, (o['a'] + o['b']) / 2) or face_key(side, o['a'] - 0.05)
@@ -368,10 +391,11 @@ def build_door(w, horiz, o):
     key = 'extdoors' if w.get('ext') else 'doors'; mat = paint_mat(key)
     q = lambda u0, u1, p0, p1: [tuple(hh + dr * u0 + pp * p0), tuple(hh + dr * u1 + pp * p0), tuple(hh + dr * u1 + pp * p1), tuple(hh + dr * u0 + pp * p1)]
     lv = obj('Doors', 'Door_Leaves'); hw = obj('Doors', 'Door_Hardware')
-    lv.prism(q(0, L, -t2, t2), 0.03, DOOR_H - 0.05, mat)
+    dh = o['z1']; ks = dh / 6.667                               # panel layout scales with the door's height
+    lv.prism(q(0, L, -t2, t2), 0.03, dh - 0.05, mat)
     for sgn in (1, -1):
         for (u0, u1) in ((0.30, L / 2 - 0.08), (L / 2 + 0.08, L - 0.30)):
-            for (z0, z1) in ((0.9, 2.5), (2.9, 4.3), (4.7, 6.1)):
+            for (z0, z1) in ((0.9 * ks, 2.5 * ks), (2.9 * ks, 4.3 * ks), (4.7 * ks, 6.1 * ks)):
                 lv.prism(q(u0, u1, t2, t2 + 0.012) if sgn > 0 else q(u0, u1, -t2 - 0.012, -t2), z0, z1, mat)
         k = hh + dr * (L - 0.28) + pp * (sgn * (t2 + 0.05))
         hw.box(k.x - 0.045, k.y - 0.045, 2.95, k.x + 0.045, k.y + 0.045, 3.05, M['brass'])
@@ -406,7 +430,7 @@ def cabinet_front(f, z0, z1, drawer):
             slab((b0 + b1) / 2 - 0.25, (b0 + b1) / 2 + 0.25, z1 - 0.3, z1 - 0.25, DOOR_PROUD, DOOR_PROUD + 0.06, M['black'], hw)
 
 def counter_top(f, z):
-    o, all_sides = 0.1, f.get('label') == 'ISLAND'
+    o, all_sides = 0.1, f.get('counter') == 'all'
     x0, y0, x1, y1 = f['x'], f['y'], f['x'] + f['w'], f['y'] + f['h']
     fr = f.get('front')
     if all_sides or fr == 'w': x0 -= o
@@ -423,11 +447,12 @@ def build_fixtures():
         x0, y0 = f.get('x', 0), f.get('y', 0); x1, y1 = x0 + f.get('w', 0), y0 + f.get('h', 0)
         if k == 'box':
             if f.get('paint'):
-                tall = f.get('label') in ('PANTRY', 'LINEN')
-                zt = (7.0 if f.get('label') == 'PANTRY' else 6.5) if tall else (2.8 if f.get('c') == 'cabW' else 2.5 if f['paint'] == 'deskbase' else 3.0)
+                # z1: cabinet height; counter: false for tall units, 'all' to overhang every side (islands)
+                zt = f.get('z1') or (2.8 if f.get('c') == 'cabW' else 3.0)
+                counter = f.get('counter', zt <= 4)
                 obj('Cabinetry', 'Cabinet_Boxes').box(x0, y0, 0, x1, y1, zt, paint_mat(f['paint']))
-                cabinet_front(f, 0, zt, not tall)
-                if not tall: counter_top(f, zt)
+                cabinet_front(f, 0, zt, bool(counter))
+                if counter: counter_top(f, zt)
             elif f.get('c') == 'app':
                 ap.box(x0, y0, 0, x1, y1, 5.9, M['appwhite']); ap.box(x1, (y0 + y1) / 2 - 0.01, 0.4, x1 + 0.01, (y0 + y1) / 2 + 0.01, 5.8, M['black'])
                 for yy in ((y0 + y1) / 2 - 0.2, (y0 + y1) / 2 + 0.2): ap.box(x1, yy - 0.025, 2.4, x1 + 0.07, yy + 0.025, 4.6, M['steel'])
@@ -484,8 +509,9 @@ def build_fixtures():
             st = obj('Exterior', 'Steps'); st.box(x0, y0 + 0.9, GROUND_Z, x1, y1, -0.25, M['deck']); st.box(x0, y0, GROUND_Z, x1, y0 + 0.9, -1.15, M['deck'])
 
 def build_shell():
-    fl = obj('Floor', 'Floor_LVP'); fm = floor_material()
-    vs = [fl.bm.verts.new(P(x, y, 0)) for x, y in ((E, E), (W - E, E), (W - E, D - E), (E, D - E))]; fl.face(vs, fm)
+    fl = obj('Floor', 'Floor'); fm = floor_material()
+    for x0, y0, x1, y1 in H.get('floorRects') or [[E, E, W - E, D - E]]:
+        vs = [fl.bm.verts.new(P(x, y, 0)) for x, y in ((x0, y0), (x1, y0), (x1, y1), (x0, y1))]; fl.face(vs, fm)
     obj('Exterior', 'Skirting').box(-0.05, -0.05, GROUND_Z, W + 0.05, D + 0.05, -0.02, M['skirt'])
     obj('Exterior', 'Ground').box(-150, -150, GROUND_Z - 0.5, W + 150, D + 150, GROUND_Z, M['ground'])
     k = 0
@@ -534,10 +560,10 @@ pv = lambda p: Vector((p[0] * FT, -p[1] * FT, p[2] * FT))          # plan feet -
 
 VIEWS = {}                                                     # name -> (camera object, inside?)
 cx, cy = W / 2 * FT, -D / 2 * FT
-c = make_cam('Cam_doll'); c.data.lens = 30; look(c, (cx + 9, cy - 15.5, 13), (cx, cy + 0.3, 0)); VIEWS['doll'] = (c, False)
-c = make_cam('Cam_top'); c.data.type = 'ORTHO'; c.data.ortho_scale = W * FT * 1.1; look(c, (cx, cy, 40), (cx, cy, 0)); VIEWS['top'] = (c, False)
-c = make_cam('Cam_out'); c.data.lens = 28; look(c, (cx - 8, cy - 16, 3.0), (cx, cy, 1.2)); VIEWS['out'] = (c, False)
-ROOM_VIEW_IDS = ['living', 'dining', 'kitchen', 'master', 'bed1', 'bed2', 'hbath', 'mbath', 'laundry', 'foyer']
+c = make_cam('Cam_doll'); c.data.lens = 30; look(c, (cx + 9 * K, cy - 15.5 * K, 13 * K), (cx, cy + 0.3, 0)); VIEWS['doll'] = (c, False)
+c = make_cam('Cam_top'); c.data.type = 'ORTHO'; c.data.ortho_scale = max(W, D * 1.6) * FT * 1.1; look(c, (cx, cy, 40), (cx, cy, 0)); VIEWS['top'] = (c, False)
+c = make_cam('Cam_out'); c.data.lens = 28; look(c, (cx - 8 * K, cy - 16 * K, 3.0), (cx, cy, 1.2)); VIEWS['out'] = (c, False)
+ROOM_VIEW_IDS = H.get('renderRooms') or [r['id'] for r in H['rooms'] if r.get('area', 0) >= 40]
 for r in H['rooms']:                                          # eye-level corner shot: stand in one corner, look across to the far one
     big = max(r['rects'], key=lambda q: (q[2] - q[0]) * (q[3] - q[1]))
     x0, y0, x1, y1 = big
