@@ -750,13 +750,14 @@
     changed(); toast('The picture was tilted ' + Math.abs(r.angle).toFixed(1) + '\u00b0 ' + (r.angle > 0 ? 'clockwise' : 'anticlockwise') + ': levelled.');
   }
   // ---- an optional learned model: a floor plan segmenter (floor / wall / door / window) as an ONNX file you provide, run in this browser by onnxruntime-web
-  const ORT_VER = '1.20.1', ORT_BASE = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@' + ORT_VER + '/dist/';
+  const VENDOR = p => new URL('vendor/' + p, document.baseURI).href;      // libraries are served from this site (vendor/, see docs/DEPLOY.md), not a CDN
+  const ORT_BASE = VENDOR('onnxruntime-web-1.20.1/');
   const LM = { session: null, name: '' };
   const modelDB = () => new Promise((ok, bad) => { const q = indexedDB.open('house-painter-model', 1); q.onupgradeneeded = () => q.result.createObjectStore('m'); q.onsuccess = () => ok(q.result); q.onerror = () => bad(q.error); });
   const modelPut = async (k, v) => { const db = await modelDB(); return new Promise((ok, bad) => { const t = db.transaction('m', 'readwrite'); t.objectStore('m').put(v, k); t.oncomplete = ok; t.onerror = () => bad(t.error); }); };
   const modelGet = async k => { const db = await modelDB(); return new Promise((ok, bad) => { const q = db.transaction('m').objectStore('m').get(k); q.onsuccess = () => ok(q.result); q.onerror = () => bad(q.error); }); };
   async function startModel(buf, name) {
-    if (!window.ort) await loadScript(ORT_BASE + 'ort.min.js');
+    if (!window.ort) await loadScript(ORT_BASE + 'ort.wasm.min.js');
     ort.env.wasm.wasmPaths = ORT_BASE;
     LM.session = await ort.InferenceSession.create(buf, { executionProviders: ['wasm'] }); LM.name = name;
   }
@@ -1237,7 +1238,7 @@
   // ------------------------------------------------------------------ the scale, from the dimension text on the plan
   // The text is read by tesseract.js, an OCR engine that runs in this browser. It is fetched (about 10 MB) the first time you ask, from a public
   // CDN; the picture itself never leaves this computer. dimensions.js matches the text to the dimension lines and works out the scale.
-  const OCR_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js', OCR_OK = 'housepainter.ocrConsent';
+  const OCR_BASE = VENDOR('tesseract-5.1.1/'), OCR_URL = OCR_BASE + 'tesseract.min.js', OCR_OK = 'housepainter.ocrConsent';
   let ocrWorker = null, ocrBusy = false;
   // the blueprint at (nearly) its own resolution, turned by its rotation, as grey levels and as a canvas
   function rasterNative() {
@@ -1270,7 +1271,7 @@
     try {
       toast(ocrWorker ? 'Reading the text on the plan\u2026' : 'Loading the text reader (first time only)\u2026');
       if (!window.Tesseract) await loadScript(OCR_URL);
-      if (!ocrWorker) { ocrWorker = await Tesseract.createWorker('eng'); await ocrWorker.setParameters({ tessedit_pageseg_mode: '11', tessedit_char_whitelist: '0123456789\'"-/.ftmcxFTMC ' }); }
+      if (!ocrWorker) { ocrWorker = await Tesseract.createWorker('eng', 1, { workerPath: OCR_BASE + 'worker.min.js', corePath: OCR_BASE + 'core', langPath: OCR_BASE + 'lang' }); await ocrWorker.setParameters({ tessedit_pageseg_mode: '11', tessedit_char_whitelist: '0123456789\'"-/.ftmcxFTMC ' }); }
       const r = rasterNative(), words = [];
       for (const up of Math.max(r.W, r.H) < 2200 ? [1, 2] : [1]) for (const q of [0, 1, 3]) {          // upright text, and text that runs up or down the page; small lettering is also tried enlarged
         let cv = q === 0 ? r.cv : turned(r.cv, q);
@@ -2178,8 +2179,8 @@
   function loadScript(src) { return new Promise((ok, bad) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => bad(new Error('Could not load ' + src)); document.head.appendChild(s); }); }
   async function pdfToBlob(file) {
     if (!window.pdfjsLib) {
-      await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
-      window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      await loadScript(VENDOR('pdfjs-3.11.174/pdf.min.js'));
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = VENDOR('pdfjs-3.11.174/pdf.worker.min.js');
     }
     const pdf = await window.pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
     let pageNo = 1;

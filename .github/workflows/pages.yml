@@ -29,10 +29,10 @@ jobs:
         with:
           node-version: 22
       - run: npm test
-      - run: node tools/build_site.js
+      - run: npm run build
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: _site
+          path: dist
       - id: deployment
         uses: actions/deploy-pages@v4

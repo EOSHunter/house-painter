@@ -15,5 +15,5 @@ jobs:
           node-version: 22
       - name: Unit tests (core, fixtures, palette, schemes, pages)
         run: npm test
-      - name: The site builds
-        run: node tools/build_site.js
+      - name: The production build (dist/) builds
+        run: npm run build
