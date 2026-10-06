@@ -9,6 +9,9 @@
  * Coordinates come back in feet from the image's top-left corner (x right, y down), the same axes as a house file.
  * Each wall is { axis: 'h'|'v', c, a, b, t, ext, openings: [{ a, b, type }] }:
  *   c = centre line, a..b = extent along the axis, t = thickness, ext = an outside wall, openings = gaps found in it.
+ * A wall at any other angle comes back as { axis: 'l', p: [x0, y0, x1, y1], a: 0, b: length, c: 0, t, ext, openings: [] }
+ * (its centre line, from the image's top-left corner, in feet).
+ * Doors in straight walls carry their `hinge` ('a'|'b') and `swing` ('n'|'s'|'e'|'w') when the swing arc is drawn.
  *
  * How it works: (1) turn the picture into ink and paper with a threshold that follows the lighting; (2) keep only long,
  * thick, straight bars, which is what walls are and what text, dimension lines and symbols are not; (3) tidy: line the
@@ -28,7 +31,9 @@
     maxThick: 1.2,       // ft: thicker marks are fixtures and fills
     maxGap: 4.6,         // ft: a break this wide or less inside one wall is a doorway or a window
     sensitivity: 0.8,    // 0.6 (only the darkest ink) .. 0.95 (faint ink too)
-    openings: true       // also turn the gaps in walls into doors and windows
+    openings: true,      // also turn the gaps in walls into doors and windows
+    symbols: true,       // tell doors from windows by the swing arc and the window lines drawn in the gap
+    angled: true         // also look for walls that are neither level nor plumb
   };
 
   // ------------------------------------------------------------------ skew
@@ -291,7 +296,8 @@
   }
 
   // which walls have the outside on one of their faces? (flood from the edge of a 0.25 ft grid; walls are treated as solid, so a door gap does not leak)
-  function markOutside(walls) {
+  function markOutside(walls, slants) {
+    slants = slants || [];
     if (!walls.length) return;
     const G = 0.25, rect = w => w.axis === 'h' ? [w.a, w.c - w.t / 2, w.b, w.c + w.t / 2] : [w.c - w.t / 2, w.a, w.c + w.t / 2, w.b];
     const rs = walls.map(rect);
@@ -302,6 +308,9 @@
     }
     const x0 = Math.min(...rs.map(r => r[0])) - 2, y0 = Math.min(...rs.map(r => r[1])) - 2, x1 = Math.max(...rs.map(r => r[2])) + 2, y1 = Math.max(...rs.map(r => r[3])) + 2;
     const nx = Math.ceil((x1 - x0) / G), ny = Math.ceil((y1 - y0) / G), cell = new Uint8Array(nx * ny);
+    const inSlant = (S, x, y) => { const dx = S.p[2] - S.p[0], dy = S.p[3] - S.p[1], L = Math.hypot(dx, dy) || 1, u = ((x - S.p[0]) * dx + (y - S.p[1]) * dy) / L, v = (-(x - S.p[0]) * dy + (y - S.p[1]) * dx) / L; return u > -S.t / 2 && u < L + S.t / 2 && Math.abs(v) < S.t / 2 + 0.05; };
+    for (const S of slants) { const xa = Math.min(S.p[0], S.p[2]) - S.t, xb = Math.max(S.p[0], S.p[2]) + S.t, ya = Math.min(S.p[1], S.p[3]) - S.t, yb = Math.max(S.p[1], S.p[3]) + S.t;
+      for (let j = Math.max(0, Math.floor((ya - y0) / G)); j <= Math.min(ny - 1, Math.ceil((yb - y0) / G)); j++) for (let i = Math.max(0, Math.floor((xa - x0) / G)); i <= Math.min(nx - 1, Math.ceil((xb - x0) / G)); i++) if (inSlant(S, x0 + (i + 0.5) * G, y0 + (j + 0.5) * G)) cell[j * nx + i] = 1; }
     for (const r of rs) for (let j = Math.max(0, Math.ceil((r[1] - y0) / G - 0.5)); j <= Math.min(ny - 1, Math.floor((r[3] - y0) / G - 0.5)); j++)
       for (let i = Math.max(0, Math.ceil((r[0] - x0) / G - 0.5)); i <= Math.min(nx - 1, Math.floor((r[2] - x0) / G - 0.5)); i++) cell[j * nx + i] = 1;   // cells whose centre is inside
     const out = new Uint8Array(nx * ny), stack = [0]; out[0] = 1;
@@ -323,6 +332,12 @@
       }
       w.ext = n > 0 && (lo / n > 0.5 || hi / n > 0.5);
     }
+    for (const S of slants) {
+      const L = Math.hypot(S.p[2] - S.p[0], S.p[3] - S.p[1]), u = [(S.p[2] - S.p[0]) / L, (S.p[3] - S.p[1]) / L], n = [-u[1], u[0]], d = S.t / 2 + 0.4;
+      let lo = 0, hi = 0, m = 0;
+      for (let t = 0.6; t <= L - 0.6; t += 0.5) { m++; const c = [S.p[0] + u[0] * t, S.p[1] + u[1] * t]; if (outside(c[0] - n[0] * d, c[1] - n[1] * d)) lo++; if (outside(c[0] + n[0] * d, c[1] + n[1] * d)) hi++; }
+      S.ext = m > 0 && (lo / m > 0.5 || hi / m > 0.5);
+    }
   }
 
   // what is each gap? Outside walls: a window, unless it is about a door wide. Inside walls: a door, or an open doorway when wide.
@@ -331,6 +346,160 @@
       const wd = o.b - o.a;
       if (w.ext) o.type = 'window';                                                  // front and back doors are fixed by hand: a gap alone can't tell
       else o.type = wd > 4.2 ? 'cased' : 'door';
+    }
+  }
+
+  // ------------------------------------------------------------------ walls at an angle
+  // Take away the ink the level and plumb walls explain; find the directions the rest lines up in (the same lumpy-profile idea
+  // as the skew search); turn the picture so each direction is level and find its bars the way level ones are found.
+  const RAD = Math.PI / 180;
+  function slantAngles(ink, w, h, keep) {
+    // the direction of every edge in what is left: smooth the mask a little, take its gradient, and vote (weighted by strength)
+    // for the line direction, which runs across the gradient. Walls at one angle give one tall peak, however short they are.
+    const B = new Float32Array(w * h), T = new Float32Array(w * h);
+    for (let y = 0; y < h; y++) for (let x = 1; x < w - 1; x++) T[y * w + x] = (keep[y * w + x - 1] + keep[y * w + x] + keep[y * w + x + 1]) / 3;
+    for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) B[y * w + x] = (T[(y - 1) * w + x] + T[y * w + x] + T[(y + 1) * w + x]) / 3;
+    const NB = 360, votes = new Float64Array(NB);
+    for (let y = 2; y < h - 2; y++) for (let x = 2; x < w - 2; x++) {
+      const i = y * w + x, v = B[i]; if (v <= 0.04 || v >= 0.96) continue;
+      const gx = (B[i - w + 1] + 2 * B[i + 1] + B[i + w + 1]) - (B[i - w - 1] + 2 * B[i - 1] + B[i + w - 1]);
+      const gy = (B[i + w - 1] + 2 * B[i + w] + B[i + w + 1]) - (B[i - w - 1] + 2 * B[i - w] + B[i - w + 1]);
+      const m = Math.hypot(gx, gy); if (m < 0.15) continue;
+      let a = (Math.atan2(gy, gx) / RAD + 90 + 360) % 180;                           // the line's direction, 0..180
+      votes[Math.floor(a * 2) % NB] += m;
+    }
+    const sm = new Float64Array(NB);                                                // smooth over +-1.5 degrees
+    for (let b = 0; b < NB; b++) { let t = 0; for (let k = -3; k <= 3; k++) t += votes[(b + k + NB) % NB]; sm[b] = t / 7; }
+    const sorted = Array.from(sm).sort((p, q) => p - q), med = sorted[NB >> 1];
+    const peaks = [];
+    for (let b = 0; b < NB; b++) {
+      const deg = b / 2, off = Math.min(deg % 90, 90 - (deg % 90));
+      if (off < 10) continue;                                                       // level and plumb are found already
+      let top = true; for (let k = -8; k <= 8; k++) if (k && sm[(b + k + NB) % NB] > sm[b]) { top = false; break; }
+      if (top && sm[b] > Math.max(3 * med, 4)) peaks.push({ deg: deg + 0.25, v: sm[b] });
+    }
+    const out = [];
+    for (const pk of peaks.sort((p, q) => q.v - p.v)) if (out.length < 6 && out.every(d => Math.abs(d - pk.deg) > 6)) out.push(pk.deg);
+    return out;
+  }
+  function findSlants(ink, w, h, ppf, walls, P, o) {
+    // ink that belongs to the level and plumb walls goes
+    const keep = Uint8Array.from(ink), pad = Math.max(1, Math.round(0.06 * ppf));        // just past the wall's own edge: angled walls meet these ones, and lose as little as possible
+    for (const wl of walls) {
+      const r = wl.axis === 'h' ? [wl.a, wl.c - wl.t / 2, wl.b, wl.c + wl.t / 2] : [wl.c - wl.t / 2, wl.a, wl.c + wl.t / 2, wl.b];
+      for (let y = Math.max(0, Math.floor(r[1] * ppf) - pad); y < Math.min(h, Math.ceil(r[3] * ppf) + pad); y++) for (let x = Math.max(0, Math.floor(r[0] * ppf) - pad); x < Math.min(w, Math.ceil(r[2] * ppf) + pad); x++) keep[y * w + x] = 0;
+    }
+    const found = [];
+    for (const deg of slantAngles(ink, w, h, keep)) {
+      const cs = Math.cos(deg * RAD), sn = Math.sin(deg * RAD);
+      // u runs along the direction, v across it
+      const U = [0, w, 0, w].map((x, i) => x * cs + (i < 2 ? 0 : h) * sn), V = [0, w, 0, w].map((x, i) => -x * sn + (i < 2 ? 0 : h) * cs);
+      const u0 = Math.floor(Math.min(...U)), v0 = Math.floor(Math.min(...V)), ru = Math.ceil(Math.max(...U)) - u0, rv = Math.ceil(Math.max(...V)) - v0;
+      if (ru * rv > 2.4e7) continue;
+      const rot = new Uint8Array(ru * rv);
+      for (let j = 0; j < rv; j++) for (let i = 0; i < ru; i++) {
+        const u = i + u0 + 0.5, v = j + v0 + 0.5, x = Math.floor(u * cs - v * sn), y = Math.floor(u * sn + v * cs);
+        if (x >= 0 && y >= 0 && x < w && y < h && keep[y * w + x]) rot[j * ru + i] = 1;
+      }
+      // pieces on one line, with door- and window-sized gaps between them, are one wall (as for the level ones)
+      const bars = findBars(rot, ru, rv, P).sort((p, q) => p.c - q.c || p.a - q.a), lines = [];
+      for (const b of bars) {
+        const ln = lines.find(l => Math.abs(l.c - b.c) < 0.3 * ppf);
+        if (ln) { ln.bars.push(b); ln.c = (ln.c * ln.n + b.c * (b.b - b.a)) / (ln.n + b.b - b.a); ln.n += b.b - b.a; } else lines.push({ c: b.c, n: b.b - b.a, bars: [b] });
+      }
+      for (const ln of lines) {
+        ln.bars.sort((p, q) => p.a - q.a);
+        let cur = null; const walls = [];
+        for (const b of ln.bars) {
+          if (cur && b.a - cur.b <= o.maxGap * ppf) { if (b.a - cur.b > 0.9 * ppf) cur.gaps.push([cur.b, b.a]); cur.t = (cur.t * (cur.b - cur.a) + b.t * (b.b - b.a)) / ((cur.b - cur.a) + (b.b - b.a)); cur.b = Math.max(cur.b, b.b); }
+          else { if (cur) walls.push(cur); cur = { a: b.a, b: b.b, t: b.t, gaps: [] }; }
+        }
+        if (cur) walls.push(cur);
+        for (const m of walls) {
+          if ((m.b - m.a) / ppf < Math.min(o.minLen, 1.2) + 0.2) continue;                  // short pieces are kept for now: a bay's sides are short, but only if they join up at both ends
+          const pt = (u, v) => [((u + u0) * cs - (v + v0) * sn) / ppf, ((u + u0) * sn + (v + v0) * cs) / ppf];
+          found.push({ p: [...pt(m.a, ln.c), ...pt(m.b, ln.c)], t: m.t / ppf, gaps: m.gaps.map(g => [pt(g[0], ln.c), pt(g[1], ln.c)]) });
+        }
+      }
+    }
+    // the same bar can come up from two nearby directions: keep one
+    const slants = [];
+    for (const f of found.sort((p, q) => Math.hypot(q.p[2] - q.p[0], q.p[3] - q.p[1]) - Math.hypot(p.p[2] - p.p[0], p.p[3] - p.p[1]))) {
+      const mid = [(f.p[0] + f.p[2]) / 2, (f.p[1] + f.p[3]) / 2];
+      if (slants.some(q => [[f.p[0], f.p[1]], [f.p[2], f.p[3]], mid].every(e => distToSeg(e, q.p) < Math.max(f.t, q.t) + 0.5))) continue;      // lies along a longer one already found
+      slants.push(f);
+    }
+    // a long thin smear along a straight wall is that wall's own edge, not another wall
+    const alongWall = f => walls.some(wl => { const c = wl.axis === 'h' ? [wl.a, wl.c, wl.b, wl.c] : [wl.c, wl.a, wl.c, wl.b];
+      return [[f.p[0], f.p[1]], [f.p[2], f.p[3]], [(f.p[0] + f.p[2]) / 2, (f.p[1] + f.p[3]) / 2]].every(q => distToSeg(q, c) < wl.t / 2 + 0.9); });
+    const steep = f => {                                                           // a wall that meets a straight one at a shallow angle is nearly always leftover ink, not a wall
+      const a = Math.abs(Math.atan2(f.p[3] - f.p[1], f.p[2] - f.p[0]) / RAD) % 90, off = Math.min(a, 90 - a);
+      return off >= 20 || (off >= 10 && Math.hypot(f.p[2] - f.p[0], f.p[3] - f.p[1]) >= 8);
+    };
+    return connectSlants(slants.filter(f => !alongWall(f) && steep(f)), walls, o.minLen);
+  }
+  function distToSeg(q, p) {
+    const dx = p[2] - p[0], dy = p[3] - p[1], L2 = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((q[0] - p[0]) * dx + (q[1] - p[1]) * dy) / L2));
+    return Math.hypot(q[0] - p[0] - t * dx, q[1] - p[1] - t * dy);
+  }
+  // an angled wall goes on to the centre line of the wall it meets (or the end of the angled wall it meets); one that meets nothing is clutter
+  function connectSlants(slants, walls, minLen) {
+    const centre = wl => (wl.axis === 'h' ? [wl.a, wl.c, wl.b, wl.c] : [wl.c, wl.a, wl.c, wl.b]);
+    const hit = (E, d, tgt, slack) => {                                              // where the line from E along d crosses the target segment's line; null if it misses
+      const T = tgt, ex = T[2] - T[0], ey = T[3] - T[1], den = d[0] * ey - d[1] * ex;
+      if (Math.abs(den) < 0.12 * Math.hypot(ex, ey)) return null;                     // nearly parallel
+      const s = ((T[0] - E[0]) * ey - (T[1] - E[1]) * ex) / den, u = ((T[0] - E[0]) * d[1] - (T[1] - E[1]) * d[0]) / den;
+      if (s < -1.0 || s > 1.5 || u < -slack || u > 1 + slack) return null;
+      return { s, pt: [E[0] + d[0] * s, E[1] + d[1] * s] };
+    };
+    const live = slants.map(x => ({ ...x, linked: [false, false] }));
+    for (let pass = 0; pass < 2; pass++) for (const f of live) for (const end of [0, 1]) {
+      const E = end ? [f.p[2], f.p[3]] : [f.p[0], f.p[1]], O = end ? [f.p[0], f.p[1]] : [f.p[2], f.p[3]];
+      const L = Math.hypot(E[0] - O[0], E[1] - O[1]) || 1, d = [(E[0] - O[0]) / L, (E[1] - O[1]) / L];
+      let best = null;
+      const consider = (tgt, slack) => { const r = hit(E, d, tgt, slack / (Math.hypot(tgt[2] - tgt[0], tgt[3] - tgt[1]) || 1)); if (r && (!best || Math.abs(r.s) < Math.abs(best.s))) best = r; };
+      for (const wl of walls) consider(centre(wl), 0.5);
+      for (const g of live) if (g !== f) consider(g.p, 1.0);
+      if (best) { if (end) { f.p[2] = best.pt[0]; f.p[3] = best.pt[1]; } else { f.p[0] = best.pt[0]; f.p[1] = best.pt[1]; } f.linked[end] = true; }
+    }
+    return live.filter(f => (f.linked[0] || f.linked[1]) && Math.hypot(f.p[2] - f.p[0], f.p[3] - f.p[1]) >= (f.linked[0] && f.linked[1] ? 1.2 : minLen)).map(f => {
+      const L = Math.hypot(f.p[2] - f.p[0], f.p[3] - f.p[1]), u = [(f.p[2] - f.p[0]) / L, (f.p[3] - f.p[1]) / L];
+      const at = q => (q[0] - f.p[0]) * u[0] + (q[1] - f.p[1]) * u[1];                    // distance along the wall from its start
+      f.openings = (f.gaps || []).map(g => ({ a: Math.max(0, at(g[0])), b: Math.min(L, at(g[1])) })).filter(g => g.b - g.a > 0.9);
+      return f;
+    });
+  }
+
+  // ------------------------------------------------------------------ door and window symbols
+  // A door is drawn as a quarter-circle swing from its hinge; a window as a line or two along the gap. Look for those in the ink.
+  function symbols(ink, w, h, ppf, walls) {
+    const at = (x, y) => { x = Math.round(x); y = Math.round(y); for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) { const X = x + i, Y = y + j; if (X >= 0 && Y >= 0 && X < w && Y < h && ink[Y * w + X]) return 1; } return 0; };
+    for (const wl of walls) for (const o of wl.openings) {
+      const hz = wl.axis === 'h', wd = o.b - o.a; if (wd < 1.5) continue;
+      const P = (t, off) => (hz ? [t * ppf, (wl.c + off) * ppf] : [(wl.c + off) * ppf, t * ppf]);
+      // a window: a line that runs the whole way along the gap
+      let win = 0;
+      for (let off = -wl.t / 2; off <= wl.t / 2 + 1e-9; off += 1 / ppf) {
+        let n = 0, m = 0; for (let t = o.a + 0.25; t <= o.b - 0.25; t += 1 / ppf) { m++; const q = P(t, off); n += at(q[0], q[1]); }
+        if (m && n / m > win) win = n / m;
+      }
+      // a door: the arc, from either end, to either side
+      let door = 0, pick = null;
+      for (const hinge of ['a', 'b']) for (const side of [1, -1]) {
+        const hp = hinge === 'a' ? o.a : o.b, dir = hinge === 'a' ? 1 : -1; let n = 0, m = 0;
+        for (let deg = 12; deg <= 78; deg += 3) {
+          m++; const q = P(hp + dir * Math.cos(deg * RAD) * wd, side * Math.sin(deg * RAD) * wd); n += at(q[0], q[1]);
+        }
+        // the leaf: the line from the hinge straight out
+        let lf = 0, lm = 0; for (let r = 0.2; r < wd - 0.1; r += 1 / ppf) { lm++; const q = P(hp, side * r); lf += at(q[0], q[1]); }
+        const sc = 0.75 * (n / m) + 0.25 * (lm ? lf / lm : 0);
+        if (sc > door) { door = sc; pick = { hinge, side }; }
+      }
+      o.score = { door, win };
+      if (door >= 0.5 && door > win - 0.05) {
+        o.type = 'door'; o.hinge = pick.hinge;
+        o.swing = hz ? (pick.side > 0 ? 's' : 'n') : (pick.side > 0 ? 'e' : 'w');
+      } else if (win >= 0.6) o.type = 'window';
     }
   }
 
@@ -347,8 +516,10 @@
     for (const b of hBars) bars.push({ axis: 'h', a: b.a / ppf, b: b.b / ppf, c: b.c / ppf, t: b.t / ppf });
     for (const b of vBars) bars.push({ axis: 'v', a: b.a / ppf, b: b.b / ppf, c: b.c / ppf, t: b.t / ppf });
     let walls = tidy(bars, o);
+    const slants = o.angled ? findSlants(ink, w, h, ppf, walls, P, o) : [];                  // before the clean-up, so walls that only touch an angled wall are not taken for clutter
     if (o.style === 'thin' || o.style === 'outlined') {                             // lines drawn thin: a line that touches nothing is probably a dimension line, or a cabinet
-      walls = walls.filter(a => walls.some(b => b !== a && b.axis !== a.axis && ((Math.abs(a.a - b.c) < 0.8 || Math.abs(a.b - b.c) < 0.8) && a.c >= b.a - 0.8 && a.c <= b.b + 0.8)));
+      walls = walls.filter(a => walls.some(b => b !== a && b.axis !== a.axis && ((Math.abs(a.a - b.c) < 0.8 || Math.abs(a.b - b.c) < 0.8) && a.c >= b.a - 0.8 && a.c <= b.b + 0.8))
+        || slants.some(sl => [[sl.p[0], sl.p[1]], [sl.p[2], sl.p[3]]].some(e => (a.axis === 'h' ? Math.abs(e[1] - a.c) < 0.8 && e[0] > a.a - 0.8 && e[0] < a.b + 0.8 : Math.abs(e[0] - a.c) < 0.8 && e[1] > a.a - 0.8 && e[1] < a.b + 0.8))));
       if (o.style === 'thin') for (const wl of walls) wl.t = 0.4;                   // a single line has no thickness of its own
     }
     if (o.style === 'solid') {
@@ -362,7 +533,7 @@
     else if (o.style === 'outlined') walls.forEach(x => { x.t = Math.max(0.2, x.t - 1 / ppf); });   // the bar includes the width of its two lines
     // regular thickness: the typical outside and inside wall, rounded to the nearest half inch
     carryOn(walls);
-    markOutside(walls);
+    markOutside(walls, slants);
     walls = joinOutsideWalls(walls, 12);
     for (const cls of [true, false]) {
       const ts = walls.filter(x => x.ext === cls).map(x => x.t).sort((p, q) => p - q);
@@ -370,11 +541,17 @@
       const med = Math.round(ts[ts.length >> 1] * 24) / 24;
       walls.filter(x => x.ext === cls).forEach(x => { if (o.style !== 'thin') x.t = Math.abs(x.t - med) < 0.1 ? med : Math.round(x.t * 24) / 24; });
     }
-    if (o.openings) guessOpenings(walls); else walls.forEach(x => { x.openings = []; });
+    if (o.openings) { guessOpenings(walls); if (o.symbols) symbols(ink, w, h, ppf, walls); } else walls.forEach(x => { x.openings = []; });
     const r = v => Math.round(v * 1000) / 1000;
-    walls.forEach(x => { x.a = r(x.a); x.b = r(x.b); x.c = r(x.c); x.t = r(x.t); x.openings.forEach(q => { q.a = r(q.a); q.b = r(q.b); }); });
-    return { walls, stats: { bars: bars.length, walls: walls.length, ext: walls.filter(x => x.ext).length, openings: walls.reduce((t, x) => t + x.openings.length, 0) } };
+    for (const S of slants) {                                                        // angled walls: the thickness of the straight walls on the same side of the house, to the nearest half inch
+      const same = walls.filter(x => x.ext === !!S.ext).map(x => x.t).sort((p, q) => p - q), med = same.length ? same[same.length >> 1] : null;
+      S.t = o.style === 'thin' ? 0.4 : med && Math.abs(S.t - med) < 0.15 ? med : Math.round(S.t * 24) / 24;
+      const len = Math.hypot(S.p[2] - S.p[0], S.p[3] - S.p[1]);
+      walls.push({ axis: 'l', p: S.p.map(r), a: 0, b: r(len), c: 0, t: r(S.t), ext: !!S.ext, openings: (S.openings || []).map(g => ({ a: r(g.a), b: r(g.b), type: S.ext ? 'window' : g.b - g.a > 4.2 ? 'cased' : 'door' })) });
+    }
+    walls.forEach(x => { if (x.axis === 'l') return; x.a = r(x.a); x.b = r(x.b); x.c = r(x.c); x.t = r(x.t); x.openings.forEach(q => { q.a = r(q.a); q.b = r(q.b); }); });
+    return { walls, stats: { bars: bars.length, walls: walls.length, angled: slants.length, ext: walls.filter(x => x.ext).length, openings: walls.reduce((t, x) => t + x.openings.length, 0) } };
   }
 
-  return { DEFAULTS, estimateSkew, detect, _internals: { binarize, findBars, transpose } };
+  return { DEFAULTS, estimateSkew, detect, _internals: { binarize, findBars, transpose, slantAngles, findSlants, connectSlants } };
 });

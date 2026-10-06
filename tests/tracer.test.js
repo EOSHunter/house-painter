@@ -101,3 +101,61 @@ test('a wide window in an outside wall stays one wall with an opening, so the ho
   assert.ok(south[0].b - south[0].a > bp.house.W - 2, 'south wall length ' + (south[0].b - south[0].a));
   assert.ok(south[0].openings.some(o => o.b - o.a > 7), 'the 8 ft living-room window is an opening');
 });
+
+// ------------------------------------------------------------------ angled walls and door symbols
+const angledHouse = () => ({
+  format: 'house-painter/house', version: 1, id: 'angles', name: 'Angles', W: 36, D: 24, wallThickness: { exterior: 0.5, interior: 0.33 },
+  walls: [
+    { line: [0, 0, 28, 0], ext: 1 }, { line: [28, 0, 36, 8], ext: 1, openings: [{ a: 3, b: 6, type: 'door', hinge: 'a', swing: 'r' }] },
+    { line: [36, 8, 36, 24], ext: 1 }, { line: [36, 24, 0, 24], ext: 1 }, { line: [0, 24, 0, 0], ext: 1 },
+    { line: [14, 24, 22, 8], t: 0.33, openings: [{ a: 4.2, b: 7.2, type: 'cased' }] }, { line: [0, 12, 12, 12], t: 0.33 }
+  ],
+  rooms: [{ id: 'all', name: 'All', rects: [[0, 0, 36, 24]] }]
+});
+
+test('walls at an angle are found: a cut corner and a diagonal partition', () => {
+  const { found, s, bp } = (() => { const bp = drawBlueprint(angledHouse(), { noise: 8, light: 0.15 }); const found = Tracer.detect(bp.gray, bp.w, bp.h, bp.ppf); return { bp, found, s: score(found.walls, bp.house, bp.margin) }; })();
+  const slants = found.walls.filter(w => w.axis === 'l');
+  assert.equal(slants.length, 2, 'angled walls: ' + JSON.stringify(slants.map(w => w.p)));
+  const near = (w, p) => { const q = w.p.map(v => v - bp.margin); return Math.min(Math.hypot(q[0] - p[0], q[1] - p[1]) + Math.hypot(q[2] - p[2], q[3] - p[3]), Math.hypot(q[0] - p[2], q[1] - p[3]) + Math.hypot(q[2] - p[0], q[3] - p[1])); };
+  assert.ok(slants.some(w => near(w, [28, 0, 36, 8]) < 1.0 && w.ext), 'the cut corner, as an outside wall');
+  assert.ok(slants.some(w => near(w, [14, 24, 22, 8]) < 1.0 && !w.ext), 'the partition, as an inside wall');
+  assert.ok(s.recall > 0.9 && s.precision > 0.88, `recall ${s.recall.toFixed(2)} precision ${s.precision.toFixed(2)}`);
+  assert.ok(s.extAgreement > 0.95, 'outside agreement ' + s.extAgreement.toFixed(3));
+  const door = slants.find(w => w.ext).openings;
+  assert.equal(door.length, 1);
+});
+
+test('no angled walls are invented on houses that have none', () => {
+  for (const id of ['starter-cottage', 'waterford-4563c']) {
+    for (const opts of [{}, { noise: 20, light: 0.3, blur: 1 }]) {
+      const { found } = run(id, opts);
+      assert.equal(found.walls.filter(w => w.axis === 'l').length, 0, id + ' ' + JSON.stringify(opts));
+    }
+  }
+});
+
+test('angled walls can be switched off', () => {
+  const bp = drawBlueprint(angledHouse(), { noise: 6 });
+  const found = Tracer.detect(bp.gray, bp.w, bp.h, bp.ppf, { angled: false });
+  assert.equal(found.walls.filter(w => w.axis === 'l').length, 0);
+});
+
+test('doors are told from windows by their swing arcs, with the hinge and the side they swing to', () => {
+  const bp = drawBlueprint(house('waterford-4563c'), { noise: 8, light: 0.15 });
+  const found = Tracer.detect(bp.gray, bp.w, bp.h, bp.ppf);
+  let doors = 0, right = 0, windows = 0, winRight = 0;
+  for (const q of bp.house.walls) {
+    const horiz = (q.x1 - q.x0) >= (q.y1 - q.y0), c = horiz ? (q.y0 + q.y1) / 2 : (q.x0 + q.x1) / 2;
+    const w = found.walls.find(x => x.axis === (horiz ? 'h' : 'v') && Math.abs(x.c - (c + bp.margin)) < 0.4 && x.a <= (horiz ? q.x0 : q.y0) + bp.margin + 0.5 && x.b >= (horiz ? q.x1 : q.y1) + bp.margin - 0.5);
+    if (!w) continue;
+    for (const o of q.openings || []) {
+      const f = w.openings.find(g => Math.abs(g.a - (o.a + bp.margin)) < 0.6 && Math.abs(g.b - (o.b + bp.margin)) < 0.6);
+      if (!f) continue;
+      if (o.type === 'door' && !q.ext) { doors++; if (f.type === 'door' && f.hinge === (o.hinge || 'a') && f.swing === o.swing) right++; }
+      if (o.type === 'window') { windows++; if (f.type === 'window') winRight++; }
+    }
+  }
+  assert.ok(doors >= 5 && right / doors >= 0.8, `doors with the right hinge and swing: ${right} of ${doors}`);
+  assert.ok(windows >= 3 && winRight / windows >= 0.9, `windows: ${winRight} of ${windows}`);
+});

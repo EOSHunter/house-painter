@@ -26,6 +26,28 @@ function drawBlueprint(houseJson, opts = {}) {
     const a = [(x0 + margin) * ppf, (y0 + margin) * ppf], b = [(x1 + margin) * ppf, (y1 + margin) * ppf], n = Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]));
     for (let i = 0; i <= n; i++) { const x = Math.round(a[0] + (b[0] - a[0]) * i / n), y = Math.round(a[1] + (b[1] - a[1]) * i / n); if (x >= 0 && y >= 0 && x < w && y < h) img[y * w + x] = v; }
   };
+  // a wall at an angle, as a rectangle in its own frame; 4 x 4 samples per pixel give the soft edge of a scan
+  const fillSlant = (S, v, cut) => {
+    const hw = S.t / 2 + (cut ? 0.02 : 0), a = cut ? cut[0] : -S.e0, b = cut ? cut[1] : S.len + S.e1;
+    const corners = [[a, -hw], [b, -hw], [a, hw], [b, hw]].map(([t, o]) => [S.p0[0] + S.u[0] * t + S.nr[0] * o, S.p0[1] + S.u[1] * t + S.nr[1] * o]);
+    const xs = corners.map(c => (c[0] + margin) * ppf), ys = corners.map(c => (c[1] + margin) * ppf);
+    for (let y = Math.max(0, Math.floor(Math.min(...ys))); y < Math.min(h, Math.ceil(Math.max(...ys))); y++) for (let x = Math.max(0, Math.floor(Math.min(...xs))); x < Math.min(w, Math.ceil(Math.max(...xs))); x++) {
+      let n = 0;
+      for (let j = 0; j < 4; j++) for (let i = 0; i < 4; i++) {
+        const px = (x + (i + 0.5) / 4) / ppf - margin - S.p0[0], py = (y + (j + 0.5) / 4) / ppf - margin - S.p0[1];
+        const t = px * S.u[0] + py * S.u[1], o = px * S.nr[0] + py * S.nr[1];
+        if (t >= a && t <= b && Math.abs(o) <= hw) n++;
+      }
+      if (n) { const cov = n / 16; img[y * w + x] = img[y * w + x] * (1 - cov) + v * cov; }
+    }
+  };
+  const slants = (HOUSE.slants || []).filter(S => S.status !== 'removed');
+  for (const S of slants) fillSlant(S, 25);
+  for (const S of slants) for (const o of S.openings || []) {
+    if (o.type !== 'door' && o.type !== 'window' && o.type !== 'cased') continue;
+    fillSlant(S, 250, [o.a, o.b]);
+    if (o.type === 'window') line(S.p0[0] + S.u[0] * o.a, S.p0[1] + S.u[1] * o.a, S.p0[0] + S.u[0] * o.b, S.p0[1] + S.u[1] * o.b, 90);
+  }
   const live = HOUSE.walls.filter(q => q.status !== 'removed');
   for (const q of live) {
     if (outlined) { fill(q.x0, q.y0, q.x1, q.y1, 250); line(q.x0, q.y0, q.x1, q.y0, 20); line(q.x0, q.y1, q.x1, q.y1, 20); line(q.x0, q.y0, q.x0, q.y1, 20); line(q.x1, q.y0, q.x1, q.y1, 20); }
@@ -40,9 +62,12 @@ function drawBlueprint(houseJson, opts = {}) {
       if (outlined) { if (horiz) { line(o.a, q.y0, o.a, q.y1, 20); line(o.b, q.y0, o.b, q.y1, 20); } else { line(q.x0, o.a, q.x1, o.a, 20); line(q.x1, o.b, q.x0, o.b, 20); } }
       const mid = horiz ? (q.y0 + q.y1) / 2 : (q.x0 + q.x1) / 2;
       if (o.type === 'window') horiz ? line(o.a, mid, o.b, mid, 90) : line(mid, o.a, mid, o.b, 90);
-      if (o.type === 'door') {                                                     // leaf + swing arc, thin
-        const wd = o.b - o.a;
-        for (let i = 0; i <= 12; i++) { const t = i / 12 * Math.PI / 2; horiz ? line(o.a + Math.cos(t) * wd, mid + Math.sin(t) * wd, o.a + Math.cos(t + 0.13) * wd, mid + Math.sin(t + 0.13) * wd, 120) : line(mid + Math.sin(t) * wd, o.a + Math.cos(t) * wd, mid + Math.sin(t + 0.13) * wd, o.a + Math.cos(t + 0.13) * wd, 120); }
+      if (o.type === 'door') {                                                     // leaf + swing arc, thin, from the hinge end to the side it swings to
+        const wd = o.b - o.a, hp = o.hinge === 'b' ? o.b : o.a, dir = o.hinge === 'b' ? -1 : 1;
+        const side = horiz ? (o.swing === 'n' ? -1 : 1) : (o.swing === 'w' ? -1 : 1);
+        const at = (t, off) => horiz ? [hp + dir * t, mid + off] : [mid + off, hp + dir * t];
+        for (let i = 0; i <= 12; i++) { const t = i / 12 * Math.PI / 2, a = at(Math.cos(t) * wd, side * Math.sin(t) * wd), b = at(Math.cos(t + 0.13) * wd, side * Math.sin(t + 0.13) * wd); line(a[0], a[1], b[0], b[1], 120); }
+        const l0 = at(0, 0), l1 = at(0, side * wd); line(l0[0], l0[1], l1[0], l1[1], 100);
       }
     }
   }
@@ -85,7 +110,18 @@ function score(detected, house, margin) {
   const truth = new Uint8Array(nx * ny), det = new Uint8Array(nx * ny), truthExt = new Int8Array(nx * ny).fill(-1), detExt = new Int8Array(nx * ny).fill(-1);
   const paint = (arr, ext, x0, y0, x1, y1, e) => { for (let j = Math.max(0, Math.floor((y0 + margin) / G)); j < Math.min(ny, Math.ceil((y1 + margin) / G)); j++) for (let i = Math.max(0, Math.floor((x0 + margin) / G)); i < Math.min(nx, Math.ceil((x1 + margin) / G)); i++) { arr[j * nx + i] = 1; ext[j * nx + i] = e; } };
   for (const q of house.walls) if (q.status !== 'removed') paint(truth, truthExt, q.x0, q.y0, q.x1, q.y1, q.ext ? 1 : 0);
-  for (const q of detected) { const r = q.axis === 'h' ? [q.a, q.c - q.t / 2, q.b, q.c + q.t / 2] : [q.c - q.t / 2, q.a, q.c + q.t / 2, q.b]; paint(det, detExt, r[0] - margin, r[1] - margin, r[2] - margin, r[3] - margin, q.ext ? 1 : 0); }
+  const paintSlant = (arr, ext, p, t, e) => {                                       // cells whose centre is inside the angled wall
+    const L = Math.hypot(p[2] - p[0], p[3] - p[1]), u = [(p[2] - p[0]) / L, (p[3] - p[1]) / L];
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      const px = (i + 0.5) * G - margin - p[0], py = (j + 0.5) * G - margin - p[1], a = px * u[0] + py * u[1], o = -px * u[1] + py * u[0];
+      if (a >= 0 && a <= L && Math.abs(o) <= t / 2) { arr[j * nx + i] = 1; ext[j * nx + i] = e; }
+    }
+  };
+  for (const S of house.slants || []) if (S.status !== 'removed') paintSlant(truth, truthExt, [S.p0[0], S.p0[1], S.p0[0] + S.u[0] * S.len, S.p0[1] + S.u[1] * S.len], S.t, S.ext ? 1 : 0);
+  for (const q of detected) {
+    if (q.axis === 'l') { paintSlant(det, detExt, [q.p[0] - margin, q.p[1] - margin, q.p[2] - margin, q.p[3] - margin], q.t, q.ext ? 1 : 0); continue; }
+    const r = q.axis === 'h' ? [q.a, q.c - q.t / 2, q.b, q.c + q.t / 2] : [q.c - q.t / 2, q.a, q.c + q.t / 2, q.b]; paint(det, detExt, r[0] - margin, r[1] - margin, r[2] - margin, r[3] - margin, q.ext ? 1 : 0);
+  }
   let t = 0, d = 0, both = 0, extOk = 0, extN = 0;
   for (let i = 0; i < truth.length; i++) { if (truth[i]) t++; if (det[i]) d++; if (truth[i] && det[i]) { both++; extN++; if (truthExt[i] === detExt[i]) extOk++; } }
   return { recall: both / t, precision: both / d, extAgreement: extN ? extOk / extN : 0 };

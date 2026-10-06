@@ -105,9 +105,9 @@ The editor can suggest the walls in a blueprint (`tracer.js`). It uses classic i
 - [x] **Find all rooms:** turns every closed space into a room in one press.
 - [x] Tested in Node on blueprints drawn from both example houses, with noise, shading, blur, text, dimension lines, fixture outlines and tilt (`tests/tracer.test.js`). On those: roughly 90% or more of the wall area is found (85% in the blurriest photos), and about 90% of what is drawn is real wall. The same flow worked in the browser on a tilted, shaded, JPEG-compressed picture with lettering.
 - [ ] Not tested on real scans of many different plans. Hand-drawn plans, curved lines and low-contrast photos are the likely weak spots; please send examples.
-- [ ] Walls drawn at an angle (not horizontal or vertical) are not found. Angled walls now exist (below), so the tracer can learn to find them; for now draw those by hand.
+- [x] **Walls at an angle:** after the level and plumb walls are found, what ink is left is searched for directions that edges line up in; each direction is turned level and searched the same way. Pieces on one line across a door gap are joined, ends go on to the centre line of the wall they meet, and anything that joins nothing, lies along a straight wall, or meets one at a very shallow angle (under 20°, unless it is long) is dropped as leftover ink. A cut corner and a diagonal partition are found in the tests (`tests/tracer.test.js`). A bay whose sides are mostly window is not: a window leaves almost no wall to see.
 - [ ] Scale from the dimension text on the plan (needs lettering recognition).
-- [ ] Telling doors from windows by their symbols (door swing arcs, window panes) instead of by wall type and width.
+- [x] **Doors from windows by their symbols:** a gap with a quarter-circle swing is a door, with its hinge end and the side it swings to; a gap with a line along it is a window. Without either, the old guess from the wall type and the width applies. On the Waterford test plan about 80% or more of the doors come back with the right hinge and swing.
 - [ ] A learned model (for example one trained on the CubiCasa5K data set) as an optional extra for plans the classic method can't read. It would be an opt-in download that runs on your own computer, never a paid service.
 
 ### Angled walls ✅ (first version)
@@ -119,7 +119,6 @@ Walls at any angle: a cut corner, a bay window, a diagonal partition. The exampl
 - [x] **Paint Studio, floor plan and walkthrough:** angled walls with their trim, windows and doors, painted and clicked like any other; the walkthrough does not walk through them.
 - [x] **Blender:** the add-on and `build_house.py` build them with the same materials.
 - [x] **Plan editor:** an **Angled** switch (or `Shift`) draws walls that snap to 15°, to wall ends and to crossings; ends and whole walls can be dragged, their length and angle typed; doors and windows can be put in them; **Room** and **Find all rooms** outline spaces against them.
-- [ ] The tracer does not find angled walls yet.
 - [ ] Fixtures (cabinets, appliances) stay square to the plan and cannot back onto an angled wall.
 - [ ] A free-standing angled wall inside one room (a peninsula) needs a room outline made to follow it.
 - [ ] Curved walls.

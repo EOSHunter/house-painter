@@ -556,7 +556,7 @@
   }
 
   // ------------------------------------------------------------------ assisted tracing (tracer.js does the finding)
-  const TR = { opts: { style: 'solid', minLen: 2.5, sensitivity: 0.8, openings: true }, res: null, off: new Set(), busy: false, ms: 0 };
+  const TR = { opts: { style: 'solid', minLen: 2.5, sensitivity: 0.8, openings: true, symbols: true, angled: true }, res: null, off: new Set(), busy: false, ms: 0 };
   // the blueprint as a grey picture with its axes level: scaled, shifted and rotated into plan feet, so one pixel is 1/ppf ft
   function rasterUnderlay(maxSide) {
     const u = S.underlay, c = underCorners();
@@ -593,7 +593,9 @@
     setTimeout(() => {
       try {
         const t0 = performance.now(), r = rasterUnderlay(), out = HouseTracer.detect(r.gray, r.W, r.H, r.ppf, TR.opts);
-        TR.res = out.walls.map(w => { const ox = w.axis === 'h' ? r.minx : r.miny, oc = w.axis === 'h' ? r.miny : r.minx;
+        TR.res = out.walls.map(w => {
+          if (w.axis === 'l') return { ...w, p: [w.p[0] + r.minx, w.p[1] + r.miny, w.p[2] + r.minx, w.p[3] + r.miny] };      // an angled wall's openings are along the wall already
+          const ox = w.axis === 'h' ? r.minx : r.miny, oc = w.axis === 'h' ? r.miny : r.minx;
           return { ...w, a: w.a + ox, b: w.b + ox, c: w.c + oc, openings: w.openings.map(o => ({ ...o, a: o.a + ox, b: o.b + ox })) }; });
         TR.off.clear(); TR.ms = performance.now() - t0;
         if (!TR.res.length) toast('No walls found. Try another wall style or a lower "Shortest wall".');
@@ -608,15 +610,20 @@
     checkpoint();
     const first = !S.walls.length; let added = 0, skipped = 0, ops = 0;
     for (const w of todo) {
-      if (S.walls.some(e => e.axis === w.axis && Math.abs(e.c - w.c) < 0.35 && Math.min(e.b, w.b) - Math.max(e.a, w.a) > 0.5 * (w.b - w.a))) { skipped++; continue; }   // already drawn
+      const dup = w.axis === 'l'
+        ? S.walls.some(e => isL(e) && ((Math.hypot(e.p[0] - w.p[0], e.p[1] - w.p[1]) < 0.7 && Math.hypot(e.p[2] - w.p[2], e.p[3] - w.p[3]) < 0.7) || (Math.hypot(e.p[0] - w.p[2], e.p[1] - w.p[3]) < 0.7 && Math.hypot(e.p[2] - w.p[0], e.p[3] - w.p[1]) < 0.7)))
+        : S.walls.some(e => e.axis === w.axis && Math.abs(e.c - w.c) < 0.35 && Math.min(e.b, w.b) - Math.max(e.a, w.a) > 0.5 * (w.b - w.a));
+      if (dup) { skipped++; continue; }                                                                                        // already drawn
       const openings = w.openings.map(o => {
         const op = { uid: uid(), a: r4(o.a), b: r4(o.b), type: o.type };
-        if (o.type === 'door') { op.hinge = 'a'; op.swing = w.axis === 'h' ? 's' : 'e'; }
+        if (o.type === 'door') { op.hinge = o.hinge || 'a'; op.swing = o.swing || (w.axis === 'l' ? 'r' : w.axis === 'h' ? 's' : 'e'); }
         if (o.type === 'window') op.panes = Math.max(1, Math.min(4, Math.round((o.b - o.a) / 2.5)));
         return op;
       });
       ops += openings.length;
-      S.walls.push({ uid: uid(), axis: w.axis, c: r4(w.c), a: r4(w.a), b: r4(w.b), t: r4(w.t), ext: !!w.ext, status: 'keep', extra: {}, openings }); added++;
+      if (w.axis === 'l') { const nw = { uid: uid(), axis: 'l', t: r4(w.t), ext: !!w.ext, status: 'keep', extra: {}, openings }; setLine(nw, w.p); S.walls.push(nw); }
+      else S.walls.push({ uid: uid(), axis: w.axis, c: r4(w.c), a: r4(w.a), b: r4(w.b), t: r4(w.t), ext: !!w.ext, status: 'keep', extra: {}, openings });
+      added++;
     }
     if (first) {                                                   // the house's own typical wall thickness, for walls drawn later
       const med = ext => { const v = todo.filter(w => !!w.ext === ext).map(w => w.t).sort((p, q) => p - q); return v.length ? v[v.length >> 1] : null; };
@@ -628,6 +635,12 @@
   function renderTrace() {
     const k = pxFt();
     $('#lTrace').innerHTML = !(TR.res && tool === 'trace') ? '' : TR.res.map((w, i) => {
+      if (w.axis === 'l') {                                                       // an angled suggestion, drawn level inside a rotated group
+        const off = TR.off.has(i), V = { p: w.p }, len = Math.hypot(w.p[2] - w.p[0], w.p[3] - w.p[1]);
+        let h = `<g class="sugg${off ? ' off' : ''}" data-kind="sugg" data-i="${i}" transform="${lineTf(V)}"><rect class="sbody" x="0" y="${N(-w.t / 2)}" width="${N(len)}" height="${N(w.t)}"/><rect class="shit" x="${N(-4 * k)}" y="${N(-w.t / 2 - 4 * k)}" width="${N(len + 8 * k)}" height="${N(w.t + 8 * k)}"/>`;
+        if (!off) for (const o of w.openings) h += `<rect class="sgap ${o.type}" x="${N(o.a)}" y="${N(-w.t / 2 - 2 * k)}" width="${N(o.b - o.a)}" height="${N(w.t + 4 * k)}"/>`;
+        return h + '</g>';
+      }
       const off = TR.off.has(i), r = w.axis === 'h' ? [w.a, w.c - w.t / 2, w.b - w.a, w.t] : [w.c - w.t / 2, w.a, w.t, w.b - w.a];
       let h = `<g class="sugg${off ? ' off' : ''}" data-kind="sugg" data-i="${i}"><rect class="sbody" x="${N(r[0])}" y="${N(r[1])}" width="${N(r[2])}" height="${N(r[3])}"/><rect class="shit" x="${N(r[0] - 4 * k)}" y="${N(r[1] - 4 * k)}" width="${N(r[2] + 8 * k)}" height="${N(r[3] + 8 * k)}"/>`;
       if (!off) for (const o of w.openings) {
@@ -646,7 +659,8 @@
     if (f === 'tr_style') TR.opts.style = v;
     if (f === 'tr_minlen') { const n = parseLen(v); if (n >= 1.5 && n <= 12) TR.opts.minLen = n; }
     if (f === 'tr_sens') TR.opts.sensitivity = +v;
-    if (f === 'tr_open') TR.opts.openings = v === '1';
+    if (f === 'tr_open') { TR.opts.openings = v !== '0'; TR.opts.symbols = v === '1'; }
+    if (f === 'tr_angled') TR.opts.angled = v === '1';
     TR.res = null; render(); renderSide();
   }
 
@@ -1444,7 +1458,8 @@
         ${field('Shortest wall', 'tr_minlen', TR.opts.minLen, { len: 1 })}
         <label class="field">Sensitivity<input type="range" min="0.6" max="0.95" step="0.01" value="${TR.opts.sensitivity}" data-f="tr_sens" aria-label="Sensitivity"></label>
         <p class="note" style="margin-top:-6px">Raise it for a faint photo, lower it when too much is picked up.</p>
-        ${field('Doors and windows', 'tr_open', TR.opts.openings ? '1' : '0', { select: [['1', 'Suggest them from the gaps in walls'], ['0', 'Walls only']] })}
+        ${field('Doors and windows', 'tr_open', !TR.opts.openings ? '0' : TR.opts.symbols ? '1' : '2', { select: [['1', 'From the gaps, and the swing arcs and window lines drawn in them'], ['2', 'From the gaps only'], ['0', 'Walls only']] })}
+        ${field('Walls at an angle', 'tr_angled', TR.opts.angled ? '1' : '0', { select: [['1', 'Look for them (cut corners, bays, diagonal walls)'], ['0', 'Only level and plumb walls']] })}
         <div class="actions"><button class="btn primary" data-act="trace-run"${TR.busy ? ' disabled' : ''}>${r ? 'Find again' : 'Find walls'}</button></div>`;
       if (r) h += `<h3 style="font-size:14px">${kept.length} of ${r.length} walls kept</h3>
         <p class="note">${r.filter(w => w.ext).length} outside, ${r.filter(w => !w.ext).length} inside, ${r.reduce((t, w) => t + w.openings.length, 0)} gaps (as doors and windows). Found in ${(TR.ms / 1000).toFixed(1)} s. Click an orange wall to leave it out, click it again to bring it back. Door and window types are guesses: you can change each one afterwards.</p>
