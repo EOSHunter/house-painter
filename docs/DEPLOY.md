@@ -128,7 +128,7 @@ connect-src 'self' data: blob:; object-src 'none'; base-uri 'self'
         loading="lazy"></iframe>
 ```
 
-Any page can be embedded, the landing page `/` included: it has no header or nav of its own (the host page has one). Its **R7 Orbit** mark at the top links to `https://r7orbit.io` with `target="_top"`, and its GitHub, docs and licence links in the footer use `target="_blank" rel="noopener"`, so none of them tries to load inside the frame (GitHub refuses to be framed). The last four rows below are for those links; `/paint`, `/editor` and `/floorplan` never use them.
+Any page can be embedded, the landing page `/` included: it has the R7 Orbit site header (the wordmark and the News, Blog, Vlogs, Projects and About links). Embedded on r7orbit.io you may prefer to embed `/paint` so the page does not show two headers. Every header link goes to `https://r7orbit.io` with `target="_top"`, and its GitHub, docs and licence links in the footer use `target="_blank" rel="noopener"`, so none of them tries to load inside the frame (GitHub refuses to be framed). The last four rows below are for those links; `/paint`, `/editor` and `/floorplan` never use them.
 The studio links to the editor and back inside the same frame, and `/paint.html` and `/paint` both work (Pages redirects the first to the second, keeping `?query` and `#hash`).
 
 What the app needs from the iframe, as tested in Chromium (`node tools/e2e/embed.js`):
