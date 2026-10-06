@@ -63,6 +63,8 @@ Trace along the **centre line** of each wall. The editor gives walls their thick
 
 **4. Inside walls.** Draw each wall from one end to the other. Their ends snap to the walls they meet, and a joint with another wall is cleaned up for you.
 
+**More than one floor.** In the **Floors** list on the left, press **Add a floor above**: the outside walls are copied to start you off, and the floor below shows faintly underneath. Draw its walls, doors, windows and rooms the same way. For stairs, put **Straight stairs** on the lower floor (the Fixture tool), then use **Stairwell** (`U`) on the floor above to cut the hole they come up through.
+
 **5. Doors, windows and openings.** Press `D` (door), `N` (window) or `O` (a doorway with no door) and click on a wall. Then:
 - Drag a door's ends to size it, or drag its middle to slide it along the wall.
 - In the panel on the right, set which side the hinge is on and which way it swings.

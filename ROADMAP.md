@@ -131,10 +131,19 @@ Walls at any angle: a cut corner, a bay window, a diagonal partition. The exampl
 - [ ] Ceilings that are not one plane or two across a room: hips, domes, trays, beams.
 - [ ] A ceiling that slopes through two rooms (a ridge that carries on through an open-plan space) is two separate ceilings today.
 
+### More than one floor ✅ (first version)
+
+- [x] **Floors above the ground floor** (`levels` in the house file): each has its own walls, rooms and fixtures, stacked on a slab with a stairwell (`voids`) cut in it. The example is `houses/two-storey/`.
+- [x] **Straight stairs** (a fixture): solid steps climbing to the next floor.
+- [x] **Studio:** every floor's rooms are listed, with a Floors switch to show up to a chosen floor; the walkthrough walks up and down the stairs (and can't step through a stairwell); Blender builds every floor at its own height; the floor plan page shows one floor at a time.
+- [x] **Plan editor:** a Floors list (add, rename, delete, switch), the floor below shown faintly, a Stairwell tool.
+- [ ] Turning stairs (an L or a U with a landing), spiral stairs, and railings round a stairwell.
+- [ ] A basement, split levels, and an upper floor that overhangs the one below it.
+- [ ] Heights for a whole upper floor in the plan editor (the house's heights are used).
+
 ### Other ideas
 
 - [ ] Imports: Apple RoomPlan (iPhone LiDAR) USDZ/JSON, DXF, and SVG.
-- [ ] Multiple storeys and stairs.
 - [ ] Exterior detail: roof, porch and siding profiles.
 
 ## Known limits today
