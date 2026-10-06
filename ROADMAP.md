@@ -81,7 +81,7 @@ Still to do:
 - [x] **Paint brands:** the project ships its own palette, 124 original colours (`paint-colors.js`, built by `data/build_palette.js`). Sherwin-Williams and Behr are no longer part of it. A paint maker's book is an optional extra that you build from data you download yourself (`paint-colors-extra.js`, git-ignored): see [data/README.md](data/README.md). The studio shows the palette, plus an extra tab for each book it finds. The seven example schemes and the example export were remapped to the nearest palette colours (the biggest shift is 6 dE).
 - [x] **Blender add-on** (`blender_addon/`, Blender 4.2+ extension): **File > Import > House Painter scheme (.json)**. Tested end to end, from the source tree and from the packaged zip (`python tools/build_addon.py`, then `blender -b --factory-startup -P tools/test_addon.py`), and the manifest validates with Blender's own checker.
 - [x] **GitHub Pages:** `index.html` is the start page, `tools/build_site.js` assembles the site, and `.github/workflows/pages.yml` deploys it.
-- [x] **Tests and CI:** 36 unit tests (`npm test`) run on every push. The surface IDs and areas of both example houses are locked by snapshot, and the tests also check the palette, the shipped schemes and every file a page loads.
+- [x] **Tests and CI:** 63 unit tests (`npm test`) run on every push. The surface IDs and areas of both example houses are locked by snapshot, and the tests also check the palette, the shipped schemes and every file a page loads.
 - [x] **Community files:** CONTRIBUTING, a code of conduct, issue and pull request templates.
 - [x] **Docs:** a [getting-started guide](docs/getting-started.md) with pictures, including "trace your house in 15 minutes".
 
@@ -105,20 +105,33 @@ The editor can suggest the walls in a blueprint (`tracer.js`). It uses classic i
 - [x] **Find all rooms:** turns every closed space into a room in one press.
 - [x] Tested in Node on blueprints drawn from both example houses, with noise, shading, blur, text, dimension lines, fixture outlines and tilt (`tests/tracer.test.js`). On those: roughly 90% or more of the wall area is found (85% in the blurriest photos), and about 90% of what is drawn is real wall. The same flow worked in the browser on a tilted, shaded, JPEG-compressed picture with lettering.
 - [ ] Not tested on real scans of many different plans. Hand-drawn plans, curved lines and low-contrast photos are the likely weak spots; please send examples.
-- [ ] Walls drawn at an angle (not horizontal or vertical) are not found; that waits for angled walls (below).
+- [ ] Walls drawn at an angle (not horizontal or vertical) are not found. Angled walls now exist (below), so the tracer can learn to find them; for now draw those by hand.
 - [ ] Scale from the dimension text on the plan (needs lettering recognition).
 - [ ] Telling doors from windows by their symbols (door swing arcs, window panes) instead of by wall type and width.
 - [ ] A learned model (for example one trained on the CubiCasa5K data set) as an optional extra for plans the classic method can't read. It would be an opt-in download that runs on your own computer, never a paid service.
+
+### Angled walls ✅ (first version)
+
+Walls at any angle: a cut corner, a bay window, a diagonal partition. The example house `houses/bay-cottage/` has a cut entry corner and a three-sided bay.
+
+- [x] **House file:** a wall can be a centre `line` with a thickness; rooms can have `polys` outlines ([format](docs/house-format.md#angled-walls)).
+- [x] **Core:** corners are mitred and closed, rooms and the outside are found along the angle, and every face becomes a paint surface named by compass (`LIV-SE`, `EXT-NE`). Straight houses are unchanged: their surface IDs are locked by the snapshots.
+- [x] **Paint Studio, floor plan and walkthrough:** angled walls with their trim, windows and doors, painted and clicked like any other; the walkthrough does not walk through them.
+- [x] **Blender:** the add-on and `build_house.py` build them with the same materials.
+- [x] **Plan editor:** an **Angled** switch (or `Shift`) draws walls that snap to 15°, to wall ends and to crossings; ends and whole walls can be dragged, their length and angle typed; doors and windows can be put in them; **Room** and **Find all rooms** outline spaces against them.
+- [ ] The tracer does not find angled walls yet.
+- [ ] Fixtures (cabinets, appliances) stay square to the plan and cannot back onto an angled wall.
+- [ ] A free-standing angled wall inside one room (a peninsula) needs a room outline made to follow it.
+- [ ] Curved walls.
 
 ### Other ideas
 
 - [ ] Imports: Apple RoomPlan (iPhone LiDAR) USDZ/JSON, DXF, and SVG.
 - [ ] Vaulted and sloped ceilings, and a ceiling height per room.
-- [ ] Walls that aren't straight lines: angled and curved walls.
 - [ ] Multiple storeys and stairs.
 - [ ] Exterior detail: roof, porch and siding profiles.
 
 ## Known limits today
 
-- Walls must be horizontal or vertical (so the tracer also only finds those). Ceilings are flat, at one height for the whole house, and there is one storey.
+- Walls are straight. They can run at any angle, but the tracer only finds horizontal and vertical ones, and fixtures stay square to the plan. Ceilings are flat, at one height for the whole house, and there is one storey.
 - Saved colours are tied to surface IDs (such as `BR1-N`). If walls change in a way that renames surfaces, the colours on the renamed walls are lost.

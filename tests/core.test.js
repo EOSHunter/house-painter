@@ -132,3 +132,73 @@ test('a removed wall disappears from rooms and surfaces', () => {
   const { ROOMS } = HouseCore.build(src);
   assert.ok(!ROOMS.surfaces.some(s => s.id === 'L-E'));
 });
+
+// ---------------------------------------------------------------------------------------------- angled walls
+const bay = () => load('bay-cottage');
+
+test('angled walls: validation checks line walls and room outlines', () => {
+  const ok = bay(); assert.deepEqual(HouseCore.validate(ok), []);
+  const short = bay(); short.walls[0].line = [0, 0, 0.1, 0];
+  assert.ok(HouseCore.validate(short).some(p => /Wall 0/.test(p)), 'a wall under half a foot is refused');
+  const bad = bay(); bad.walls[1].line = [26, 0, 32];
+  assert.ok(HouseCore.validate(bad).some(p => /Wall 1/.test(p)));
+  const op = bay(); op.walls[1].openings = [{ a: 2, b: 50, type: 'door' }];
+  assert.ok(HouseCore.validate(op).some(p => /Wall 1/.test(p)), 'an opening has to lie along the wall');
+  const poly = bay(); poly.rooms[2].polys = [[[0, 0], [5, 5]]];
+  assert.ok(HouseCore.validate(poly).some(p => /Room 2/.test(p)), 'an outline needs three points');
+});
+
+test('angled walls: a line wall that runs along an axis is the same wall as a plain one', () => {
+  const a = box(), b = box();
+  b.walls[0] = { line: [0, 0.25, 20, 0.25], t: 0.5, ext: 1, openings: a.walls[0].openings };
+  const A = HouseCore.build(a).ROOMS, B = HouseCore.build(b).ROOMS;
+  assert.equal(HouseCore.build(b).HOUSE.slants.length, 0);
+  assert.deepEqual(B.surfaces.map(s => [s.id, s.area]), A.surfaces.map(s => [s.id, s.area]));
+});
+
+test('angled walls: the corner is mitred so two walls at an angle close up with no gap', () => {
+  const { HOUSE } = HouseCore.build(bay());
+  assert.equal(HOUSE.slants.length, 3);
+  const cut = HOUSE.slants.find(s => s.id === 'entry-cut');
+  assert.ok(Math.abs(cut.len - Math.hypot(6, 6)) < 1e-6);
+  // a 0.5 ft wall meeting a 0.5 ft wall at 45 degrees: each runs on past the line by (t/2)/tan + (t/2)/sin of the turn, less the far wall's own half
+  assert.ok(cut.e0 > 0.05 && cut.e0 < 0.2 && Math.abs(cut.e0 - cut.e1) < 1e-6, [cut.e0, cut.e1].join());
+});
+
+test('angled walls: rooms follow the outline, and what is outside the angled corner is outside', () => {
+  const { ROOMS } = HouseCore.build(bay());
+  assert.equal(ROOMS.roomAt(5, 5), 'bedroom');
+  assert.equal(ROOMS.roomAt(28, 10), 'living');
+  assert.equal(ROOMS.roomAt(15, 5), 'bath');
+  assert.equal(ROOMS.roomAt(31.5, 0.5), 'exterior', 'the corner the cut removed');
+  assert.equal(ROOMS.roomAt(15, 23.5), 'living', 'inside the bay');
+  assert.equal(ROOMS.roomAt(11, 23.8), 'exterior', 'beside the bay');
+  assert.equal(ROOMS.roomAt(29, 2.9), null, 'inside the angled wall itself');
+});
+
+test('angled walls: every face is a surface named by compass, with no slivers', () => {
+  const { ROOMS } = HouseCore.build(bay());
+  const slant = ROOMS.surfaces.filter(s => s.slant !== undefined);
+  assert.deepEqual(slant.map(s => s.id).sort(), ['EXT-NE', 'EXT-NW', 'EXT-SW', 'LIV-NE', 'LIV-SE', 'LIV-SW']);
+  for (const s of ROOMS.surfaces) assert.ok(s.length > 0.3, `${s.id} is ${s.length} ft long`);
+  const ne = slant.find(s => s.id === 'LIV-NE');
+  assert.ok(Math.abs(ne.length - 8.49) < 0.3, 'length ' + ne.length);
+  // the door in the cut corner is 3 ft wide and 6.833 ft tall
+  assert.ok(Math.abs(ne.area - (ne.length * 9 - 3 * 6.833)) < 0.6, 'area ' + ne.area);
+});
+
+test('angled walls: drawing a line the other way round changes nothing', () => {
+  const flip = bay();
+  const w = flip.walls[1], len = Math.hypot(6, 6);
+  flip.walls[1] = { ...w, line: [32, 6, 26, 0], openings: [{ a: len - 5.7, b: len - 2.7, type: 'door', hinge: 'b', swing: 'l' }] };
+  const A = HouseCore.build(bay()).ROOMS.surfaces.map(s => [s.id, s.length, s.area]);
+  const B = HouseCore.build(flip).ROOMS.surfaces.map(s => [s.id, s.length, s.area]);
+  assert.deepEqual(B, A);
+});
+
+test('angled walls: the Blender export carries the angled walls', () => {
+  const { HOUSE, ROOMS } = HouseCore.build(bay());
+  const b = HouseCore.forBlender(HOUSE, ROOMS);
+  assert.equal(b.slants.length, 3);
+  assert.ok(b.surfaces.some(s => s.slant !== undefined));
+});

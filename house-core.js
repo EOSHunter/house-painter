@@ -26,9 +26,15 @@
     if (!num(src.W) || src.W <= 0 || !num(src.D) || src.D <= 0) p.push('"W" and "D" (overall width and depth in feet) must be positive numbers.');
     if (!Array.isArray(src.walls) || !src.walls.length) p.push('"walls" must be a non-empty list.');
     else src.walls.forEach((w, i) => {
-      if (![w.x0, w.y0, w.x1, w.y1].every(num) || w.x1 <= w.x0 || w.y1 <= w.y0) p.push(`Wall ${i}: needs x0 < x1 and y0 < y1 (a rectangle in feet).`);
+      let len = Infinity;
+      if (w.line !== undefined) {
+        if (!Array.isArray(w.line) || w.line.length !== 4 || !w.line.every(num)) p.push(`Wall ${i}: "line" must be [x0, y0, x1, y1], the wall's centre line in feet.`);
+        else if ((len = Math.hypot(w.line[2] - w.line[0], w.line[3] - w.line[1])) < 0.5) p.push(`Wall ${i}: the line is shorter than half a foot.`);
+        if (w.t !== undefined && !(num(w.t) && w.t > 0 && w.t < 3)) p.push(`Wall ${i}: "t" (thickness in feet) must be between 0 and 3.`);
+      } else if (![w.x0, w.y0, w.x1, w.y1].every(num) || w.x1 <= w.x0 || w.y1 <= w.y0) p.push(`Wall ${i}: needs x0 < x1 and y0 < y1 (a rectangle in feet), or a "line".`);
       (w.openings || []).forEach((o, j) => {
         if (!num(o.a) || !num(o.b) || o.b <= o.a) p.push(`Wall ${i}, opening ${j}: needs a < b (feet along the wall).`);
+        else if (w.line !== undefined && (o.a < -1e-6 || o.b > len + 1e-6)) p.push(`Wall ${i}, opening ${j}: on an angled wall, a and b are feet from the start of the line, from 0 to ${Math.round(len * 100) / 100}.`);
         if (!['door', 'window', 'cased', 'panel'].includes(o.type)) p.push(`Wall ${i}, opening ${j}: type must be door, window, cased or panel.`);
       });
     });
@@ -40,7 +46,11 @@
         else if (ids.has(r.id)) p.push(`Room ${i}: duplicate id "${r.id}".`);
         ids.add(r.id);
         if (r.id === 'exterior' || r.id === 'house') p.push(`Room ${i}: "${r.id}" is a reserved id.`);
-        if (!Array.isArray(r.rects) || !r.rects.length || !r.rects.every(q => Array.isArray(q) && q.length === 4 && q.every(num))) p.push(`Room ${i}: "rects" must be a list of [x0, y0, x1, y1].`);
+        const hasPolys = Array.isArray(r.polys) && r.polys.length;
+        if (r.rects !== undefined || !hasPolys) {
+          if (!Array.isArray(r.rects) || (!r.rects.length && !hasPolys) || !r.rects.every(q => Array.isArray(q) && q.length === 4 && q.every(num))) p.push(`Room ${i}: "rects" must be a list of [x0, y0, x1, y1].`);
+        }
+        if (r.polys !== undefined && (!Array.isArray(r.polys) || !r.polys.every(poly => Array.isArray(poly) && poly.length >= 3 && poly.every(v => Array.isArray(v) && v.length === 2 && v.every(num))))) p.push(`Room ${i}: "polys" must be a list of polygons, each a list of at least three [x, y] points.`);
       });
     }
     (src.items || []).forEach((it, i) => {
@@ -93,6 +103,100 @@
     }
   }
 
+  // ------------------------------------------------------------------ angled walls
+  /*
+   * A wall given as { "line": [x0, y0, x1, y1], "t": thickness } runs between any two points. A line that happens to be
+   * horizontal or vertical becomes an ordinary rectangle wall (so everything that already works for those still does);
+   * a truly angled one becomes a "slant", handled alongside the rectangles. Openings on a slant are measured in feet
+   * from the start of its line, and a door's swing is 'l' or 'r' (left or right of the way the line runs).
+   */
+  const EPS_LINE = 1e-6;
+  function splitWalls(list, E, T) {
+    const ortho = [], slants = [];
+    for (const w of list) {
+      if (!w.line) { ortho.push(w); continue; }
+      const [x0, y0, x1, y1] = w.line, t = w.t || (w.ext ? E : T), { line, t: _t, openings, ...rest } = w;
+      const horiz = Math.abs(y1 - y0) < EPS_LINE, vert = Math.abs(x1 - x0) < EPS_LINE;
+      if (horiz || vert) {                                          // an ordinary wall in a different notation
+        const rev = horiz ? x1 < x0 : y1 < y0, start = horiz ? x0 : y0, lo = Math.min(horiz ? x0 : y0, horiz ? x1 : y1), hi = Math.max(horiz ? x0 : y0, horiz ? x1 : y1);
+        const ux = horiz ? (rev ? -1 : 1) : 0, uy = vert ? (rev ? -1 : 1) : 0;
+        const ops = (openings || []).map(o => {
+          const q = { ...o };
+          if (rev) { q.a = start - o.b; q.b = start - o.a; if (o.hinge) q.hinge = o.hinge === 'a' ? 'b' : 'a'; } else { q.a = start + o.a; q.b = start + o.b; }
+          if (o.swing === 'l' || o.swing === 'r') { const nx = o.swing === 'l' ? uy : -uy, ny = o.swing === 'l' ? -ux : ux; q.swing = horiz ? (ny < 0 ? 'n' : 's') : (nx > 0 ? 'e' : 'w'); }
+          return q;
+        });
+        ortho.push(horiz ? { ...rest, x0: lo, x1: hi, y0: y0 - t / 2, y1: y0 + t / 2, openings: ops } : { ...rest, x0: x0 - t / 2, x1: x0 + t / 2, y0: lo, y1: hi, openings: ops });
+      } else slants.push({ ...rest, line: [x0, y0, x1, y1], t, openings: openings || [] });
+    }
+    return { ortho, slants };
+  }
+  function slantGeometry(w, i, heights) {
+    const [x0, y0, x1, y1] = w.line, len = Math.hypot(x1 - x0, y1 - y0), u = [(x1 - x0) / len, (y1 - y0) / len];
+    const S = { i, id: w.id || null, ext: !!w.ext, status: w.status || 'keep', t: w.t, p0: [x0, y0], p1: [x1, y1], len, u, nl: [u[1], -u[0]], nr: [-u[1], u[0]], e0: 0, e1: 0, openings: w.openings.map(o => ({ ...o })) };
+    for (const o of S.openings) {
+      if (o.type === 'window') { o.z0 = o.sill ?? heights.windowSill; o.z1 = o.head ?? heights.windowHead; } else { o.z0 = 0; o.z1 = o.height ?? heights.door; }
+    }
+    return S;
+  }
+  // the four corners of a slant, ends included (counter-clockwise from the start's left side)
+  function slantPoly(S) {
+    const a = [S.p0[0] - S.u[0] * S.e0, S.p0[1] - S.u[1] * S.e0], b = [S.p1[0] + S.u[0] * S.e1, S.p1[1] + S.u[1] * S.e1], h = S.t / 2;
+    return [[a[0] + S.nl[0] * h, a[1] + S.nl[1] * h], [b[0] + S.nl[0] * h, b[1] + S.nl[1] * h], [b[0] + S.nr[0] * h, b[1] + S.nr[1] * h], [a[0] + S.nr[0] * h, a[1] + S.nr[1] * h]];
+  }
+  /*
+   * Where two walls meet end to end at an angle, each is carried on past the point where their centre lines meet, until the
+   * outer faces meet (a mitre). For walls of thickness tA and tB with angle theta between them, wall A is carried on by
+   * tA/2 * cot(theta) + tB/2 / sin(theta). A right angle gives half the other wall's thickness, as for ordinary corners.
+   * Walls that meet in the middle of another wall (a T) are left alone: the end hides inside the wall it meets.
+   */
+  function joinSlants(slants, ortho, orig) {
+    const ends = [];
+    slants.forEach(S => { if (S.status === 'removed') return;
+      ends.push({ k: 's', ref: S, end: 'a', P: S.p0, out: S.u, t: S.t }); ends.push({ k: 's', ref: S, end: 'b', P: S.p1, out: [-S.u[0], -S.u[1]], t: S.t }); });
+    ortho.forEach((w, i) => { if (w.status === 'removed') return;
+      const o = orig[i], h = o.axis === 'h', t = h ? w.y1 - w.y0 : w.x1 - w.x0;
+      if (Math.abs((h ? w.x0 : w.y0) - o.a) < 1e-6) ends.push({ k: 'o', ref: w, end: 'a', P: h ? [o.a, o.c] : [o.c, o.a], out: h ? [1, 0] : [0, 1], t });
+      if (Math.abs((h ? w.x1 : w.y1) - o.b) < 1e-6) ends.push({ k: 'o', ref: w, end: 'b', P: h ? [o.b, o.c] : [o.c, o.b], out: h ? [-1, 0] : [0, -1], t });
+    });
+    const done = new Set(), clamp = v => Math.max(-0.5, Math.min(3, v));
+    for (const e1 of ends) {
+      if (e1.k !== 's') continue;
+      const near = ends.filter(q => q !== e1 && Math.hypot(q.P[0] - e1.P[0], q.P[1] - e1.P[1]) < 0.2);
+      if (near.length !== 1) continue;                                           // a corner of exactly two walls
+      const e2 = near[0], key = (a, b) => ends.indexOf(a) + ',' + ends.indexOf(b);
+      if (done.has(key(e1, e2)) || done.has(key(e2, e1))) continue;
+      done.add(key(e1, e2));
+      const cos = Math.max(-1, Math.min(1, e1.out[0] * e2.out[0] + e1.out[1] * e2.out[1])), th = Math.acos(cos);
+      if (th > 175 * Math.PI / 180 || th < 8 * Math.PI / 180) continue;           // nearly straight on, or folded back: nothing to mitre
+      const eA = clamp((e1.t / 2) / Math.tan(th) + (e2.t / 2) / Math.sin(th)), eB = clamp((e2.t / 2) / Math.tan(th) + (e1.t / 2) / Math.sin(th));
+      e1.ref[e1.end === 'a' ? 'e0' : 'e1'] = eA;
+      if (e2.k === 's') e2.ref[e2.end === 'a' ? 'e0' : 'e1'] = eB;
+      else { const w = e2.ref, h = e2.out[0] !== 0;                              // carry the rectangle on along its own axis
+        if (h) { if (e2.end === 'a') w.x0 -= eB; else w.x1 += eB; } else { if (e2.end === 'a') w.y0 -= eB; else w.y1 += eB; } }
+      // the slant starts exactly where the other wall's centre line ends
+      const P = e2.P; if (e1.end === 'a') { e1.ref.p0 = [P[0], P[1]]; } else { e1.ref.p1 = [P[0], P[1]]; }
+    }
+    for (const S of slants) {                                                     // direction and length may have shifted a little
+      const dx = S.p1[0] - S.p0[0], dy = S.p1[1] - S.p0[1], len = Math.hypot(dx, dy), shift = len - S.len;
+      S.len = len; S.u = [dx / len, dy / len]; S.nl = [S.u[1], -S.u[0]]; S.nr = [-S.u[1], S.u[0]];
+      if (Math.abs(shift) > 1e-9 && S.openings.length) { /* openings stay where they were measured from the start of the line */ }
+      S.poly = slantPoly(S);
+    }
+  }
+
+  const COMPASS = ['North', 'Northeast', 'East', 'Southeast', 'South', 'Southwest', 'West', 'Northwest'], COMPASS_ID = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+  // which way the wall lies from the room: the face's normal points into the room, so the wall is the other way
+  function compassOf(n) { const a = (Math.atan2(-n[0], n[1]) * 180 / Math.PI + 360) % 360; return Math.round(a / 45) % 8; }
+  function pointInPoly(x, y, poly) {
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const [xi, yi] = poly[i], [xj, yj] = poly[j];
+      if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  }
+
   // ------------------------------------------------------------------ build
   function build(src) {
     const problems = validate(src);
@@ -100,8 +204,12 @@
     src = JSON.parse(JSON.stringify(src));
     const heights = Object.assign({}, DEFAULT_HEIGHTS, src.heights || {});
     const E = (src.wallThickness && src.wallThickness.exterior) || 0.5, T = (src.wallThickness && src.wallThickness.interior) || 0.33;
-    const walls = src.walls;
+    const { ortho: walls, slants: rawSlants } = splitWalls(src.walls, E, T);
+    const orig = walls.map(w => (w.x1 - w.x0) >= (w.y1 - w.y0) ? { axis: 'h', c: (w.y0 + w.y1) / 2, a: w.x0, b: w.x1 } : { axis: 'v', c: (w.x0 + w.x1) / 2, a: w.y0, b: w.y1 });   // centre lines before joinery
     joinWalls(walls);
+    const slants = rawSlants.map((w, i) => slantGeometry(w, i, heights));
+    if (slants.length) joinSlants(slants, walls, orig);
+    for (const S of slants) if (!S.poly) S.poly = slantPoly(S);
     // every opening gets its resolved height span, so renderers never need the defaults
     for (const w of walls) for (const o of w.openings || []) {
       if (o.type === 'window') { o.z0 = o.sill ?? heights.windowSill; o.z1 = o.head ?? heights.windowHead; }
@@ -113,11 +221,13 @@
       W: src.W, D: src.D, E, T, heights,
       floor: Object.assign({ name: 'Floor', color: '#B09672', plankW: 7 / 12, plankL: 4, dir: 'x' }, src.floor || {}),
       floorRects: src.floorRects || [[E, E, src.W - E, src.D - E]],
-      walls, fixtures: src.fixtures || [], items: src.items || [],
+      walls, slants, fixtures: src.fixtures || [], items: src.items || [],
       start: src.start || null, renderRooms: src.renderRooms || null,
       tints: plan.tints || [], labels: plan.labels || [], plan
     };
     const ROOMS = buildRooms(HOUSE, src.rooms, src.roomOrder);
+    // with angled walls the outline is not a rectangle, so the floor is what the rooms cover (unless the file says otherwise)
+    if (slants.length && !src.floorRects) HOUSE.floorRects = ROOMS.rooms.flatMap(r => r.shape);
     if (!HOUSE.start) HOUSE.start = startPoint(HOUSE, ROOMS);
     if (!HOUSE.renderRooms) HOUSE.renderRooms = ROOMS.rooms.filter(r => r.area >= 40).map(r => r.id);
     return { HOUSE, ROOMS };
@@ -131,16 +241,32 @@
    */
   function buildRooms(H, roomList, roomOrder) {
     const CEIL = H.heights.ceiling;
-    const rooms = roomList.map(r => ({ id: r.id, name: r.name || r.id, short: r.short || r.id.toUpperCase().slice(0, 4), rects: r.rects }));
+    const rooms = roomList.map(r => ({ id: r.id, name: r.name || r.id, short: r.short || r.id.toUpperCase().slice(0, 4), rects: r.rects || [], polys: r.polys || [] }));
     const byId = Object.fromEntries(rooms.map(r => [r.id, r]));
 
-    const walls = H.walls.filter(w => w.status !== 'removed');
-    const inWall = (x, y) => walls.some(w => x > w.x0 && x < w.x1 && y > w.y0 && y < w.y1);
+    const walls = H.walls.filter(w => w.status !== 'removed'), slants = H.slants.filter(S => S.status !== 'removed');
+    const inSlant = (x, y) => slants.some(S => { const dx = x - S.p0[0], dy = y - S.p0[1], s = dx * S.u[0] + dy * S.u[1], d = dx * S.nr[0] + dy * S.nr[1]; return s > -S.e0 && s < S.len + S.e1 && d > -S.t / 2 && d < S.t / 2; });
+    const inWall = (x, y) => walls.some(w => x > w.x0 && x < w.x1 && y > w.y0 && y < w.y1) || (slants.length > 0 && inSlant(x, y));
+    // with angled walls, "outside" is found by flooding in from the edge of the plan (a house with only straight walls never needs this)
+    let outsideCell = null;
+    if (slants.length) {
+      const G = 0.1, x0 = -1, y0 = -1, nx = Math.ceil((H.W + 2) / G), ny = Math.ceil((H.D + 2) / G), blocked = new Uint8Array(nx * ny), out = new Uint8Array(nx * ny);
+      for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) blocked[j * nx + i] = inWall(x0 + (i + 0.5) * G, y0 + (j + 0.5) * G) ? 1 : 0;
+      const stack = [0]; out[0] = 1;
+      while (stack.length) {
+        const k = stack.pop(), i = k % nx, j = (k / nx) | 0;
+        for (const [a, b] of [[i + 1, j], [i - 1, j], [i, j + 1], [i, j - 1]]) { if (a < 0 || b < 0 || a >= nx || b >= ny) continue; const q = b * nx + a; if (!blocked[q] && !out[q]) { out[q] = 1; stack.push(q); } }
+      }
+      outsideCell = (x, y) => { const i = Math.floor((x - x0) / G), j = Math.floor((y - y0) / G); return i < 0 || j < 0 || i >= nx || j >= ny || !!out[j * nx + i]; };
+    }
     function roomAt(x, y) {
+      if (inWall(x, y)) return null;                              // (a wall whose centre line is on the plan's edge sticks out past it)
       if (x < 0 || y < 0 || x > H.W || y > H.D) return 'exterior';
-      if (inWall(x, y)) return null;
-      for (const r of rooms) for (const [x0, y0, x1, y1] of r.rects) if (x >= x0 && x < x1 && y >= y0 && y < y1) return r.id;
-      return null;
+      for (const r of rooms) {
+        for (const [x0, y0, x1, y1] of r.rects) if (x >= x0 && x < x1 && y >= y0 && y < y1) return r.id;
+        for (const poly of r.polys) if (pointInPoly(x, y, poly)) return r.id;
+      }
+      return outsideCell && outsideCell(x, y) ? 'exterior' : null;
     }
 
     const STEP = 0.05, OFF = 0.04;
@@ -190,7 +316,32 @@
       return ar;
     }
 
+    // angled walls: the same idea along the line, with the face's normal pointing into the room
+    const rawS = [];
+    slants.forEach(S => {
+      for (const side of ['lo', 'hi']) {
+        const n = side === 'lo' ? S.nl : S.nr, d = S.t / 2 + OFF;
+        let run = null;
+        const flushS = end => { if (run && end - run.a > 0.12) rawS.push({ S, side, n, room: run.room, a: run.a, b: end }); run = null; };
+        for (let t = -S.e0 + STEP / 2; t < S.len + S.e1; t += STEP) {
+          const r = roomAt(S.p0[0] + S.u[0] * t + n[0] * d, S.p0[1] + S.u[1] * t + n[1] * d);
+          if (run && run.room === r) continue;
+          flushS(t - STEP / 2);
+          if (r) run = { room: r, a: t - STEP / 2 };
+        }
+        flushS(S.len + S.e1);
+      }
+    });
+    const slantOpeningArea = (S, a, b) => S.openings.reduce((t, o) => { const ov = Math.min(b, o.b) - Math.max(a, o.a); return ov > 0 && (o.type === 'door' || o.type === 'window') ? t + ov * (o.z1 - o.z0) : t; }, 0);
+
     const surfaces = [];
+    for (const r of rawS) {
+      const S = r.S, len = r.b - r.a, h = S.t / 2, ci = compassOf(r.n);
+      const pt = t => [S.p0[0] + S.u[0] * t + r.n[0] * h, S.p0[1] + S.u[1] * t + r.n[1] * h];
+      surfaces.push({ room: r.room, slant: S.i, side: r.side, dir: COMPASS[ci], letter: COMPASS_ID[ci], normal: r.n.map(v => +v.toFixed(5)), a: +r.a.toFixed(2), b: +r.b.toFixed(2),
+                      length: +len.toFixed(2), area: +Math.max(0, len * CEIL - slantOpeningArea(S, r.a, r.b)).toFixed(1), seg: [pt(r.a).map(v => +v.toFixed(3)), pt(r.b).map(v => +v.toFixed(3))],
+                      kind: r.room === 'exterior' ? 'siding' : 'wall' });
+    }
     for (const r of raw) {
       const w = H.walls[r.wi], len = r.b - r.a;
       const dir = r.cap ? 'Wall end' : facing[r.n.join(',')];
@@ -213,13 +364,13 @@
         const roomName = s.room === 'exterior' ? 'Exterior' : byId[s.room].name;
         const short = s.room === 'exterior' ? 'EXT' : byId[s.room].short;
         s.name = `${roomName} \u00b7 ${s.dir}${s.dir === 'Wall end' ? '' : ' wall'}${n}`;
-        s.id = `${short}-${s.dir === 'Wall end' ? 'END' : s.dir[0]}${list.length > 1 ? i + 1 : ''}`;
+        s.id = `${short}-${s.dir === 'Wall end' ? 'END' : (s.letter || s.dir[0])}${list.length > 1 ? i + 1 : ''}`;
       });
     }
     surfaces.sort((p, q) => p.id.localeCompare(q.id, 'en', { numeric: true }));
 
     // room shapes: 0.25 ft grid of roomAt(), merged into rectangles; area from the same grid
-    const G = 0.25, cells = {};
+    const G = slants.length ? 0.05 : 0.25, cells = {};          // finer with angled walls, so the edges follow them closely
     for (let y = G / 2; y < H.D; y += G) {
       let run = null;
       const close = x => { if (run) (cells[run.id] ||= []).push([run.x0, y - G / 2, x, y + G / 2]); run = null; };
@@ -285,12 +436,12 @@
       }
       return { id: r.id, name: r.name, area: r.area, rects: out.map(q => q.map(v => +v.toFixed(3))) };
     });
-    const surfaces = R.surfaces.map(s => ({ id: s.id, name: s.name, room: s.room, wall: s.wall, side: s.side, kind: s.kind, dir: s.dir,
+    const surfaces = R.surfaces.map(s => ({ id: s.id, name: s.name, room: s.room, wall: s.wall, slant: s.slant, side: s.side, kind: s.kind, dir: s.dir,
       a: s.a, b: s.b, normal: s.normal, seg: s.seg, area: s.area }));
     return {
       format: 'house-painter/built-house', version: 1, id: H.id, name: H.name,
       W: H.W, D: H.D, E: H.E, T: H.T, heights: H.heights, floor: H.floor, floorRects: H.floorRects,
-      walls: H.walls, fixtures: H.fixtures, items: H.items, renderRooms: H.renderRooms,
+      walls: H.walls, slants: H.slants, fixtures: H.fixtures, items: H.items, renderRooms: H.renderRooms,
       surfaces, rooms, ceilingHeight: R.ceilingHeight, doorHeight: R.doorHeight, windowHead: R.windowHead
     };
   }

@@ -94,6 +94,30 @@
     }
     return r;
   }
+  // the floor: the inside of the outside walls, or (with angled walls) exactly what the rooms cover
+  // (the many thin pieces of an angled outline overlap by a hair so no seams show between them)
+  const floorRects=()=>H.slants.length ? H.floorRects.map(r=>[r[0]-.03,r[1]-.03,r[2]+.03,r[3]+.03]) : [[H.E,H.E,H.W-H.E,H.D-H.E]];
+  /* angled walls: drawn in the wall's own frame (x along the line from its start, y to its right) */
+  function slantSVG(sl){
+    const c=stc(sl.status), ang=Math.atan2(sl.u[1],sl.u[0])*180/Math.PI, h=sl.t*S/2;
+    const ops=sl.openings.filter(o=>o.type!=='panel').sort((p,q)=>p.a-q.a), all=sl.openings;
+    let o=`<g transform="translate(${n(X(sl.p0[0]))} ${n(Y(sl.p0[1]))}) rotate(${n(ang)})">`, cur=-sl.e0;
+    const piece=(a,b)=>{ if(b-a<.005) return; o+=`<rect class="wall ${c}" x="${n(a*S)}" y="${n(-h)}" width="${n((b-a)*S)}" height="${n(2*h)}"/>`; };
+    ops.forEach(q=>{ piece(cur,q.a); cur=q.b; }); piece(cur,sl.len+sl.e1);
+    all.filter(q=>q.type==='panel').forEach(q=>{ o+=`<rect class="panel" x="${n(q.a*S)}" y="${n(-h)}" width="${n((q.b-q.a)*S)}" height="${n(2*h)}"/>`; });
+    ops.forEach(q=>{
+      const wd=q.b-q.a;
+      if(q.type==='window'){
+        o+=`<rect class="win" x="${n(q.a*S)}" y="${n(-h)}" width="${n(wd*S)}" height="${n(2*h)}"/><line class="glass" x1="${n(q.a*S)}" y1="0" x2="${n(q.b*S)}" y2="0"/>`;
+        for(let i=1;i<(q.panes||1);i++){ const p=(q.a+wd*i/q.panes)*S; o+=`<line class="glass" x1="${n(p)}" y1="${n(-h)}" x2="${n(p)}" y2="${n(h)}"/>`; }
+      } else if(q.type==='door'){
+        const hv=q.hinge==='b'?q.b:q.a, ov=q.hinge==='b'?q.a:q.b, dir=q.swing==='l'?-1:1;
+        const hx=hv*S, ox=ov*S, tx=hx, ty=dir*wd*S, sweep=((tx-hx)*(0)-(ty)*(ox-hx))>0?1:0;
+        o+=`<path class="swing" d="M${n(tx)} ${n(ty)} A${n(wd*S)} ${n(wd*S)} 0 0 ${sweep} ${n(ox)} 0"/><line class="leaf" x1="${n(hx)}" y1="0" x2="${n(tx)}" y2="${n(ty)}"/>`;
+      }
+    });
+    return o+'</g>';
+  }
   function wallSVG(w){
     const horiz=(w.x1-w.x0)>=(w.y1-w.y0), s=horiz?w.x0:w.y0, e=horiz?w.x1:w.y1;
     const all=(w.openings||[]), ops=all.filter(o=>o.type!=='panel').sort((p,q)=>p.a-q.a), c=stc(w.status);
@@ -206,15 +230,16 @@
         if(off===0) continue;
       }
       pat+=`</pattern></defs>`;
-      o+=pat+`<rect x="${X(H.E)}" y="${Y(H.E)}" width="${(H.W-2*H.E)*S}" height="${(H.D-2*H.E)*S}" fill="url(#lvp)"/>`;
+      o+=pat+floorRects().map(r=>`<rect x="${n(X(r[0]))}" y="${n(Y(r[1]))}" width="${n((r[2]-r[0])*S)}" height="${n((r[3]-r[1])*S)}" fill="url(#lvp)"/>`).join('');
     } else {
-      o+=`<rect class="f-open" x="${X(H.E)}" y="${Y(H.E)}" width="${(H.W-2*H.E)*S}" height="${(H.D-2*H.E)*S}"/>`;
+      o+=floorRects().map(r=>`<rect class="f-open" x="${n(X(r[0]))}" y="${n(Y(r[1]))}" width="${n((r[2]-r[0])*S)}" height="${n((r[3]-r[1])*S)}"/>`).join('');
       H.tints.forEach(r=>{ o+=`<rect class="f-${r.k}" x="${X(r.x0)}" y="${Y(r.y0)}" width="${(r.x1-r.x0)*S}" height="${(r.y1-r.y0)*S}"/>`; });
     }
     // fixtures (outside stuff first so walls sit on top)
     H.fixtures.forEach(f=>{ if(!vis(f.st)) return; o+=`<g class="${stc(f.st)}-fx">${fxSVG(f)}</g>`; });
     // walls
     H.walls.forEach(w=>{ if(!vis(w.status)) return; o+=wallSVG(w); });
+    H.slants.forEach(sl=>{ if(!vis(sl.status)) return; o+=slantSVG(sl); });
     // labels
     H.labels.forEach(l=>{ o+=roomLabel(l); });
     // houses without hand-placed labels (e.g. from the plan editor): name each room at the middle of its biggest piece

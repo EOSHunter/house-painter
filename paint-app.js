@@ -35,7 +35,7 @@
   }
   const ROOM_ORDER = R.order;
   const SPAN = Math.max(H.W, H.D), K = SPAN / 56;            // camera distances were tuned on a 56' house; scale for others
-  const DIR_ORDER = { North: 0, East: 1, South: 2, West: 3, 'Wall end': 4 };
+  const DIR_ORDER = { North: 0, Northeast: 0.5, East: 1, Southeast: 1.5, South: 2, Southwest: 2.5, West: 3, Northwest: 3.5, 'Wall end': 4 };
   const roomWalls = id => Object.values(TARGETS).filter(t => t.room === id && (t.kind === 'wall' || t.kind === 'end'))
     .sort((a, b) => (DIR_ORDER[a.s.dir] - DIR_ORDER[b.s.dir]) || a.key.localeCompare(b.key, 'en', { numeric: true }));
   const defaultSheen = t => ({ ceiling: 'flat', trim: 'semigloss', door: 'semigloss', cabinet: 'satin', cabdoor: 'satin', siding: 'satin' }[t.kind] || 'eggshell');
@@ -194,7 +194,14 @@
     if (f.st === 'removed') continue;
     if (['box', 'range', 'front', 'pumps', 'tub', 'shower', 'heater', 'toilet'].includes(f.k)) { const r = window.HouseFixtures.footprint(f); if (r) OBST.push(r); }
   }
-  const blocked = (x, y) => OBST.some(([x0, y0, x1, y1]) => x > x0 - RADIUS && x < x1 + RADIUS && y > y0 - RADIUS && y < y1 + RADIUS);
+  // angled walls: you stay a body's width from the wall, except where there is a doorway (outside doors stay shut)
+  const SLANTS = H.slants.filter(S => S.status !== 'removed');
+  const slantBlocks = (x, y) => SLANTS.some(S => {
+    const dx = x - S.p0[0], dy = y - S.p0[1], t = dx * S.u[0] + dy * S.u[1], d = dx * S.nr[0] + dy * S.nr[1];
+    if (t < -S.e0 - RADIUS || t > S.len + S.e1 + RADIUS || Math.abs(d) > S.t / 2 + RADIUS) return false;
+    return !(!S.ext && S.openings.some(o => (o.type === 'door' || o.type === 'cased') && t > o.a && t < o.b));
+  });
+  const blocked = (x, y) => OBST.some(([x0, y0, x1, y1]) => x > x0 - RADIUS && x < x1 + RADIUS && y > y0 - RADIUS && y < y1 + RADIUS) || (SLANTS.length > 0 && slantBlocks(x, y));
   function walkCam() { camera.position.set(walk.x, EYE, walk.y); camera.rotation.set(walk.pitch, walk.yaw, 0, 'YXZ'); }
   function stepWalk(t) {
     const dt = walk.last ? Math.min(0.05, (t - walk.last) / 1000) : 0; walk.last = t;

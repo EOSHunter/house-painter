@@ -3,8 +3,10 @@
  *
  * Editor model (feet, same axes as the house file):
  *   wall    { uid, axis: 'h'|'v', c (centre line), a, b (extent along the axis), t, ext, status, extra, openings[] }
+ *           an angled wall has axis 'l' and p [x0,y0,x1,y1] (its centre line); a = 0, b = its length, c = 0, and its openings
+ *           run along the line from its start (swing 'l'/'r' = left/right of the way it runs)
  *   opening { uid, type, a, b, ...door/window fields }       (a, b absolute along the wall's axis, as in the file)
- *   room    { uid, id, name, short, rects, extra }           (first match wins, as in the file)
+ *   room    { uid, id, name, short, rects, polys?, extra }   (first match wins, as in the file; polys are outlines [[x,y],...])
  *   split   { uid, axis, c, a, b }                          (invisible zone lines that divide open-plan rooms)
  *   underlay{ key, name, w, h, s (ft per px), ox, oy, rot, opacity, calibrated }   (the image itself is in IndexedDB)
  * Everything the editor doesn't edit yet (fixtures, items, plan extras, ...) rides along in S.keep.
@@ -46,16 +48,47 @@
   const blank = () => ({ meta: { id: 'my-house', name: 'My house', subtitle: '' }, heights: { ...DEF.heights }, wallThickness: { ...DEF.wallThickness },
     floor: { ...DEF.floor }, walls: [], rooms: [], splits: [], keep: {}, underlay: null });
   let S = blank();
-  let tool = 'select', wallMode = 'ext', sel = null, drag = null, draw = null, ghost = null, lenBuf = '', lastP = [0, 0], spaceDown = false;
+  let tool = 'select', wallMode = 'ext', wallAngle = false, lastMods = {}, sel = null, drag = null, draw = null, ghost = null, lenBuf = '', lastP = [0, 0], spaceDown = false;
   let view = { x: -6, y: -6, w: 72 }, underURL = null, underImg = null, stepCur = 0, welcomeOff = false;
 
   const byUid = u => S.walls.find(w => w.uid === u) || S.rooms.find(r => r.uid === u) || S.splits.find(s => s.uid === u) || (S.keep.fixtures || []).find(f => f.uid === u);
   const findOpening = u => { for (const w of S.walls) { const o = w.openings.find(x => x.uid === u); if (o) return { w, o }; } return null; };
-  const rectOf = w => w.axis === 'h' ? { x0: w.a, x1: w.b, y0: w.c - w.t / 2, y1: w.c + w.t / 2 } : { x0: w.c - w.t / 2, x1: w.c + w.t / 2, y0: w.a, y1: w.b };
-  const ends = w => w.axis === 'h' ? [[w.a, w.c], [w.b, w.c]] : [[w.c, w.a], [w.c, w.b]];
-  const along = (axis, [x, y]) => axis === 'h' ? x : y;
-  const across = (axis, [x, y]) => axis === 'h' ? y : x;
+  const isL = w => w.axis === 'l';
+  const isSlant = w => isL(w) && Math.abs(w.p[2] - w.p[0]) > 1e-4 && Math.abs(w.p[3] - w.p[1]) > 1e-4;       // an angled wall that is not square to the plan
+  const lineLen = w => Math.hypot(w.p[2] - w.p[0], w.p[3] - w.p[1]);
+  const lineU = w => { const L = lineLen(w) || 1; return [(w.p[2] - w.p[0]) / L, (w.p[3] - w.p[1]) / L]; };
+  const lineN = w => { const u = lineU(w); return [-u[1], u[0]]; };                       // the right-hand side of the way the line runs
+  const setLine = (w, q) => { w.p = q.map(r4); w.a = 0; w.b = r4(lineLen(w)); w.c = 0; };
+  const toLocal = (w, [x, y]) => { const u = lineU(w), n = lineN(w), dx = x - w.p[0], dy = y - w.p[1]; return [dx * u[0] + dy * u[1], dx * n[0] + dy * n[1]]; };
+  const fromLocal = (w, t, o = 0) => { const u = lineU(w), n = lineN(w); return [w.p[0] + u[0] * t + n[0] * o, w.p[1] + u[1] * t + n[1] * o]; };
+  const lineTf = w => `translate(${+w.p[0].toFixed(4)} ${+w.p[1].toFixed(4)}) rotate(${+(Math.atan2(w.p[3] - w.p[1], w.p[2] - w.p[0]) * 180 / Math.PI).toFixed(4)})`;
+  // an angled wall as a level one in its own frame (x along the wall, y to its right), so the drawing code for straight walls serves both
+  const levelOf = w => ({ ...w, axis: 'h', c: 0, a: 0, b: w.b, openings: w.openings.map(o => ({ ...o, swing: o.swing === 'l' ? 'n' : o.swing === 'r' ? 's' : o.swing })) });
+  const rectOf = w => {
+    if (isL(w)) { const h = w.t / 2, cs = [[0, -h], [w.b, -h], [w.b, h], [0, h]].map(([t, o]) => fromLocal(w, t, o)), xs = cs.map(c => c[0]), ys = cs.map(c => c[1]);
+      return { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) }; }
+    return w.axis === 'h' ? { x0: w.a, x1: w.b, y0: w.c - w.t / 2, y1: w.c + w.t / 2 } : { x0: w.c - w.t / 2, x1: w.c + w.t / 2, y0: w.a, y1: w.b };
+  };
+  const ends = w => isL(w) ? [[w.p[0], w.p[1]], [w.p[2], w.p[3]]] : w.axis === 'h' ? [[w.a, w.c], [w.b, w.c]] : [[w.c, w.a], [w.c, w.b]];
+  // along / across take a wall (or, for straight ones, just its axis)
+  const along = (w, p) => { const a = w.axis || w; return a === 'l' ? toLocal(w, p)[0] : a === 'h' ? p[0] : p[1]; };
+  const across = (w, p) => { const a = w.axis || w; return a === 'l' ? toLocal(w, p)[1] : a === 'h' ? p[1] : p[0]; };
   const live = () => S.walls.filter(w => w.status !== 'removed');
+  // is the point inside the wall (angled walls run on half a thickness at each end, so corners leave no crack)
+  const inWallBox = (w, x, y) => {
+    if (isL(w)) { const [t, o] = toLocal(w, [x, y]); return t > -w.t / 2 && t < w.b + w.t / 2 && Math.abs(o) < w.t / 2; }
+    const r = rectOf(w); return x > r.x0 && x < r.x1 && y > r.y0 && y < r.y1;
+  };
+  const inPoly = (x, y, poly) => {
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const [xi, yi] = poly[i], [xj, yj] = poly[j];
+      if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  };
+  const polyArea = poly => Math.abs(poly.reduce((t, q, i) => { const n = poly[(i + 1) % poly.length]; return t + q[0] * n[1] - n[0] * q[1]; }, 0)) / 2;
+  const roomArea = r => r.rects.reduce((t, q) => t + (q[2] - q[0]) * (q[3] - q[1]), 0) + (r.polys || []).reduce((t, q) => t + polyArea(q), 0);
 
   // ------------------------------------------------------------------ house file <-> editor model
   function fromHouse(src) {
@@ -65,11 +98,17 @@
     s.wallThickness = Object.assign({}, DEF.wallThickness, src.wallThickness || {});
     s.floor = Object.assign({}, DEF.floor, src.floor || {});
     s.walls = (src.walls || []).map(w => {
+      if (w.line) {                                                       // an angled (or any-direction) wall
+        const { line, ext, status, openings, t, ...extra } = w, o = { uid: uid(), axis: 'l', ext: !!ext, t: t || (ext ? s.wallThickness.exterior : s.wallThickness.interior), status: status || 'keep', extra,
+          openings: (openings || []).map(q => ({ uid: uid(), ...q })) };
+        setLine(o, line); return o;
+      }
       const { x0, y0, x1, y1, ext, status, openings, t, ...extra } = w, h = (x1 - x0) >= (y1 - y0);
       return { uid: uid(), axis: h ? 'h' : 'v', c: h ? (y0 + y1) / 2 : (x0 + x1) / 2, t: h ? y1 - y0 : x1 - x0, a: h ? x0 : y0, b: h ? x1 : y1,
         ext: !!ext, status: status || 'keep', extra, openings: (openings || []).map(o => ({ uid: uid(), ...o })) };
     });
-    s.rooms = (src.rooms || []).map(r => { const { id, name, short, rects, ...extra } = r; return { uid: uid(), id, name: name || id, short: short || '', rects: rects.map(q => q.slice()), extra }; });
+    s.rooms = (src.rooms || []).map(r => { const { id, name, short, rects, polys, ...extra } = r;
+      return { uid: uid(), id, name: name || id, short: short || '', rects: (rects || []).map(q => q.slice()), ...(polys ? { polys: polys.map(pl => pl.map(q => q.slice())) } : {}), extra }; });
     const ed = src.editor || {};
     s.splits = (ed.splits || []).map(p => ({ uid: uid(), ...p }));
     s.underlay = ed.underlay ? { ...ed.underlay } : null;
@@ -99,16 +138,18 @@
     const rs = S.walls.map(rectOf);
     const dx = -Math.min(...rs.map(r => r.x0)), dy = -Math.min(...rs.map(r => r.y0));
     const walls = S.walls.map(w => {
-      const r = rectOf(w), o = { x0: r4(r.x0 + dx), y0: r4(r.y0 + dy), x1: r4(r.x1 + dx), y1: r4(r.y1 + dy) };
+      const r = rectOf(w), o = isL(w) ? { line: [r4(w.p[0] + dx), r4(w.p[1] + dy), r4(w.p[2] + dx), r4(w.p[3] + dy)] } : { x0: r4(r.x0 + dx), y0: r4(r.y0 + dy), x1: r4(r.x1 + dx), y1: r4(r.y1 + dy) };
+      if (isL(w) && Math.abs(w.t - (w.ext ? S.wallThickness.exterior : S.wallThickness.interior)) > 1e-6) o.t = w.t;
       if (w.ext) o.ext = 1;
       Object.assign(o, w.extra);
       if (w.status && w.status !== 'keep') o.status = w.status;
-      const d = w.axis === 'h' ? dx : dy;
+      const d = isL(w) ? 0 : w.axis === 'h' ? dx : dy;
       if (w.openings.length) o.openings = w.openings.slice().sort((p, q) => p.a - q.a).map(op => { const { uid: _, ...rest } = op; return { ...rest, a: r4(op.a + d), b: r4(op.b + d) }; });
       return o;
     });
-    const W = Math.max(...walls.map(w => w.x1)), D = Math.max(...walls.map(w => w.y1));
-    const rooms = S.rooms.map(r => ({ id: r.id, name: r.name, ...(r.short ? { short: r.short } : {}), rects: r.rects.map(q => [r4(q[0] + dx), r4(q[1] + dy), r4(q[2] + dx), r4(q[3] + dy)]), ...r.extra }));
+    const W = Math.max(...rs.map(r => r.x1)) + dx, D = Math.max(...rs.map(r => r.y1)) + dy;
+    const rooms = S.rooms.map(r => ({ id: r.id, name: r.name, ...(r.short ? { short: r.short } : {}), ...(r.rects.length ? { rects: r.rects.map(q => [r4(q[0] + dx), r4(q[1] + dy), r4(q[2] + dx), r4(q[3] + dy)]) } : {}),
+      ...(r.polys && r.polys.length ? { polys: r.polys.map(pl => pl.map(q => [r4(q[0] + dx), r4(q[1] + dy)])) } : {}), ...r.extra }));
     const keep = shiftDeep(S.keep, dx, dy);
     if (keep.fixtures) keep.fixtures = keep.fixtures.map(({ uid: _u, ...rest }) => rest);
     const ids = new Set(rooms.map(r => r.id));
@@ -116,7 +157,7 @@
     if (keep.roomOrder) keep.roomOrder = keep.roomOrder.filter(id => ids.has(id));
     if (keep.renderRooms) keep.renderRooms = keep.renderRooms.filter(id => ids.has(id));
     // floor: the inside of a plain rectangle by default; any other outline gets the rooms' own shapes
-    if (!keep.floorRects && S.walls.filter(w => w.ext && w.status !== 'removed').length !== 4 && rooms.length) keep.floorRects = rooms.flatMap(r => r.rects);
+    if (!keep.floorRects && !S.walls.some(isL) && S.walls.filter(w => w.ext && w.status !== 'removed').length !== 4 && rooms.length) keep.floorRects = rooms.flatMap(r => r.rects || []);
     const editor = {};
     if (S.underlay) editor.underlay = { ...S.underlay, ox: r4(S.underlay.ox + dx), oy: r4(S.underlay.oy + dy) };
     if (S.splits.length) editor.splits = S.splits.map(p => { const { uid: _, ...rest } = p; const d = p.axis === 'h' ? [dx, dy] : [dy, dx]; return { ...rest, c: r4(p.c + d[1]), a: r4(p.a + d[0]), b: r4(p.b + d[0]) }; });
@@ -198,16 +239,20 @@
 
   // ------------------------------------------------------------------ geometry helpers
   function roomAt(x, y) {                                       // first match, walls excluded (same rule as house-core)
-    for (const w of live()) { const r = rectOf(w); if (x > r.x0 && x < r.x1 && y > r.y0 && y < r.y1) return null; }
-    for (const r of S.rooms) for (const [x0, y0, x1, y1] of r.rects) if (x >= x0 && x < x1 && y >= y0 && y < y1) return r;
+    for (const w of live()) if (inWallBox(w, x, y)) return null;
+    for (const r of S.rooms) {
+      for (const [x0, y0, x1, y1] of r.rects) if (x >= x0 && x < x1 && y >= y0 && y < y1) return r;
+      for (const pl of r.polys || []) if (inPoly(x, y, pl)) return r;
+    }
     return null;
   }
-  function wallNear(p, extra = 0) {
+  function wallNear(p, extra = 0, skip) {
     const tol = SNAP_PX * pxFt() + extra; let best = null;
     for (const w of live()) {
-      const t = along(w.axis, p), d = Math.abs(across(w.axis, p) - w.c);
+      if (w === skip) continue;
+      const t = along(w, p), d = Math.abs(across(w, p) - w.c);
       if (t < w.a || t > w.b || d > w.t / 2 + tol) continue;
-      if (!best || d < best.d) best = { w, t, d, side: across(w.axis, p) > w.c ? 1 : -1 };
+      if (!best || d < best.d) best = { w, t, d, side: across(w, p) > w.c ? 1 : -1 };
     }
     return best;
   }
@@ -223,19 +268,20 @@
     const out = [];
     for (const w of S.walls) {
       if (w === skip) continue;
-      if ((w.axis === 'v') === (axisOfCoord === 'x')) out.push(w.c);
+      if (!isL(w) && (w.axis === 'v') === (axisOfCoord === 'x')) out.push(w.c);
       for (const p of ends(w)) out.push(axisOfCoord === 'x' ? p[0] : p[1]);
     }
     for (const s of S.splits) if ((s.axis === 'v') === (axisOfCoord === 'x')) out.push(s.c);
     return out;
   };
-  function snapPoint(p, free) {
+  function snapPoint(p, free, skip) {
     if (free) return { p, kind: null };
     const tol = SNAP_PX * pxFt(); let best = null, bd = tol;
-    for (const q of allEnds()) { const d = Math.hypot(q[0] - p[0], q[1] - p[1]); if (d < bd) { bd = d; best = q; } }
+    for (const q of allEnds(skip)) { const d = Math.hypot(q[0] - p[0], q[1] - p[1]); if (d < bd) { bd = d; best = q; } }
     if (best) return { p: best.slice(), kind: 'end' };
-    const near = wallNear(p, -SNAP_PX * pxFt() + 0.01);
-    if (near && Math.abs(across(near.w.axis, p) - near.w.c) < near.w.t / 2 + tol) {
+    const near = wallNear(p, -SNAP_PX * pxFt() + 0.01, skip);
+    if (near && Math.abs(across(near.w, p) - near.w.c) < near.w.t / 2 + tol) {
+      if (isL(near.w)) return { p: fromLocal(near.w, Math.round(near.t / GRID) * GRID).map(r4), kind: 'on' };
       const t = snapC(near.t, coordCands(near.w.axis === 'h' ? 'x' : 'y', near.w));
       return { p: near.w.axis === 'h' ? [t, near.w.c] : [near.w.c, t], kind: 'on' };
     }
@@ -245,6 +291,7 @@
   // ------------------------------------------------------------------ rendering
   const N = v => +v.toFixed(4);
   const roomHue = i => (i * 137.5 + 200) % 360;
+  const polyBox = pl => [Math.min(...pl.map(q => q[0])), Math.min(...pl.map(q => q[1])), Math.max(...pl.map(q => q[0])), Math.max(...pl.map(q => q[1]))];
   function render() {
     const k = pxFt();
     // underlay
@@ -255,10 +302,12 @@
     let h = '';
     S.rooms.forEach((r, i) => {
       const on = sel && sel.uid === r.uid;
-      h += `<g class="room" data-kind="room" data-uid="${r.uid}">` + (shapes[r.uid] || r.rects).map(q => `<rect x="${N(q[0])}" y="${N(q[1])}" width="${N(q[2] - q[0])}" height="${N(q[3] - q[1])}" fill="hsl(${roomHue(i)} 60% 55% / ${on ? 0.32 : 0.17})"/>`).join('') + '</g>';
+      const fill = `hsl(${roomHue(i)} 60% 55% / ${on ? 0.32 : 0.17})`;
+      h += `<g class="room" data-kind="room" data-uid="${r.uid}">` + ((r.polys && r.polys.length) ? r.rects : (shapes[r.uid] || r.rects)).map(q => `<rect x="${N(q[0])}" y="${N(q[1])}" width="${N(q[2] - q[0])}" height="${N(q[3] - q[1])}" fill="${fill}"/>`).join('')
+        + (r.polys || []).map(pl => `<polygon points="${pl.map(q => N(q[0]) + ',' + N(q[1])).join(' ')}" fill="${fill}"/>`).join('') + '</g>';
     });
     S.rooms.forEach(r => {
-      const rr = shapes[r.uid] || r.rects;
+      const rr = (r.polys && r.polys.length) ? [polyBox(r.polys.reduce((m, pl) => (polyArea(pl) > polyArea(m) ? pl : m)))].concat(r.rects) : (shapes[r.uid] || r.rects);
       const big = rr.reduce((m, q) => ((q[2] - q[0]) * (q[3] - q[1]) > (m[2] - m[0]) * (m[3] - m[1]) ? q : m), rr[0]);
       if (!big) return;
       const cx = (big[0] + big[2]) / 2, cy = (big[1] + big[3]) / 2, fs = 12 * k;
@@ -276,10 +325,10 @@
     $('#lFix').innerHTML = h;
     // walls + openings
     h = ''; let ho = '';
-    for (const w of S.walls) {
-      const r = rectOf(w), pad = 4 * k;
+    for (const W of S.walls) {
+      const L = isL(W), w = L ? levelOf(W) : W, r = rectOf(w), pad = 4 * k;                  // an angled wall is drawn level, inside a rotated group
       const cls = 'wall' + (w.ext ? ' ext' : '') + (w.status === 'removed' ? ' removed' : '') + (w.status === 'new' ? ' new' : '');
-      h += `<g class="${cls}" data-kind="wall" data-uid="${w.uid}"><rect class="hit" x="${N(r.x0 - pad)}" y="${N(r.y0 - pad)}" width="${N(r.x1 - r.x0 + 2 * pad)}" height="${N(r.y1 - r.y0 + 2 * pad)}"/>`;
+      h += `<g class="${cls}" data-kind="wall" data-uid="${w.uid}"${L ? ` transform="${lineTf(W)}"` : ''}><rect class="hit" x="${N(r.x0 - pad)}" y="${N(r.y0 - pad)}" width="${N(r.x1 - r.x0 + 2 * pad)}" height="${N(r.y1 - r.y0 + 2 * pad)}"/>`;
       const ops = w.openings.filter(o => o.type !== 'panel').sort((p, q) => p.a - q.a);
       let cur = w.a;
       const piece = (a, b) => { if (b - a < 0.001) return; const q = w.axis === 'h' ? [a, r.y0, b - a, r.y1 - r.y0] : [r.x0, a, r.x1 - r.x0, b - a];
@@ -287,7 +336,7 @@
       for (const o of ops) { piece(cur, Math.max(cur, o.a)); cur = Math.max(cur, o.b); }
       piece(cur, w.b);
       h += '</g>';
-      for (const o of w.openings) ho += openingSVG(w, o, k);
+      for (const o of w.openings) ho += L ? `<g transform="${lineTf(W)}">${openingSVG(w, o, k)}</g>` : openingSVG(w, o, k);
     }
     $('#lWalls').innerHTML = h; $('#lOpen').innerHTML = ho;
     // splits
@@ -356,12 +405,22 @@
     const k = pxFt(); let h = '';
     if (sel) {
       const it = byUid(sel.uid), op = !it && findOpening(sel.uid);
-      if (sel.kind === 'wall' && it) {
+      if (sel.kind === 'wall' && it && isL(it)) {
+        const V = levelOf(it), r = rectOf(V), [p, q] = ends(it), n = lineN(it), m = fromLocal(it, it.b / 2, -(it.t / 2 + 12 * k));
+        h += `<rect class="sel-outline" transform="${lineTf(it)}" x="${N(r.x0)}" y="${N(r.y0)}" width="${N(r.x1 - r.x0)}" height="${N(r.y1 - r.y0)}" stroke-width="2"/>`;
+        h += dimText(m[0], m[1], fmt(it.b), k) + handle(p[0], p[1], k, `data-uid="${it.uid}" data-end="a" data-what="wall"`) + handle(q[0], q[1], k, `data-uid="${it.uid}" data-end="b" data-what="wall"`);
+        void n;
+      } else if (sel.kind === 'wall' && it) {
         const r = rectOf(it);
         h += `<rect class="sel-outline" x="${N(r.x0)}" y="${N(r.y0)}" width="${N(r.x1 - r.x0)}" height="${N(r.y1 - r.y0)}" stroke-width="2"/>`;
         const [p, q] = ends(it), off = 14 * k;
         h += it.axis === 'h' ? dimText((it.a + it.b) / 2, r.y0 - off * 0.6, fmt(it.b - it.a), k) : dimText(r.x0 - off * 0.6, (it.a + it.b) / 2, fmt(it.b - it.a), k, true);
         h += handle(p[0], p[1], k, `data-uid="${it.uid}" data-end="a" data-what="wall"`) + handle(q[0], q[1], k, `data-uid="${it.uid}" data-end="b" data-what="wall"`);
+      } else if (sel.kind === 'opening' && op && isL(op.w)) {
+        const { w, o } = op, V = levelOf(w), r = rectOf(V), m = fromLocal(w, (o.a + o.b) / 2, -(w.t / 2 + 12 * k));
+        h += `<rect class="sel-outline" transform="${lineTf(w)}" x="${N(o.a)}" y="${N(r.y0)}" width="${N(o.b - o.a)}" height="${N(r.y1 - r.y0)}" stroke-width="2"/>`;
+        h += dimText(m[0], m[1], fmt(o.b - o.a), k);
+        h += handle(...fromLocal(w, o.a), k, `data-uid="${o.uid}" data-end="a" data-what="opening"`) + handle(...fromLocal(w, o.b), k, `data-uid="${o.uid}" data-end="b" data-what="opening"`);
       } else if (sel.kind === 'opening' && op) {
         const { w, o } = op, r = rectOf(w), hz = w.axis === 'h';
         const q = hz ? [o.a, r.y0, o.b - o.a, r.y1 - r.y0] : [r.x0, o.a, r.x1 - r.x0, o.b - o.a];
@@ -370,7 +429,8 @@
         h += hz ? dimText((o.a + o.b) / 2, r.y0 - off * 0.6, fmt(o.b - o.a), k) : dimText(r.x0 - off * 0.6, (o.a + o.b) / 2, fmt(o.b - o.a), k, true);
         h += handle(...P(o.a), k, `data-uid="${o.uid}" data-end="a" data-what="opening"`) + handle(...P(o.b), k, `data-uid="${o.uid}" data-end="b" data-what="opening"`);
       } else if (sel.kind === 'room' && it) {
-        h += it.rects.map(q => `<rect class="sel-outline" x="${N(q[0])}" y="${N(q[1])}" width="${N(q[2] - q[0])}" height="${N(q[3] - q[1])}" stroke-width="2"/>`).join('');
+        h += it.rects.map(q => `<rect class="sel-outline" x="${N(q[0])}" y="${N(q[1])}" width="${N(q[2] - q[0])}" height="${N(q[3] - q[1])}" stroke-width="2"/>`).join('')
+          + (it.polys || []).map(pl => `<polygon class="sel-outline" points="${pl.map(q => N(q[0]) + ',' + N(q[1])).join(' ')}" stroke-width="2"/>`).join('');
       } else if (sel.kind === 'split' && it) {
         const [p, q] = it.axis === 'h' ? [[it.a, it.c], [it.b, it.c]] : [[it.c, it.a], [it.c, it.b]];
         h += `<line class="sel-outline" x1="${N(p[0])}" y1="${N(p[1])}" x2="${N(q[0])}" y2="${N(q[1])}" stroke-width="3"/>`;
@@ -382,7 +442,12 @@
     const k = pxFt(); let h = '';
     const g = ghost;
     if (g && g.snap) h += `<circle class="snapmark" cx="${N(g.snap[0])}" cy="${N(g.snap[1])}" r="${N(7 * k)}" stroke-width="1.5"/>`;
-    if (g && g.kind === 'wall') {
+    if (g && g.kind === 'wall' && g.axis === 'l') {
+      const t = g.t, m = fromLocal(g, g.b / 2, -(t / 2 + 12 * k));
+      h += `<rect class="ghost" transform="${lineTf(g)}" x="0" y="${N(-t / 2)}" width="${N(g.b)}" height="${N(t)}" stroke-width="1.2"/>`;
+      const deg = (-Math.atan2(g.p[3] - g.p[1], g.p[2] - g.p[0]) * 180 / Math.PI + 360) % 360;
+      h += dimText(m[0], m[1], (lenBuf ? lenBuf + '\u2009\u23ce' : fmt(g.b)) + '  ' + Math.round(deg * 10) / 10 + '\u00b0', k);
+    } else if (g && g.kind === 'wall') {
       const t = g.t, r = g.axis === 'h' ? [g.a, g.c - t / 2, g.b - g.a, t] : [g.c - t / 2, g.a, t, g.b - g.a];
       h += `<rect class="ghost" x="${N(r[0])}" y="${N(r[1])}" width="${N(r[2])}" height="${N(r[3])}" stroke-width="1.2"/>`;
       const label = (lenBuf ? lenBuf + '\u2009\u23ce' : fmt(g.b - g.a));
@@ -390,6 +455,10 @@
     } else if (g && g.kind === 'split') {
       const [p, q] = g.axis === 'h' ? [[g.a, g.c], [g.b, g.c]] : [[g.c, g.a], [g.c, g.b]];
       h += `<line class="splitline" x1="${N(p[0])}" y1="${N(p[1])}" x2="${N(q[0])}" y2="${N(q[1])}" stroke-width="1.5"/>`;
+    } else if (g && g.kind === 'opening' && isL(g.w)) {
+      const w = g.w, pad = 2 * k, m = fromLocal(w, (g.a + g.b) / 2, -(w.t / 2 + 10 * k));
+      h += `<rect class="ghost${g.bad ? ' bad' : ''}" transform="${lineTf(w)}" x="${N(g.a)}" y="${N(-w.t / 2 - pad)}" width="${N(g.b - g.a)}" height="${N(w.t + 2 * pad)}" stroke-width="1.2"/>`;
+      h += dimText(m[0], m[1], fmt(g.b - g.a), k);
     } else if (g && g.kind === 'opening') {
       const w = g.w, r = rectOf(w), hz = w.axis === 'h', pad = 2 * k;
       const q = hz ? [g.a, r.y0 - pad, g.b - g.a, r.y1 - r.y0 + 2 * pad] : [r.x0 - pad, g.a, r.x1 - r.x0 + 2 * pad, g.b - g.a];
@@ -410,7 +479,7 @@
   // ------------------------------------------------------------------ tools
   const HINTS = {
     select: 'Click to select. Drag a wall to move it, or drag its ends. <kbd>Del</kbd> deletes. Drag empty space to pan, scroll to zoom.',
-    wall: 'Click corner to corner. Type a length (like <kbd>12\'6</kbd>) and press <kbd>Enter</kbd> for an exact wall. <kbd>Esc</kbd> or right-click ends the run. Hold <kbd>Alt</kbd> to turn off snapping.',
+    wall: 'Click corner to corner. Type a length (like <kbd>12\'6</kbd>) and press <kbd>Enter</kbd> for an exact wall. <kbd>Esc</kbd> or right-click ends the run. Hold <kbd>Alt</kbd> to turn off snapping. Switch on <b>Angled</b> (or hold <kbd>Shift</kbd>) for walls at any angle: they snap to every 15\u00b0, to the ends of other walls, and to where they cross one.',
     door: 'Click on a wall to put a door there. The side you click is the side it swings into.',
     window: 'Click on a wall to put a window there.',
     cased: 'Click on a wall for a doorway with no door.',
@@ -432,7 +501,7 @@
     endDraw(); tool = t; ghost = null;
     $$('[data-tool]').forEach(b => b.setAttribute('aria-pressed', b.dataset.tool === t));
     $('#wallMode').hidden = t !== 'wall';
-    $('#wallMode').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.mode === wallMode));
+    $('#wallMode').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.angle ? wallAngle : b.dataset.mode === wallMode));
     $('#hint').innerHTML = HINTS[t] || ''; $('#hint').hidden = !HINTS[t];
     if (t === 'scale') ghost = { kind: 'scale', pts: [] };
     render(); renderSide();
@@ -534,21 +603,22 @@
   }
 
   // ------------------------------------------------------------------ find every closed space and make it a room
-  function newRoomFrom(rects) {
+  function newRoomFrom(res) {
     const name = 'Room ' + (S.rooms.length + 1);
-    const r = { uid: uid(), id: uniqueId(slug(name), new Set(S.rooms.map(x => x.id))), name, short: shortFor(name, new Set(S.rooms.map(x => x.short))), rects, extra: {}, fresh: true };
+    const r = { uid: uid(), id: uniqueId(slug(name), new Set(S.rooms.map(x => x.id))), name, short: shortFor(name, new Set(S.rooms.map(x => x.short))), rects: res.rects, ...(res.polys ? { polys: res.polys } : {}), extra: {}, fresh: true };
     S.rooms.push(r); return r;
   }
   function findRooms() {
     const ws = live().map(rectOf); if (!ws.length) { toast('Draw the walls first.'); return; }
     const x0 = Math.min(...ws.map(r => r.x0)), x1 = Math.max(...ws.map(r => r.x1)), y0 = Math.min(...ws.map(r => r.y0)), y1 = Math.max(...ws.map(r => r.y1));
     const before = snap(); let made = 0, leaky = 0;
+    const grid = gridFor();
     for (let y = y0 + 0.75; y < y1; y += 1) for (let x = x0 + 0.75; x < x1; x += 1) {
       if (roomAt(x, y)) continue;
-      const res = fillRoom([x, y]);
+      const res = fillRoom([x, y], grid);
       if (res.error) { if (/leaks/.test(res.error)) leaky++; continue; }
       if (res.area < 10) continue;                                     // a gap between walls, not a room
-      newRoomFrom(res.rects); made++;
+      newRoomFrom(res); made++;
     }
     if (!made) { toast(leaky ? 'The open spaces leak outside: check for gaps between walls (a door or window is fine).' : 'No new closed spaces to turn into rooms.'); return; }
     checkpoint(before); changed();
@@ -557,7 +627,38 @@
   function endDraw() { draw = null; lenBuf = ''; if (ghost && (ghost.kind === 'wall' || ghost.kind === 'split')) ghost = null; }
 
   // wall + split drawing: click, click, click...
+  const angled = e => tool === 'wall' && wallAngle !== !!(e && e.shiftKey);              // the Angled button, turned over while Shift is held
+  const ANG = Math.PI / 12;
+  // where a ray from s at this angle crosses another wall's centre line near the cursor
+  function rayHit(s, ang, p) {
+    const d = [Math.cos(ang), Math.sin(ang)], tol = SNAP_PX * pxFt() * 2; let best = null, bd = tol;
+    for (const w of live()) {
+      const [q0, q1] = ends(w), v = [q1[0] - q0[0], q1[1] - q0[1]], den = d[0] * v[1] - d[1] * v[0];
+      if (Math.abs(den) < 1e-6) continue;
+      const t = ((q0[0] - s[0]) * v[1] - (q0[1] - s[1]) * v[0]) / den, u = ((q0[0] - s[0]) * d[1] - (q0[1] - s[1]) * d[0]) / den;
+      if (t < 0.25 || u < -1e-6 || u > 1 + 1e-6) continue;
+      const hit = [s[0] + d[0] * t, s[1] + d[1] * t], dist = Math.hypot(hit[0] - p[0], hit[1] - p[1]);
+      if (dist < bd) { bd = dist; best = hit; }
+    }
+    return best;
+  }
+  function angledTarget(p, e) {
+    const s = draw.start, alt = e && e.altKey, typed = parseLen(lenBuf), hasLen = lenBuf && isFinite(typed) && typed > 0;
+    const sp = alt ? null : snapPoint(p, false), dx = p[0] - s[0], dy = p[1] - s[1];
+    let end, ang = Math.atan2(dy, dx);
+    if (!hasLen && sp && sp.kind === 'end') end = sp.p.slice();
+    else {
+      if (!alt) ang = Math.round(ang / ANG) * ANG;
+      const len = hasLen ? typed : alt ? Math.hypot(dx, dy) : Math.round(Math.hypot(dx, dy) / GRID) * GRID;
+      end = [s[0] + Math.cos(ang) * len, s[1] + Math.sin(ang) * len];
+      if (!hasLen && !alt) { const hit = rayHit(s, ang, p); if (hit) end = hit; }
+    }
+    end = end.map(r4);
+    const nearEnd = allEnds().find(q => Math.hypot(q[0] - end[0], q[1] - end[1]) < 1e-6);
+    return { axis: 'l', p: [s[0], s[1], end[0], end[1]], a: 0, b: r4(Math.hypot(end[0] - s[0], end[1] - s[1])), c: 0, end, snap: nearEnd || null };
+  }
   function drawTarget(p, e) {
+    if (angled(e)) return angledTarget(p, e);
     const s = draw.start, dx = p[0] - s[0], dy = p[1] - s[1], axis = Math.abs(dx) >= Math.abs(dy) ? 'h' : 'v';
     let endAlong;
     const typed = parseLen(lenBuf);
@@ -579,11 +680,17 @@
       S.splits.push({ uid: uid(), axis: g.axis, c: r4(g.c), a: r4(g.a), b: r4(g.b) });
       draw = null; ghost = null; changed(); return;
     }
-    if (S.walls.some(w => w.axis === g.axis && Math.abs(w.c - g.c) < 0.05 && Math.min(w.b, g.b) - Math.max(w.a, g.a) > 0.1)) {
-      undoS.pop(); toast('There is already a wall there.'); draw.start = g.end.map(r4); return;
+    const same = g.axis === 'l'
+      ? S.walls.some(w => isL(w) && ((Math.hypot(w.p[0] - g.p[0], w.p[1] - g.p[1]) < 0.01 && Math.hypot(w.p[2] - g.p[2], w.p[3] - g.p[3]) < 0.01) || (Math.hypot(w.p[0] - g.p[2], w.p[1] - g.p[3]) < 0.01 && Math.hypot(w.p[2] - g.p[0], w.p[3] - g.p[1]) < 0.01)))
+      : S.walls.some(w => w.axis === g.axis && Math.abs(w.c - g.c) < 0.05 && Math.min(w.b, g.b) - Math.max(w.a, g.a) > 0.1);
+    if (same) { undoS.pop(); toast('There is already a wall there.'); draw.start = g.end.map(r4); return; }
+    const ext = wallMode === 'ext', th = ext ? S.wallThickness.exterior : S.wallThickness.interior;
+    if (g.axis === 'l' && Math.abs(g.p[3] - g.p[1]) > 1e-4 && Math.abs(g.p[2] - g.p[0]) > 1e-4) {
+      const nw = { uid: uid(), axis: 'l', t: th, ext, status: 'keep', extra: {}, openings: [] }; setLine(nw, g.p); S.walls.push(nw);
+    } else {                                                            // a level or plumb line is an ordinary wall
+      const lv = g.axis === 'l' ? (Math.abs(g.p[3] - g.p[1]) <= 1e-4 ? { axis: 'h', c: g.p[1], a: Math.min(g.p[0], g.p[2]), b: Math.max(g.p[0], g.p[2]) } : { axis: 'v', c: g.p[0], a: Math.min(g.p[1], g.p[3]), b: Math.max(g.p[1], g.p[3]) }) : g;
+      S.walls.push({ uid: uid(), axis: lv.axis, c: r4(lv.c), a: r4(lv.a), b: r4(lv.b), t: th, ext, status: 'keep', extra: {}, openings: [] });
     }
-    const ext = wallMode === 'ext';
-    S.walls.push({ uid: uid(), axis: g.axis, c: r4(g.c), a: r4(g.a), b: r4(g.b), t: ext ? S.wallThickness.exterior : S.wallThickness.interior, ext, status: 'keep', extra: {}, openings: [] });
     draw.n++;
     if (ext && draw.n >= 3 && Math.hypot(g.end[0] - draw.first[0], g.end[1] - draw.first[1]) < 0.01) {
       draw = null; ghost = null; wallMode = 'int'; setTool('wall');
@@ -612,8 +719,12 @@
     if (tool === 'door') {
       // inside doors swing to the side you clicked; outside doors swing into the house
       let side = g.side;
-      if (g.w.ext) { const rs = live().map(rectOf), mid = g.w.axis === 'h' ? (Math.min(...rs.map(r => r.y0)) + Math.max(...rs.map(r => r.y1))) / 2 : (Math.min(...rs.map(r => r.x0)) + Math.max(...rs.map(r => r.x1))) / 2; side = mid > g.w.c ? 1 : -1; }
-      o.hinge = 'a'; o.swing = g.w.axis === 'h' ? (side > 0 ? 's' : 'n') : (side > 0 ? 'e' : 'w');
+      if (g.w.ext) {
+        const rs = live().map(rectOf);
+        if (isL(g.w)) { const cx = (Math.min(...rs.map(r => r.x0)) + Math.max(...rs.map(r => r.x1))) / 2, cy = (Math.min(...rs.map(r => r.y0)) + Math.max(...rs.map(r => r.y1))) / 2, [t, off] = toLocal(g.w, [cx, cy]); void t; side = off > 0 ? 1 : -1; }
+        else { const mid = g.w.axis === 'h' ? (Math.min(...rs.map(r => r.y0)) + Math.max(...rs.map(r => r.y1))) / 2 : (Math.min(...rs.map(r => r.x0)) + Math.max(...rs.map(r => r.x1))) / 2; side = mid > g.w.c ? 1 : -1; }
+      }
+      o.hinge = 'a'; o.swing = isL(g.w) ? (side > 0 ? 'r' : 'l') : g.w.axis === 'h' ? (side > 0 ? 's' : 'n') : (side > 0 ? 'e' : 'w');
     }
     if (tool === 'window') o.panes = 1;
     g.w.openings.push(o);
@@ -621,29 +732,106 @@
   }
 
   // rooms: flood fill on a 3" grid, bounded by walls (doorways count as closed), split lines and existing rooms
-  function fillRoom(p) {
-    const ws = live().map(rectOf);
-    if (!ws.length) return { error: 'Draw the walls first.' };
-    const G = 0.25, x0 = Math.floor(Math.min(...ws.map(r => r.x0)) / G) * G - G, y0 = Math.floor(Math.min(...ws.map(r => r.y0)) / G) * G - G;
+  const WALL = 1, SPLIT = 2, ROOM = 3, IN = 4, LEAK = 5;
+  const LEAKS = 'This space isn\'t closed: it leaks outside the house. Check for a gap between walls.';
+  // the plan as a grid of cells: wall, split line, already a room, or free. A finer grid when some wall is angled.
+  function gridFor() {
+    const lw = live(), ws = lw.map(rectOf);
+    if (!ws.length) return null;
+    const G = lw.some(isSlant) ? 0.1 : 0.25, x0 = Math.floor(Math.min(...ws.map(r => r.x0)) / G) * G - G, y0 = Math.floor(Math.min(...ws.map(r => r.y0)) / G) * G - G;
     const nx = Math.ceil((Math.max(...ws.map(r => r.x1)) - x0) / G) + 2, ny = Math.ceil((Math.max(...ws.map(r => r.y1)) - y0) / G) + 2;
-    const WALL = 1, SPLIT = 2, ROOM = 3, IN = 4;
-    const cell = new Uint8Array(nx * ny);
+    const base = new Uint8Array(nx * ny);
     for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
       const cx = x0 + (i + 0.5) * G, cy = y0 + (j + 0.5) * G;
-      if (ws.some(r => cx > r.x0 && cx < r.x1 && cy > r.y0 && cy < r.y1)) cell[j * nx + i] = WALL;
-      else if (S.splits.some(s => (s.axis === 'h' ? Math.abs(cy - s.c) < G / 2 && cx > s.a && cx < s.b : Math.abs(cx - s.c) < G / 2 && cy > s.a && cy < s.b))) cell[j * nx + i] = SPLIT;
-      else if (roomAt(cx, cy)) cell[j * nx + i] = ROOM;
+      if (lw.some(w => inWallBox(w, cx, cy))) base[j * nx + i] = WALL;
+      else if (S.splits.some(s => (s.axis === 'h' ? Math.abs(cy - s.c) < G / 2 && cx > s.a && cx < s.b : Math.abs(cx - s.c) < G / 2 && cy > s.a && cy < s.b))) base[j * nx + i] = SPLIT;
+      else if (roomAt(cx, cy)) base[j * nx + i] = ROOM;
     }
+    return { G, x0, y0, nx, ny, base, slant: lw.some(isSlant) };
+  }
+  // the outline of a set of cells: the longest loop of cell edges, straightened
+  function traceOutline(inside, nx, ny, G, x0, y0) {
+    const out = new Map(), key = (i, j) => j * (nx + 1) + i, add = (a, b, c, d) => { const k = key(a, b); (out.get(k) || out.set(k, []).get(k)).push([c, d]); };
+    const on = (i, j) => i >= 0 && j >= 0 && i < nx && j < ny && inside[j * nx + i];
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      if (!on(i, j)) continue;
+      if (!on(i, j - 1)) add(i, j, i + 1, j);
+      if (!on(i + 1, j)) add(i + 1, j, i + 1, j + 1);
+      if (!on(i, j + 1)) add(i + 1, j + 1, i, j + 1);
+      if (!on(i - 1, j)) add(i, j + 1, i, j);
+    }
+    let best = null, bestA = 0;
+    for (const [k0, list0] of out) {
+      while (list0.length) {
+        const si = k0 % (nx + 1), sj = Math.floor(k0 / (nx + 1)), pts = [[si, sj]]; let [ci, cj] = list0.pop();
+        for (let guard = 0; guard < 4e5 && !(ci === si && cj === sj); guard++) {
+          pts.push([ci, cj]);
+          const l = out.get(key(ci, cj)); if (!l || !l.length) break;
+          [ci, cj] = l.pop();
+        }
+        const A = Math.abs(pts.reduce((t, q, n) => { const m = pts[(n + 1) % pts.length]; return t + q[0] * m[1] - m[0] * q[1]; }, 0)) / 2;
+        if (A > bestA) { bestA = A; best = pts; }
+      }
+    }
+    if (!best) return null;
+    // keep only the corners, then drop wobble smaller than a fifth of a cell... and a little more along slopes
+    let pts = best.map(([i, j]) => [x0 + i * G, y0 + j * G]);
+    pts = pts.filter((q, n) => { const a = pts[(n + pts.length - 1) % pts.length], b = pts[(n + 1) % pts.length]; return Math.abs((q[0] - a[0]) * (b[1] - q[1]) - (q[1] - a[1]) * (b[0] - q[0])) > 1e-9; });
+    const tol = G * 0.95, dist = (q, a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1; return Math.abs((q[0] - a[0]) * dy - (q[1] - a[1]) * dx) / L; };
+    const dp = chain => {
+      if (chain.length < 3) return chain;
+      let mi = 0, md = -1; for (let i = 1; i < chain.length - 1; i++) { const d = dist(chain[i], chain[0], chain[chain.length - 1]); if (d > md) { md = d; mi = i; } }
+      if (md <= tol) return [chain[0], chain[chain.length - 1]];
+      return dp(chain.slice(0, mi + 1)).slice(0, -1).concat(dp(chain.slice(mi)));
+    };
+    let far = 0, fd = -1; pts.forEach((q, i) => { const d = Math.hypot(q[0] - pts[0][0], q[1] - pts[0][1]); if (d > fd) { fd = d; far = i; } });
+    const first = pts.slice(0, far + 1), second = pts.slice(far).concat([pts[0]]);
+    let simp = dp(first).slice(0, -1).concat(dp(second).slice(0, -1));
+    for (let again = 0; again < 3 && simp.length > 3; again++) {          // corners a cell or two apart are one corner; a point on a straight run goes
+      const next = [];
+      for (let i = 0; i < simp.length; i++) {
+        const q = simp[i], a = next.length ? next[next.length - 1] : null;
+        if (a && Math.hypot(q[0] - a[0], q[1] - a[1]) < G * 1.6) next[next.length - 1] = [(a[0] + q[0]) / 2, (a[1] + q[1]) / 2]; else next.push(q);
+      }
+      simp = next.filter((q, n) => { const a = next[(n + next.length - 1) % next.length], b = next[(n + 1) % next.length]; return Math.abs((q[0] - a[0]) * (b[1] - q[1]) - (q[1] - a[1]) * (b[0] - q[0])) > G * 0.4; });
+    }
+    return simp.length >= 3 ? simp.map(q => [r4(q[0]), r4(q[1])]) : null;
+  }
+  function fillRoom(p, grid = gridFor()) {
+    if (!grid) return { error: 'Draw the walls first.' };
+    const { G, x0, y0, nx, ny } = grid, cell = grid.base.slice();
     const si = Math.floor((p[0] - x0) / G), sj = Math.floor((p[1] - y0) / G);
     if (si < 0 || sj < 0 || si >= nx || sj >= ny) return { error: 'Click inside the house.' };
     if (cell[sj * nx + si] === WALL) return { error: 'That\'s a wall. Click inside the room.' };
     if (cell[sj * nx + si] === SPLIT) return { error: 'That\'s on a split line. Click a little to one side.' };
     if (cell[sj * nx + si] === ROOM) return { error: 'That space is already a room.' };
-    const q = [[si, sj]]; cell[sj * nx + si] = IN; let n = 0;
-    while (q.length) {
-      const [i, j] = q.pop(); n++;
-      if (i === 0 || j === 0 || i === nx - 1 || j === ny - 1) return { error: 'This space isn\'t closed: it leaks outside the house. Check for a gap between walls.' };
-      for (const [a, b] of [[i + 1, j], [i - 1, j], [i, j + 1], [i, j - 1]]) if (!cell[b * nx + a]) { cell[b * nx + a] = IN; q.push([a, b]); }
+    if (cell[sj * nx + si] === LEAK) return { error: LEAKS };
+    const stack = [sj * nx + si]; cell[stack[0]] = IN; let n = 0;
+    while (stack.length) {
+      const c = stack.pop(), i = c % nx, j = (c - i) / nx; n++;
+      if (i === 0 || j === 0 || i === nx - 1 || j === ny - 1) {
+        for (let k = 0; k < cell.length; k++) if (cell[k] === IN) grid.base[k] = LEAK;          // the whole outside is one space: remember it, so it is not flooded again
+        return { error: LEAKS };
+      }
+      for (const m of [c + 1, c - 1, c + nx, c - nx]) if (!cell[m]) { cell[m] = IN; stack.push(m); }
+    }
+    let slantEdge = false;
+    if (grid.slant) {                                                  // does the space touch an angled wall? Then it needs an outline, not rectangles
+      const lw = live().filter(isSlant), near = new Uint8Array(nx * ny);
+      for (let j = 1; j < ny - 1; j++) for (let i = 1; i < nx - 1; i++) {
+        const v = cell[j * nx + i];
+        if (v === IN) near[j * nx + i] = 1;
+        else if (v === WALL || v === SPLIT) {
+          let hit = false;
+          for (let dj = -1; dj <= 1 && !hit; dj++) for (let di = -1; di <= 1; di++) if (cell[(j + dj) * nx + i + di] === IN) { hit = true; break; }
+          if (hit) { near[j * nx + i] = 1; if (!slantEdge && v === WALL) { const cx = x0 + (i + 0.5) * G, cy = y0 + (j + 0.5) * G; if (lw.some(w => inWallBox(w, cx, cy))) slantEdge = true; } }
+        }
+      }
+      if (slantEdge) {
+        const poly = traceOutline(near, nx, ny, G, x0, y0);
+        if (!poly) return { error: 'Could not outline that space.' };
+        return { rects: [], polys: [poly], area: n * G * G };
+      }
     }
     // rows of cells -> rectangles, merging identical runs on consecutive rows
     const rects = [];
@@ -694,7 +882,7 @@
     if (res.error) { toast(res.error); return; }
     checkpoint();
     const name = 'Room ' + (S.rooms.length + 1);
-    const r = { uid: uid(), id: uniqueId(slug(name), new Set(S.rooms.map(x => x.id))), name, short: shortFor(name, new Set(S.rooms.map(x => x.short))), rects: res.rects, extra: {}, fresh: true };
+    const r = { uid: uid(), id: uniqueId(slug(name), new Set(S.rooms.map(x => x.id))), name, short: shortFor(name, new Set(S.rooms.map(x => x.short))), rects: res.rects, ...(res.polys ? { polys: res.polys } : {}), extra: {}, fresh: true };
     S.rooms.push(r);
     sel = { kind: 'room', uid: r.uid }; changed();
     setTimeout(() => { const f = $('#insp [data-f="name"]'); if (f) { f.focus(); f.select(); } }, 30);
@@ -748,13 +936,14 @@
     if (!t) { if (sel) { sel = null; render(); renderSide(); } return startPan(e); }
     const kind = t.dataset.kind, u = t.dataset.uid, before = snap();
     if (kind === 'handle') {
-      drag = { type: 'end', what: t.dataset.what, uid: u, end: t.dataset.end, before };
+      const w0 = t.dataset.what === 'wall' ? byUid(u) : null;
+      drag = { type: 'end', what: t.dataset.what, uid: u, end: t.dataset.end, before, len0: w0 && isL(w0) ? w0.b : 0, ops0: w0 && isL(w0) ? w0.openings.map(o => [o.a, o.b]) : null };
     } else if (kind === 'wall') {
       const w = byUid(u); sel = { kind: 'wall', uid: u };
-      drag = { type: 'wall', uid: u, start: p, c0: w.c, before };
+      drag = { type: 'wall', uid: u, start: p, c0: w.c, p0: isL(w) ? w.p.slice() : null, before };
     } else if (kind === 'opening') {
       const { w, o } = findOpening(u); sel = { kind: 'opening', uid: u };
-      drag = { type: 'opening', uid: u, start: along(w.axis, p), a0: o.a, b0: o.b, before };
+      drag = { type: 'opening', uid: u, start: along(w, p), a0: o.a, b0: o.b, before };
     } else if (kind === 'fixture') {
       const g = fxBy(u); sel = { kind: 'fixture', uid: u };
       drag = { type: 'fixture', uid: u, start: p, rect0: FX.footprint(g), before };
@@ -766,7 +955,7 @@
     render(); renderSide();
   }
   svg.addEventListener('pointermove', e => {
-    const p = toFt(e); lastP = p;
+    const p = toFt(e); lastP = p; lastMods = { altKey: e.altKey, shiftKey: e.shiftKey };
     $('#cursor').textContent = `${fmt(p[0])}, ${fmt(p[1])}`;
     if (drag) return dragMove(e, p);
     if (tool === 'wall' || tool === 'split') {
@@ -785,9 +974,31 @@
     }
     d.moved = true;
     if (d.type === 'under') { S.underlay.ox = d.ox + p[0] - d.start[0]; S.underlay.oy = d.oy + p[1] - d.start[1]; render(); return; }
+    if (d.type === 'wall' && d.p0) {                                       // an angled wall moves as it is
+      const w = byUid(d.uid); let dx = p[0] - d.start[0], dy = p[1] - d.start[1];
+      if (!e.altKey) {
+        dx = Math.round(dx / GRID) * GRID; dy = Math.round(dy / GRID) * GRID;
+        for (const i of [0, 2]) { const sp = snapPoint([d.p0[i] + dx, d.p0[i + 1] + dy], false, w); if (sp.kind === 'end') { dx = sp.p[0] - d.p0[i]; dy = sp.p[1] - d.p0[i + 1]; break; } }
+      }
+      setLine(w, [d.p0[0] + dx, d.p0[1] + dy, d.p0[2] + dx, d.p0[3] + dy]); render(); return;
+    }
     if (d.type === 'wall') {
       const w = byUid(d.uid), v = d.c0 + across(w.axis, p) - across(w.axis, d.start);
       w.c = r4(snapC(v, coordCands(w.axis === 'h' ? 'y' : 'x', w), e.altKey)); render(); return;
+    }
+    if (d.type === 'end' && d.what === 'wall' && isL(byUid(d.uid))) {      // one end of an angled wall: to another wall's end, else every 15 degrees
+      const w = byUid(d.uid), fixed = d.end === 'a' ? [w.p[2], w.p[3]] : [w.p[0], w.p[1]];
+      const sp = e.altKey ? { p, kind: null } : snapPoint(p, false, w);
+      let np = sp.kind === 'end' ? sp.p.slice() : p.slice();
+      if (!sp.kind && !e.altKey) {
+        const dx = p[0] - fixed[0], dy = p[1] - fixed[1], ang = Math.round(Math.atan2(dy, dx) / ANG) * ANG, len = Math.round(Math.hypot(dx, dy) / GRID) * GRID;
+        np = [fixed[0] + Math.cos(ang) * len, fixed[1] + Math.sin(ang) * len];
+        const hit = rayHit(fixed, ang, p); if (hit) np = hit;
+      }
+      if (Math.hypot(np[0] - fixed[0], np[1] - fixed[1]) < 0.25) return;
+      setLine(w, d.end === 'a' ? [np[0], np[1], fixed[0], fixed[1]] : [fixed[0], fixed[1], np[0], np[1]]);
+      if (d.end === 'a') w.openings.forEach((o, i) => { o.a = r4(d.ops0[i][0] + w.b - d.len0); o.b = r4(d.ops0[i][1] + w.b - d.len0); });   // openings stay put relative to the far end
+      render(); return;
     }
     if (d.type === 'end' && d.what === 'wall') {
       const w = byUid(d.uid);
@@ -797,7 +1008,7 @@
     }
     if (d.type === 'end' && d.what === 'opening') {
       const { w, o } = findOpening(d.uid);
-      let v = snapC(along(w.axis, p), [], e.altKey);
+      let v = snapC(along(w, p), [], e.altKey);
       const others = w.openings.filter(x => x !== o);
       if (d.end === 'a') { const lim = Math.max(w.a, ...others.filter(x => x.b <= o.a + 1e-6).map(x => x.b)); o.a = r4(Math.max(lim, Math.min(v, o.b - 1))); }
       else { const lim = Math.min(w.b, ...others.filter(x => x.a >= o.b - 1e-6).map(x => x.a)); o.b = r4(Math.min(lim, Math.max(v, o.a + 1))); }
@@ -811,7 +1022,7 @@
     }
     if (d.type === 'opening') {
       const { w, o } = findOpening(d.uid), wd = d.b0 - d.a0;
-      let a = snapC(d.a0 + along(w.axis, p) - d.start, [], e.altKey);
+      let a = snapC(d.a0 + along(w, p) - d.start, [], e.altKey);
       a = Math.max(w.a, Math.min(w.b - wd, a));
       if (!w.openings.some(x => x !== o && x.a < a + wd - 1e-6 && x.b > a + 1e-6)) { o.a = r4(a); o.b = r4(a + wd); }
       render(); renderSide();
@@ -846,9 +1057,9 @@
     }
     if (typing) { if (e.key === 'Escape' && !$('#dialog').hidden) closeDialog(); return; }
     if (draw && (tool === 'wall' || tool === 'split')) {             // typed lengths while drawing
-      if (/^[0-9.'"\- ]$/.test(e.key)) { lenBuf += e.key; e.preventDefault(); ghost = Object.assign(ghost || {}, { kind: tool, t: ghost?.t || 0 }, drawTarget(lastP)); renderGhost(); return; }
-      if (e.key === 'Backspace' && lenBuf) { lenBuf = lenBuf.slice(0, -1); e.preventDefault(); ghost = Object.assign(ghost || {}, drawTarget(lastP)); renderGhost(); return; }
-      if (e.key === 'Enter' && lenBuf) { e.preventDefault(); drawClick(lastP, {}); return; }
+      if (/^[0-9.'"\- ]$/.test(e.key)) { lenBuf += e.key; e.preventDefault(); ghost = Object.assign(ghost || {}, { kind: tool, t: ghost?.t || 0 }, drawTarget(lastP, lastMods)); renderGhost(); return; }
+      if (e.key === 'Backspace' && lenBuf) { lenBuf = lenBuf.slice(0, -1); e.preventDefault(); ghost = Object.assign(ghost || {}, drawTarget(lastP, lastMods)); renderGhost(); return; }
+      if (e.key === 'Enter' && lenBuf) { e.preventDefault(); drawClick(lastP, lastMods); return; }
     }
     if (e.key === ' ') { spaceDown = true; e.preventDefault(); return; }
     if (e.key === 'Escape') {
@@ -867,7 +1078,7 @@
   });
   document.addEventListener('keyup', e => { if (e.key === ' ') spaceDown = false; });
   $$('[data-tool]').forEach(b => b.onclick = () => setTool(b.dataset.tool));
-  $('#wallMode').addEventListener('click', e => { const b = e.target.closest('[data-mode]'); if (!b) return; wallMode = b.dataset.mode; endDraw(); setTool('wall'); });
+  $('#wallMode').addEventListener('click', e => { const b = e.target.closest('[data-mode],[data-angle]'); if (!b) return; if (b.dataset.angle) wallAngle = !wallAngle; else wallMode = b.dataset.mode; endDraw(); setTool('wall'); });
 
   // ------------------------------------------------------------------ fixtures: placing and moving
   const SIZE_KEYS = ['box', 'upper', 'range', 'tub', 'shower', 'front', 'shelf', 'pumps', 'sink2', 'steps', 'deck'];
@@ -878,6 +1089,7 @@
   function wallFace(p, reach) {
     let best = null;
     for (const w of live()) {
+      if (isL(w)) continue;
       const t = along(w.axis, p); if (t < w.a - 0.3 || t > w.b + 0.3) continue;
       const a = across(w.axis, p) - w.c, side = a >= 0 ? 1 : -1, dist = Math.abs(Math.abs(a) - w.t / 2);
       if (dist > reach || (best && dist >= best.dist)) continue;
@@ -889,7 +1101,7 @@
   function fxEdges(axis, skip) {
     const out = [];
     for (const g of fxs()) { if (g.uid === skip || !FX.editable(g)) continue; const r = FX.footprint(g); out.push(...(axis === 'x' ? [r[0], r[2]] : [r[1], r[3]])); }
-    for (const w of live()) { const r = rectOf(w); out.push(...(axis === 'x' ? [r.x0, r.x1] : [r.y0, r.y1])); }
+    for (const w of live()) { if (isL(w)) continue; const r = rectOf(w); out.push(...(axis === 'x' ? [r.x0, r.x1] : [r.y0, r.y1])); }
     return out;
   }
   function snapSpan(start, len, cands, free) {                           // snap either end of a span to a candidate, else the 1" grid
@@ -1098,22 +1310,27 @@
     if (sel && sel.kind === 'wall' && it) {
       const w = it; title = (w.ext ? 'Outside' : 'Inside') + ' wall';
       const dir = w.axis === 'h' ? ['Left end x', 'Right end x', 'Centre line y'] : ['Top end y', 'Bottom end y', 'Centre line x'];
-      h += `<h3>${fmt(w.b - w.a)} ${w.axis === 'h' ? 'horizontal' : 'vertical'} wall</h3>
+      const where = isL(w)
+        ? `<div class="pair">${field('Start x', 'px0', w.p[0], { len: 1 })}${field('Start y', 'py0', w.p[1], { len: 1 })}</div>
+          <div class="pair">${field('End x', 'px1', w.p[2], { len: 1 })}${field('End y', 'py1', w.p[3], { len: 1 })}</div>
+          ${field('Angle (degrees: 0 = east, 90 = north)', 'ang', Math.round(((-Math.atan2(w.p[3] - w.p[1], w.p[2] - w.p[0]) * 180 / Math.PI) + 360) % 360 * 100) / 100)}`
+        : `<div class="pair">${field(dir[0], 'a', w.a, { len: 1 })}${field(dir[1], 'b', w.b, { len: 1 })}</div>
+          ${field(dir[2], 'c', w.c, { len: 1 })}`;
+      h += `<h3>${fmt(w.b - w.a)} ${isL(w) ? 'angled' : w.axis === 'h' ? 'horizontal' : 'vertical'} wall</h3>
         ${field('Type', 'ext', w.ext ? '1' : '', { select: [['1', 'Outside wall (siding outside)'], ['', 'Inside wall']] })}
         <div class="pair">${field('Length', 'len', w.b - w.a, { len: 1 })}${field('Thickness', 't', w.t, { len: 1 })}</div>
-        <div class="pair">${field(dir[0], 'a', w.a, { len: 1 })}${field(dir[1], 'b', w.b, { len: 1 })}</div>
-        ${field(dir[2], 'c', w.c, { len: 1 })}
+        ${where}
         ${field('Status', 'status', w.status, { select: [['keep', 'Existing'], ['new', 'New (remodel)'], ['removed', 'Removed (shown on the Before plan only)']] })}
         ${w.openings.length ? `<div class="field">Openings<div class="chips">${w.openings.slice().sort((p, q) => p.a - q.a).map(o => `<button data-pick="${o.uid}">${o.type} ${fmt(o.b - o.a)}</button>`).join('')}</div></div>` : ''}
         <div class="actions"><button class="btn danger" data-act="delete">Delete wall</button></div>`;
     } else if (op) {
       const { w, o } = op; title = { door: 'Door', window: 'Window', cased: 'Opening', panel: 'Access panel' }[o.type];
-      const hz = w.axis === 'h';
+      const hz = w.axis === 'h', ang = isL(w);
       h += `<h3>${fmt(o.b - o.a)} ${title.toLowerCase()}</h3><p class="sub">In a ${fmt(w.b - w.a)} ${w.ext ? 'outside' : 'inside'} wall</p>
         ${field('Type', 'type', o.type, { select: [['door', 'Door'], ['window', 'Window'], ['cased', 'Opening (no door)'], ['panel', 'Access panel']] })}
-        <div class="pair">${field('Width', 'width', o.b - o.a, { len: 1 })}${field(hz ? 'From left end' : 'From top end', 'from', o.a - w.a, { len: 1 })}</div>`;
-      if (o.type === 'door') h += `<div class="pair">${field('Hinge', 'hinge', o.hinge || 'a', { select: hz ? [['a', 'Left side'], ['b', 'Right side']] : [['a', 'Top side'], ['b', 'Bottom side']] })}
-          ${field('Swings into', 'swing', o.swing, { select: hz ? [['n', 'The north side (up)'], ['s', 'The south side (down)']] : [['w', 'The west side (left)'], ['e', 'The east side (right)']] })}</div>
+        <div class="pair">${field('Width', 'width', o.b - o.a, { len: 1 })}${field(ang ? 'From the start' : hz ? 'From left end' : 'From top end', 'from', o.a - w.a, { len: 1 })}</div>`;
+      if (o.type === 'door') h += `<div class="pair">${field('Hinge', 'hinge', o.hinge || 'a', { select: ang ? [['a', 'Start side'], ['b', 'End side']] : hz ? [['a', 'Left side'], ['b', 'Right side']] : [['a', 'Top side'], ['b', 'Bottom side']] })}
+          ${field('Swings into', 'swing', o.swing, { select: ang ? [['l', 'The left (looking from the start)'], ['r', 'The right (looking from the start)']] : hz ? [['n', 'The north side (up)'], ['s', 'The south side (down)']] : [['w', 'The west side (left)'], ['e', 'The east side (right)']] })}</div>
           ${field('Height', 'height', o.height, { len: 1, ph: fmt(S.heights.door) + ' (house default)' })}`;
       if (o.type === 'cased') h += field('Height', 'height', o.height, { len: 1, ph: fmt(S.heights.door) + ' (house default)' });
       if (o.type === 'window') h += `<div class="trio">${field('Sill', 'sill', o.sill, { len: 1, ph: fmt(S.heights.windowSill) })}${field('Head', 'head', o.head, { len: 1, ph: fmt(S.heights.windowHead) })}${field('Panes', 'panes', o.panes || 1, { select: [[1, '1'], [2, '2'], [3, '3'], [4, '4']] })}</div>
@@ -1121,7 +1338,7 @@
       h += `<div class="actions"><button class="btn" data-act="wall">Select its wall</button><button class="btn danger" data-act="delete">Delete</button></div>`;
     } else if (sel && sel.kind === 'room' && it) {
       const r = it; title = 'Room';
-      const area = r.rects.reduce((t, q) => t + (q[2] - q[0]) * (q[3] - q[1]), 0);
+      const area = roomArea(r);
       h += `<h3>${esc(r.name)}</h3><p class="sub">About ${Math.round(area)} sq ft (to the wall centre lines)</p>
         ${field('Name', 'name', r.name)}
         <div class="pair">${field('Wall ID prefix', 'short', r.short, { ph: r.id.toUpperCase() })}${field('Room id', 'id', r.id)}</div>
@@ -1218,7 +1435,16 @@
       const w = it;
       if (f === 'ext') { w.ext = !!v; return; }
       if (f === 'status') { w.status = v; return; }
+      if (isL(w) && ['px0', 'py0', 'px1', 'py1', 'ang'].includes(f)) {
+        if (v === null || v === '' || !isFinite(+v)) return false;
+        const q = w.p.slice(), n = +v;
+        if (f === 'ang') { const rad = -n * Math.PI / 180; q[2] = q[0] + Math.cos(rad) * w.b; q[3] = q[1] + Math.sin(rad) * w.b; }
+        else q[{ px0: 0, py0: 1, px1: 2, py1: 3 }[f]] = n;
+        if (Math.hypot(q[2] - q[0], q[3] - q[1]) < 0.5) return false;
+        setLine(w, q); return;
+      }
       if (v == null || v <= 0 && f !== 'a' && f !== 'b' && f !== 'c') return false;
+      if (isL(w) && f === 'len') { const u = lineU(w); setLine(w, [w.p[0], w.p[1], w.p[0] + u[0] * v, w.p[1] + u[1] * v]); return; }
       if (f === 'len') { w.b = r4(w.a + v); return; }
       if (f === 't') { w.t = r4(v); return; }
       if (f === 'a') { if (v >= w.b) return false; w.a = r4(v); return; }
@@ -1227,7 +1453,7 @@
     }
     if (op) {
       const { w, o } = op;
-      if (f === 'type') { o.type = v; if (v === 'door') { o.hinge ||= 'a'; o.swing ||= w.axis === 'h' ? 's' : 'e'; } return; }
+      if (f === 'type') { o.type = v; if (v === 'door') { o.hinge ||= 'a'; o.swing ||= isL(w) ? 'r' : w.axis === 'h' ? 's' : 'e'; } return; }
       if (f === 'hinge' || f === 'swing') { o[f] = v; return; }
       if (f === 'panes') { o.panes = +v; return; }
       if (f === 'width') { if (!(v >= 0.5)) return false; const b = o.a + v; if (b > w.b + 1e-6 || w.openings.some(x => x !== o && x.a < b - 1e-6 && x.b > o.a + 1e-6)) return false; o.b = r4(b); return; }

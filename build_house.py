@@ -247,12 +247,14 @@ def P(x, y, z): return Vector((x * FT, -y * FT, z * FT))
 class Obj:
     """One Blender object: a bmesh with per-face materials and UVs in feet."""
     def __init__(self, c, name):
-        self.c, self.name, self.bm, self.slots = c, name, bmesh.new(), []
+        self.c, self.name, self.bm, self.slots, self.uvs = c, name, bmesh.new(), [], {}
     def slot(self, mat):
         if mat not in self.slots: self.slots.append(mat)
         return self.slots.index(mat)
-    def face(self, verts, mat):
-        f = self.bm.faces.new(verts); f.material_index = self.slot(mat); return f
+    def face(self, verts, mat, uv=None):
+        f = self.bm.faces.new(verts); f.material_index = self.slot(mat)
+        if uv: self.uvs[f] = {v: u for v, u in zip(verts, uv)}                 # (along, up) in feet, for faces that aren't axis-aligned
+        return f
     def prism(self, pts, z0, z1, mat):
         lo = [self.bm.verts.new(P(x, y, z0)) for x, y in pts]; hi = [self.bm.verts.new(P(x, y, z1)) for x, y in pts]
         n = len(pts)
@@ -268,6 +270,20 @@ class Obj:
         self.face([v[0, 0, 0], v[0, 1, 0], v[0, 1, 1], v[0, 0, 1]], g('xmin')); self.face([v[1, 0, 0], v[1, 0, 1], v[1, 1, 1], v[1, 1, 0]], g('xmax'))
         self.face([v[0, 0, 0], v[0, 0, 1], v[1, 0, 1], v[1, 0, 0]], g('ymin')); self.face([v[0, 1, 0], v[1, 1, 0], v[1, 1, 1], v[0, 1, 1]], g('ymax'))
         self.face([v[0, 0, 0], v[1, 0, 0], v[1, 1, 0], v[0, 1, 0]], g('zmin')); self.face([v[0, 0, 1], v[0, 1, 1], v[1, 1, 1], v[1, 0, 1]], g('zmax'))
+    def obox(self, S, s0, s1, z0, z1, off, thick, mats):
+        """A box along an angled wall S, from s0 to s1 (feet from the start of its line), offset sideways by `off` (positive = right).
+        mats: one material, or a dict with end_a end_b lo hi bottom top."""
+        if s1 - s0 < 1e-5 or z1 - z0 < 1e-5 or thick < 1e-5: return
+        g = (lambda k: mats[k]) if isinstance(mats, dict) else (lambda k: mats)
+        u, nr, p0, h = S['u'], S['nr'], S['p0'], thick / 2
+        V = {(i, j, k): self.bm.verts.new(P(p0[0] + u[0] * (s0, s1)[i] + nr[0] * (off + (-h, h)[j]), p0[1] + u[1] * (s0, s1)[i] + nr[1] * (off + (-h, h)[j]), (z0, z1)[k]))
+             for i in (0, 1) for j in (0, 1) for k in (0, 1)}
+        self.face([V[0, 0, 0], V[1, 0, 0], V[1, 0, 1], V[0, 0, 1]], g('lo'), [(s0, z0), (s1, z0), (s1, z1), (s0, z1)])
+        self.face([V[0, 1, 0], V[1, 1, 0], V[1, 1, 1], V[0, 1, 1]], g('hi'), [(s0, z0), (s1, z0), (s1, z1), (s0, z1)])
+        self.face([V[0, 0, 0], V[0, 1, 0], V[0, 1, 1], V[0, 0, 1]], g('end_a'), [(0, z0), (thick, z0), (thick, z1), (0, z1)])
+        self.face([V[1, 0, 0], V[1, 1, 0], V[1, 1, 1], V[1, 0, 1]], g('end_b'), [(0, z0), (thick, z0), (thick, z1), (0, z1)])
+        self.face([V[0, 0, 0], V[1, 0, 0], V[1, 1, 0], V[0, 1, 0]], g('bottom'), [(s0, 0), (s1, 0), (s1, thick), (s0, thick)])
+        self.face([V[0, 0, 1], V[1, 0, 1], V[1, 1, 1], V[0, 1, 1]], g('top'), [(s0, 0), (s1, 0), (s1, thick), (s0, thick)])
     def ellipse(self, cx, cy, rx, ry, z0, z1, mat, n=32):
         self.prism([(cx + rx * math.cos(2 * math.pi * i / n), cy + ry * math.sin(2 * math.pi * i / n)) for i in range(n)], z0, z1, mat)
     def finish(self, props=None):
@@ -279,7 +295,7 @@ class Obj:
             n = f.normal; ax = max(range(3), key=lambda i: abs(n[i]))
             for lp in f.loops:
                 co = lp.vert.co / FT
-                lp[uvl].uv = (co.y, co.z) if ax == 0 else (co.x, co.z) if ax == 1 else (co.x, co.y)
+                lp[uvl].uv = self.uvs[f][lp.vert] if f in self.uvs else ((co.y, co.z) if ax == 0 else (co.x, co.z) if ax == 1 else (co.x, co.y))
         me = bpy.data.meshes.new(self.name); bm.to_mesh(me); bm.free()
         for m in self.slots: me.materials.append(m)
         ob = bpy.data.objects.new(self.name, me); coll(self.c).objects.link(ob)
@@ -293,7 +309,8 @@ def obj(c, name):
 
 # ----------------------------------------------------------------------------- walls (same algorithm as house3d.js)
 SURF_BY_WALL = {}
-for s in H['surfaces']: SURF_BY_WALL.setdefault(s['wall'], []).append(s)
+for s in H['surfaces']:
+    if s.get('wall') is not None: SURF_BY_WALL.setdefault(s['wall'], []).append(s)
 
 def build_walls():
     for wi, w in enumerate(H['walls']):
@@ -398,13 +415,17 @@ def build_door(w, horiz, o):
     hv, ov = (o['a'], o['b']) if o['hinge'] == 'a' else (o['b'], o['a'])
     hinge = Vector((hv, cy)) if horiz else Vector((cx, hv)); other = Vector((ov, cy)) if horiz else Vector((cx, ov))
     nrm = Vector((0, 1 if o['swing'] == 's' else -1)) if horiz else Vector((1 if o['swing'] == 'e' else -1, 0))
+    door_leaf(hinge, other, nrm, bool(w.get('ext')), o['z1'])
+
+def door_leaf(hinge, other, nrm, ext, dh):
+    """hinge, other: the two ends of the doorway in plan; nrm: the side the door swings to."""
     d = (other - hinge).normalized(); L = (other - hinge).length - 0.012
-    ang = math.radians(0 if w.get('ext') else DOOR_OPEN)
+    ang = math.radians(0 if ext else DOOR_OPEN)
     dr = d * math.cos(ang) + nrm * math.sin(ang); pp = Vector((-dr.y, dr.x)); hh = hinge + d * 0.006; t2 = DOOR_T / 2
-    key = 'extdoors' if w.get('ext') else 'doors'; mat = paint_mat(key)
+    key = 'extdoors' if ext else 'doors'; mat = paint_mat(key)
     q = lambda u0, u1, p0, p1: [tuple(hh + dr * u0 + pp * p0), tuple(hh + dr * u1 + pp * p0), tuple(hh + dr * u1 + pp * p1), tuple(hh + dr * u0 + pp * p1)]
     lv = obj('Doors', 'Door_Leaves'); hw = obj('Doors', 'Door_Hardware')
-    dh = o['z1']; ks = dh / 6.667                               # panel layout scales with the door's height
+    ks = dh / 6.667                                             # panel layout scales with the door's height
     lv.prism(q(0, L, -t2, t2), 0.03, dh - 0.05, mat)
     for sgn in (1, -1):
         for (u0, u1) in ((0.30, L / 2 - 0.08), (L / 2 + 0.08, L - 0.30)):
@@ -412,6 +433,81 @@ def build_door(w, horiz, o):
                 lv.prism(q(u0, u1, t2, t2 + 0.012) if sgn > 0 else q(u0, u1, -t2 - 0.012, -t2), z0, z1, mat)
         k = hh + dr * (L - 0.28) + pp * (sgn * (t2 + 0.05))
         hw.box(k.x - 0.045, k.y - 0.045, 2.95, k.x + 0.045, k.y + 0.045, 3.05, M['brass'])
+
+# ----------------------------------------------------------------------------- angled walls (same pieces as the straight ones, along each line)
+def build_slants():
+    by = {}
+    for s in H['surfaces']:
+        if s.get('slant') is not None: by.setdefault(s['slant'], []).append(s)
+    for S in H.get('slants', []):
+        if S.get('status') == 'removed': continue
+        surfs = by.get(S['i'], [])
+        ops = sorted([o for o in S['openings'] if o['type'] != 'panel'], key=lambda o: o['a'])
+        ob = obj('Walls', f"Slant_{S['i']:02d}_{S.get('id') or ('ext' if S['ext'] else 'int')}")
+        top = CEIL - 0.0007 * ((S['i'] + 4) % 9)
+        def face_key(side, t):
+            for x in surfs:
+                if x['side'] == side and x['a'] - 1e-3 <= t <= x['b'] + 1e-3: return x['id']
+            return None
+        def nearest(side, t):
+            best, bd = None, 0.4
+            for x in surfs:
+                if x['side'] == side:
+                    d = x['a'] - t if t < x['a'] else t - x['b'] if t > x['b'] else 0
+                    if d < bd: best, bd = x['id'], d
+            return best
+        is_ext = lambda k: bool(k) and k.startswith('EXT-')
+        lo0, hi0 = -S['e0'], S['len'] + S['e1']
+        cuts = {lo0, hi0}
+        for o in ops: cuts.update((o['a'], o['b']))
+        for x in surfs: cuts.update((max(lo0, min(hi0, x['a'])), max(lo0, min(hi0, x['b']))))
+        ts = sorted(cuts)
+        for i in range(len(ts) - 1):
+            t0, t1 = ts[i], ts[i + 1]
+            if t1 - t0 < 1e-3: continue
+            tm = (t0 + t1) / 2
+            o = next((q for q in ops if q['a'] < tm < q['b']), None)
+            zr = [(0, top)] if not o else [(0, o['z0']), (o['z1'], top)] if o['type'] == 'window' else [(o['z1'], top)]
+            lo, hi = face_key('lo', tm), face_key('hi', tm)
+            lo_k, hi_k = lo or nearest('lo', tm), hi or nearest('hi', tm)
+            def end_m(t):
+                if any(abs(q['a'] - t) < 1e-3 or abs(q['b'] - t) < 1e-3 for q in ops): return paint_mat('trim')
+                if abs(t - lo0) < 1e-3 or abs(t - hi0) < 1e-3:
+                    k = lo_k or hi_k
+                    return paint_mat(k) if k else M['cut']
+                return M['cut']
+            fm = lambda k: paint_mat(k) if k else M['cut']
+            for z0, z1 in zr:
+                ob.obox(S, t0, t1, z0, z1, 0, S['t'], {'end_a': end_m(t0), 'end_b': end_m(t1), 'lo': fm(lo_k), 'hi': fm(hi_k),
+                        'top': M['cut'] if z1 >= top - 1e-3 else paint_mat('trim'), 'bottom': M['cut'] if z0 <= 1e-3 else paint_mat('trim')})
+                if z0 <= 1e-3:
+                    tb = obj('Trim', 'Baseboards')
+                    for k, side in ((lo, -1), (hi, 1)):
+                        if k and not is_ext(k): tb.obox(S, t0, t1, 0, BASE_H, side * (S['t'] / 2 + BASE_T / 2), BASE_T, paint_mat('trim'))
+        for k, o in enumerate(ops):                                   # casings, windows, doors
+            room_l = (o['a'] - ops[k - 1]['b']) / 2 if k > 0 else CASE_W
+            room_r = (ops[k + 1]['a'] - o['b']) / 2 if k + 1 < len(ops) else CASE_W
+            el, er = min(CASE_W, room_l) - 0.002, min(CASE_W, room_r) - 0.002
+            z0, z1 = o['z0'], o['z1']
+            tc = obj('Trim', 'Casings')
+            for side in (-1, 1):
+                fk = face_key('lo' if side < 0 else 'hi', (o['a'] + o['b']) / 2) or face_key('lo' if side < 0 else 'hi', o['a'] - 0.05)
+                mat = paint_mat('exttrim' if is_ext(fk) else 'trim'); off = side * (S['t'] / 2 + CASE_T / 2)
+                tc.obox(S, o['a'] - el, o['a'], z0, z1, off, CASE_T, mat); tc.obox(S, o['b'], o['b'] + er, z0, z1, off, CASE_T, mat)
+                tc.obox(S, o['a'] - el, o['b'] + er, z1, z1 + CASE_W, off, CASE_T, mat)
+                if o['type'] == 'window': tc.obox(S, o['a'] - el, o['b'] + er, z0 - CASE_W * 0.8, z0, off, CASE_T, mat)
+            if o['type'] == 'window':
+                wf, wg = obj('Windows', 'Window_Frames'), obj('Windows', 'Window_Glass'); fw, dep = 0.11, 0.12
+                fb = lambda a0, a1, zz0, zz1: wf.obox(S, a0, a1, zz0, zz1, 0, dep, M['winframe'])
+                fb(o['a'], o['a'] + fw, z0, z1); fb(o['b'] - fw, o['b'], z0, z1); fb(o['a'] + fw, o['b'] - fw, z0, z0 + fw); fb(o['a'] + fw, o['b'] - fw, z1 - fw, z1)
+                for q in range(1, o.get('panes', 1)):
+                    pp = o['a'] + (o['b'] - o['a']) * q / o.get('panes', 1); fb(pp - 0.04, pp + 0.04, z0 + fw, z1 - fw)
+                fb(o['a'] + fw, o['b'] - fw, (z0 + z1) / 2 - 0.03, (z0 + z1) / 2 + 0.03)
+                wg.obox(S, o['a'] + fw, o['b'] - fw, z0 + fw, z1 - fw, 0, 0.02, M['glass'])
+            if o['type'] == 'door':
+                at = lambda t: Vector((S['p0'][0] + S['u'][0] * t, S['p0'][1] + S['u'][1] * t))
+                door_leaf(at(o['a'] if o.get('hinge', 'a') == 'a' else o['b']), at(o['b'] if o.get('hinge', 'a') == 'a' else o['a']),
+                          Vector(S['nl'] if o.get('swing') == 'l' else S['nr']), bool(S.get('ext')), o['z1'])
 
 # ----------------------------------------------------------------------------- cabinets, fixtures (same frames and numbering as house3d.js)
 # Fixtures are built in their own frame (fixtures.js): p = depth from the back to the front, q = across the front.
@@ -568,7 +664,9 @@ def build_shell():
     fl = obj('Floor', 'Floor'); fm = floor_material()
     for x0, y0, x1, y1 in H.get('floorRects') or [[E, E, W - E, D - E]]:
         vs = [fl.bm.verts.new(P(x, y, 0)) for x, y in ((x0, y0), (x1, y0), (x1, y1), (x0, y1))]; fl.face(vs, fm)
-    obj('Exterior', 'Skirting').box(-0.05, -0.05, GROUND_Z, W + 0.05, D + 0.05, -0.02, M['skirt'])
+    if H.get('slants'):
+        for x0, y0, x1, y1 in H.get('floorRects') or []: obj('Exterior', 'Skirting').box(x0 - 0.3, y0 - 0.3, GROUND_Z, x1 + 0.3, y1 + 0.3, -0.02, M['skirt'])
+    else: obj('Exterior', 'Skirting').box(-0.05, -0.05, GROUND_Z, W + 0.05, D + 0.05, -0.02, M['skirt'])
     obj('Exterior', 'Ground').box(-150, -150, GROUND_Z - 0.5, W + 150, D + 150, GROUND_Z, M['ground'])
     k = 0
     for r in H['rooms']:                                      # one ceiling per room, painted with its own key
@@ -577,7 +675,7 @@ def build_shell():
             k += 1; c.box(x0, y0, CEIL - 0.004 - 0.0003 * k, x1, y1, CEIL + 0.06, m)
     obj('Ceiling', 'Roof_Lighttight').box(0, 0, CEIL + 0.07, W, D, CEIL + 0.4, M['cut'])   # stops sky light leaking in at ceiling edges
 
-build_shell(); build_walls(); build_fixtures()
+build_shell(); build_walls(); build_slants(); build_fixtures()
 for o in list(OBJS.values()): o.finish()
 COLL['Ceiling'].hide_render = True
 

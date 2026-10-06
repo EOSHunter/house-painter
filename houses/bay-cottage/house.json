@@ -1,0 +1,43 @@
+{
+  "format": "house-painter/house",
+  "version": 1,
+  "id": "bay-cottage",
+  "name": "Bay Cottage",
+  "subtitle": "Example with angled walls · a cut corner and a bay window",
+  "units": "ft",
+  "W": 32,
+  "D": 24,
+  "wallThickness": { "exterior": 0.5, "interior": 0.33 },
+  "heights": { "ceiling": 9, "door": 6.833, "windowHead": 7, "windowSill": 3 },
+  "floor": { "name": "White oak planks", "color": "#B79E78", "plankW": 0.5, "plankL": 4, "dir": "x", "wood": "whiteoak" },
+  "walls": [
+    {"line":[0,0,26,0],"ext":1,"id":"north","openings":[{"a":3,"b":6.4,"type":"window"},{"a":17,"b":19.6,"type":"window"},{"a":22.4,"b":25,"type":"window"}]},
+    {"line":[26,0,32,6],"ext":1,"id":"entry-cut","openings":[{"a":2.7,"b":5.7,"type":"door","hinge":"a","swing":"r"}]},
+    {"line":[32,6,32,22],"ext":1,"id":"east","openings":[{"a":4,"b":8,"type":"window"}]},
+    {"line":[32,22,20,22],"ext":1,"id":"south-right","openings":[{"a":3,"b":7,"type":"window"}]},
+    {"line":[20,22,18,24],"ext":1,"id":"bay-right","openings":[{"a":0.5,"b":2.3,"type":"window"}]},
+    {"line":[18,24,12,24],"ext":1,"id":"bay-front","openings":[{"a":1,"b":5,"type":"window","panes":2}]},
+    {"line":[12,24,10,22],"ext":1,"id":"bay-left","openings":[{"a":0.5,"b":2.3,"type":"window"}]},
+    {"line":[10,22,0,22],"ext":1,"id":"south-left","openings":[{"a":3,"b":7,"type":"window"}]},
+    {"line":[0,22,0,0],"ext":1,"id":"west","openings":[{"a":14,"b":18,"type":"window"}]},
+    {"line":[14,0,14,12],"t":0.33,"id":"bedroom-east"},
+    {"line":[0,12,14,12],"t":0.33,"id":"bedroom-south","openings":[{"a":9,"b":12,"type":"door","hinge":"a","swing":"l"}]},
+    {"line":[22,0,22,8],"t":0.33,"id":"bath-east"},
+    {"line":[14,8,22,8],"t":0.33,"id":"bath-south","openings":[{"a":4.5,"b":7.2,"type":"door","hinge":"b","swing":"l"}]}
+  ],
+  "rooms": [
+    {"id":"bedroom","name":"Bedroom","short":"BR","rects":[[0,0,14,12]]},
+    {"id":"bath","name":"Bath","short":"BA","rects":[[14,0,22,8]]},
+    {"id":"living","name":"Living room","short":"LIV","polys":[[[0,0],[26,0],[32,6],[32,22],[20,22],[18,24],[12,24],[10,22],[0,22]]]}
+  ],
+  "roomOrder": ["living", "bedroom", "bath"],
+  "items": [
+    {"key":"vanity","name":"Vanity","room":"bath","kind":"cabinet","default":"#F1F0EC"}
+  ],
+  "fixtures": [
+    {"k":"box","c":"cabW","x":14.165,"y":0.25,"w":3,"h":1.75,"paint":"vanity","front":"s","z1":2.8,"basin":true},
+    {"k":"toilet","cx":20.2,"cy":1.2,"dir":"s"}
+  ],
+  "start": { "x": 27.6, "y": 8.2, "yaw": 2.356 },
+  "renderRooms": ["living", "bedroom", "bath"]
+}

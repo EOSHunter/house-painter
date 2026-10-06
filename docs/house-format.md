@@ -13,7 +13,7 @@ Copy [`houses/starter-cottage/house.json`](../houses/starter-cottage/house.json)
 - **Units:** feet.
 - **Origin:** one outside corner of the plan, usually the back-left.
 - **Axes:** `x` grows to the right (east), `y` grows down the page (south), and heights are measured up from the floor.
-- **Walls:** filled rectangles. Openings in a wall are measured along its long axis, using the same absolute coordinates.
+- **Walls:** filled rectangles, or (for walls at an angle) a thick line. Openings in a rectangular wall are measured along its long axis, using the same absolute coordinates. Openings in a `line` wall are measured from its start.
 
 ## Top level
 
@@ -52,6 +52,21 @@ Copy [`houses/starter-cottage/house.json`](../houses/starter-cottage/house.json)
 - `ext: 1` marks an exterior wall. Its outer face becomes siding, and its doors stay shut in the walkthrough.
 - `status` is `"keep"` (the default), `"removed"` or `"new"`. Removed walls appear only in the floor plan's Before and Changes views.
 
+### Angled walls
+
+A wall that is not horizontal or vertical is written as a centre line and a thickness:
+
+```json
+{ "line": [26, 0, 32, 6], "t": 0.5, "ext": 1, "id": "entry-cut",
+  "openings": [ { "a": 2.7, "b": 5.7, "type": "door", "hinge": "a", "swing": "r" } ] }
+```
+
+- `line` is `[x0, y0, x1, y1]`, the centre line from start to end, in the same feet as everything else. `t` is the thickness (it defaults to the exterior or interior thickness, by `ext`). A `line` wall that happens to run along an axis is just an ordinary wall.
+- Openings run along the line from its **start**: `a` and `b` are distances from `[x0, y0]`. A door's `hinge` is `"a"` (the start side) or `"b"`, and its `swing` is `"l"` or `"r"`: the left or right of the way the line runs, looking from the start to the end. (Left and right are as they look on the plan, with north at the top.)
+- Where two angled walls, or an angled wall and a straight one, meet at their ends, the corner is mitred and closed for you. Ends that stop within a wall's thickness of another wall join it, as for straight walls.
+- A room against an angled wall is written as an outline, not rectangles (see Rooms). Sides are named by compass: an angled wall facing south-east gives `LIV-SE`, and the outside of an angled wall gives `EXT-NE` and so on (named the same way as the straight ones).
+- Limits: fixtures (cabinets, appliances) stay square to the plan and cannot sit along an angled wall, though they can stand beside one; an angled wall inside one room (a peninsula) needs the room split by an outline that follows it; walls are straight (no curves).
+
 **Openings:**
 
 | `type` | Fields |
@@ -67,10 +82,11 @@ Copy [`houses/starter-cottage/house.json`](../houses/starter-cottage/house.json)
 { "id": "kitchen", "name": "Kitchen", "short": "KIT", "rects": [[18.8, 0, 29.7, 13.2]] }
 ```
 
-Rooms are paint zones, and each is made of one or more rectangles. A point belongs to the **first** room whose rectangles contain it, so put small rooms, such as a closet inside a bigger rectangle, before big ones. Points inside walls belong to no room.
+Rooms are paint zones, and each is made of one or more rectangles, or outlines. A point belongs to the **first** room whose rectangles (then outlines) contain it, so put small rooms, such as a closet inside a bigger rectangle, before big ones. Points inside walls belong to no room.
 
 - Open-plan spaces are split into rooms by the rectangles alone, with no wall needed. The kitchen and dining room in the example are split this way.
 - Rectangles can overlap walls: a rectangle may run to a wall's centre line or past it.
+- **Outlines:** a room with a corner cut off by an angled wall lists its shape as `"polys": [[[x, y], [x, y], ...]]`: one or more polygons, each with three or more corners, in order around the room. Write them along the wall centre lines (they may run into the walls: a point inside a wall belongs to no room). A room can have `rects`, `polys` or both. The plan editor writes them for you when you press Room beside an angled wall.
 - `short` is the prefix for surface IDs. The north wall of `KIT` is `KIT-N`. When a room has several walls facing the same way, they are numbered: `KIT-E1`, `KIT-E2`.
 
 The reserved ids are `exterior` and `house`.

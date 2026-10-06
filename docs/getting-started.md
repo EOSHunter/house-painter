@@ -51,6 +51,7 @@ It is a helper, not a finished tracer. Expect to fix a few things: short walls b
 
 **3. Outside walls.** Press `W` (Wall) with **Outside wall** selected and click each corner of the house in turn.
 - Walls lock to horizontal or vertical, and end on the corners of other walls.
+- **Angled walls** (a cut corner, a bay window): switch on **Angled** in the toolbar, or hold `Shift` while you click. These walls snap to every 15°, to the ends of other walls, and to the place where they cross one. Type a length for an exact wall. The **Angled** button works for inside walls too, and doors and windows go in an angled wall like any other. Fixtures stay square to the plan.
 - For an exact wall, type its length (like `12'6`) and press `Enter` instead of clicking.
 - Clicking back on the first corner closes the loop, and the tool switches to inside walls.
 - Hold `Alt` to turn snapping off.

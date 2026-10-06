@@ -181,7 +181,7 @@ function build(H, R) {
 
   // ---------------------------------------------------------------- walls
   const surfByWall = {};
-  R.surfaces.forEach(s => (surfByWall[s.wall] ||= []).push(s));
+  R.surfaces.forEach(s => { if (s.wall !== undefined) (surfByWall[s.wall] ||= []).push(s); });
   // BoxGeometry material order: +X, -X, +Y(top), -Y(bottom), +Z(south), -Z(north)
   H.walls.forEach((w, wi) => {
     if (w.status === 'removed') return;
@@ -282,14 +282,18 @@ function build(H, R) {
     const hv = o.hinge === 'a' ? o.a : o.b, ov = o.hinge === 'a' ? o.b : o.a;
     const hinge = horiz ? [hv, cy] : [cx, hv], other = horiz ? [ov, cy] : [cx, ov];
     const nrm = horiz ? [0, o.swing === 's' ? 1 : -1] : [o.swing === 'e' ? 1 : -1, 0];
+    doorLeaf(hinge, other, nrm, !!w.ext, o.z1);
+  }
+  // hinge and other: the two ends of the doorway in plan; nrm: the side the door swings to (a unit vector)
+  function doorLeaf(hinge, other, nrm, ext, doorH) {
     const len = Math.hypot(other[0] - hinge[0], other[1] - hinge[1]), d = [(other[0] - hinge[0]) / len, (other[1] - hinge[1]) / len];
-    const ext = !!w.ext, ang = (ext ? 0 : DOOR_OPEN) * Math.PI / 180;
+    const ang = (ext ? 0 : DOOR_OPEN) * Math.PI / 180;
     const dr = [d[0] * Math.cos(ang) + nrm[0] * Math.sin(ang), d[1] * Math.cos(ang) + nrm[1] * Math.sin(ang)];
     const key = ext ? 'extdoors' : 'doors', mat = material(key), L = len - 0.012, t2 = DOOR_T / 2;
     const g = new T.Group();
     g.position.set(hinge[0] + d[0] * 0.006, 0, hinge[1] + d[1] * 0.006);
     g.rotation.y = Math.atan2(-dr[1], dr[0]);
-    const DH = o.z1, k = DH / 6.667;
+    const DH = doorH, k = DH / 6.667;
     pick(box(0, -t2, 0.03, L, t2, DH - 0.05, mat, g), key);               // local: x along the leaf, "y" across it
     const cols = [[0.3, L / 2 - 0.08], [L / 2 + 0.08, L - 0.3]], rows = [[0.9, 2.5], [2.9, 4.3], [4.7, 6.1]].map(([a, b]) => [a * k, b * k]);
     for (const sgn of [1, -1]) {
@@ -298,6 +302,81 @@ function build(H, R) {
     }
     root.add(g);
   }
+
+  // ---------------------------------------------------------------- angled walls
+  // The same pieces as for the straight walls, built along each wall's own line. Every box here has x along the wall and
+  // z across it, so its materials go in the same order as a horizontal wall's: [end b, end a, top, bottom, right face, left face].
+  const slantSurfs = {};
+  R.surfaces.forEach(s => { if (s.slant !== undefined) (slantSurfs[s.slant] ||= []).push(s); });
+  function obox(S, s0, s1, z0, z1, off, thick, mat) {                           // off: sideways from the centre line, positive to the right
+    const L = s1 - s0, hh = z1 - z0;
+    if (L < 1e-4 || hh < 1e-4 || thick < 1e-4) return null;
+    const g = new T.BoxGeometry(L, hh, thick), uv = g.attributes.uv, dims = [[thick, hh], [thick, hh], [L, thick], [L, thick], [L, hh], [L, hh]];
+    for (let f = 0; f < 6; f++) for (let i = 0; i < 4; i++) { const k = f * 4 + i; uv.setXY(k, uv.getX(k) * dims[f][0], uv.getY(k) * dims[f][1]); }
+    const m = new T.Mesh(g, mat), sm = (s0 + s1) / 2;
+    m.position.set(S.p0[0] + S.u[0] * sm + S.nr[0] * off, (z0 + z1) / 2, S.p0[1] + S.u[1] * sm + S.nr[1] * off);
+    m.rotation.y = -Math.atan2(S.u[1], S.u[0]);
+    m.castShadow = m.receiveShadow = true; root.add(m);
+    return m;
+  }
+  H.slants.forEach(S => {
+    if (S.status === 'removed') return;
+    const surfs = slantSurfs[S.i] || [], ops = S.openings.filter(o => o.type !== 'panel').sort((p, q) => p.a - q.a);
+    const faceKey = (side, t) => { const f = surfs.find(x => x.side === side && t >= x.a - 1e-3 && t <= x.b + 1e-3); return f ? f.id : null; };
+    const nearest = (side, t) => {
+      let best = null, bd = 0.4;
+      for (const x of surfs) if (x.side === side) { const d = t < x.a ? x.a - t : t > x.b ? t - x.b : 0; if (d < bd) { bd = d; best = x.id; } }
+      return best;
+    };
+    const isExt = k => k && k.startsWith('EXT-');
+    const lo0 = -S.e0, hi0 = S.len + S.e1, cuts = new Set([lo0, hi0]);
+    ops.forEach(o => { cuts.add(o.a); cuts.add(o.b); });
+    surfs.forEach(x => { cuts.add(Math.max(lo0, Math.min(hi0, x.a))); cuts.add(Math.max(lo0, Math.min(hi0, x.b))); });
+    const ts = [...cuts].sort((a, b) => a - b);
+    for (let i = 0; i < ts.length - 1; i++) {
+      const t0 = ts[i], t1 = ts[i + 1];
+      if (t1 - t0 < 1e-3) continue;
+      const tm = (t0 + t1) / 2, o = ops.find(q => tm > q.a && tm < q.b);
+      const zr = !o ? [[0, CEIL]] : o.type === 'window' ? [[0, o.z0], [o.z1, CEIL]] : [[o.z1, CEIL]];
+      const lo = faceKey('lo', tm), hi = faceKey('hi', tm), loK = lo || nearest('lo', tm), hiK = hi || nearest('hi', tm);
+      const endM = t => {                                                   // a doorway edge takes trim; the wall's own ends take its paint; cuts in between are hidden
+        const k = ops.some(q => Math.abs(q.a - t) < 1e-3 || Math.abs(q.b - t) < 1e-3) ? 'trim' : (Math.abs(t - lo0) < 1e-3 || Math.abs(t - hi0) < 1e-3) ? (loK || hiK) : null;
+        return k ? { m: material(k), k } : { m: M.cut, k: null };
+      };
+      const st = endM(t0), en = endM(t1), fm = k => (k ? material(k) : M.cut);
+      for (const [z0, z1] of zr) {
+        const topMat = z1 >= CEIL - 1e-3 ? M.cut : material('trim'), botMat = z0 <= 1e-3 ? M.cut : material('trim');
+        const mesh = obox(S, t0, t1, z0, z1, 0, S.t, [en.m, st.m, topMat, botMat, fm(hiK), fm(loK)]);
+        if (mesh) { mesh.userData.keys = [en.k, st.k, z1 < CEIL - 1e-3 ? 'trim' : null, z0 > 1e-3 ? 'trim' : null, hiK, loK]; pickables.push(mesh); }
+        if (z0 <= 1e-3) for (const [k, side] of [[lo, 'lo'], [hi, 'hi']]) {          // baseboards on inside faces
+          if (!k || isExt(k)) continue;
+          pick(obox(S, t0, t1, 0, BASE_H, (side === 'lo' ? -1 : 1) * (S.t / 2 + BASE_T / 2), BASE_T, material('trim')), 'trim');
+        }
+      }
+    }
+    ops.forEach((o, k) => {                                                  // casings, windows, doors
+      const roomL = k > 0 ? (o.a - ops[k - 1].b) / 2 : CASE_W, roomR = k + 1 < ops.length ? (ops[k + 1].a - o.b) / 2 : CASE_W;
+      const el = Math.min(CASE_W, roomL) - 0.002, er = Math.min(CASE_W, roomR) - 0.002, z0 = o.z0, z1 = o.z1;
+      for (const side of ['lo', 'hi']) {
+        const fk = faceKey(side, (o.a + o.b) / 2) || faceKey(side, o.a - 0.05), key = isExt(fk) ? 'exttrim' : 'trim', mat = material(key);
+        const off = (side === 'lo' ? -1 : 1) * (S.t / 2 + CASE_T / 2), b = (a0, a1, zz0, zz1) => pick(obox(S, a0, a1, zz0, zz1, off, CASE_T, mat), key);
+        b(o.a - el, o.a, z0, z1); b(o.b, o.b + er, z0, z1); b(o.a - el, o.b + er, z1, z1 + CASE_W);
+        if (o.type === 'window') b(o.a - el, o.b + er, z0 - CASE_W * 0.8, z0);
+      }
+      if (o.type === 'window') {
+        const fw = 0.11, dep = 0.12, fb = (a0, a1, zz0, zz1) => obox(S, a0, a1, zz0, zz1, 0, dep, M.winframe);
+        fb(o.a, o.a + fw, z0, z1); fb(o.b - fw, o.b, z0, z1); fb(o.a + fw, o.b - fw, z0, z0 + fw); fb(o.a + fw, o.b - fw, z1 - fw, z1);
+        const n = o.panes || 1, mid = (z0 + z1) / 2;
+        for (let q = 1; q < n; q++) { const pp = o.a + (o.b - o.a) * q / n; fb(pp - 0.04, pp + 0.04, z0 + fw, z1 - fw); }
+        fb(o.a + fw, o.b - fw, mid - 0.03, mid + 0.03);
+        const gl = obox(S, o.a + fw, o.b - fw, z0 + fw, z1 - fw, 0, 0.02, M.glass); if (gl) gl.castShadow = false;
+      }
+      if (o.type === 'door') {
+        const at = t => [S.p0[0] + S.u[0] * t, S.p0[1] + S.u[1] * t];
+        doorLeaf(at(o.hinge === 'a' ? o.a : o.b), at(o.hinge === 'a' ? o.b : o.a), o.swing === 'l' ? S.nl : S.nr, !!S.ext, o.z1);
+      }
+    });
+  });
 
   // ---------------------------------------------------------------- fixtures
   // Every door and drawer front is its own panel with its own paint key ("kbase:door3", "island:drawer2").
@@ -461,7 +540,8 @@ function build(H, R) {
   const floorMesh = new T.Mesh(rectsGeometry(H.floorRects, 0, false), M.floor);
   floorMesh.receiveShadow = true;
   root.add(floorMesh);
-  box(-0.05, -0.05, -2.0, H.W + 0.05, H.D + 0.05, -0.02, M.skirt);
+  if (H.slants.length) H.floorRects.forEach(([x0, y0, x1, y1]) => box(x0 - 0.3, y0 - 0.3, -2.0, x1 + 0.3, y1 + 0.3, -0.02, M.skirt));
+  else box(-0.05, -0.05, -2.0, H.W + 0.05, H.D + 0.05, -0.02, M.skirt);
   const ground = new T.Mesh(rectsGeometry([[-150, -150, H.W + 150, H.D + 150]], -2.0, false), M.ground);
   ground.receiveShadow = true; root.add(ground);
 
