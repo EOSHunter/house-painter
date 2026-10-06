@@ -29,7 +29,7 @@ Then open:
 | `http://localhost:8770/paint.html#walk` | Straight into the walkthrough |
 | `http://localhost:8770/floorplan.html` | The 2D floor plan (it takes `?house=` too) |
 
-A published copy can be hosted on GitHub Pages: `.github/workflows/pages.yml` builds and deploys it (Settings > Pages > Source: GitHub Actions).
+Everything the pages need is in this folder, including the libraries (`vendor/`): the pages make no request to any other site (apart from the Google Fonts, for now). See [Deploying](#deploying) to publish it.
 
 ## Your own house
 
@@ -93,13 +93,19 @@ The script writes `house_<scheme>.blend` and `renders/<scheme>/<view>.png`. The 
 
 ![Kitchen, rendered from an exported view](renders/cozy-deco-emerald-brass/export.png)
 
+## Deploying
+
+`npm run build` writes the site to `dist/`: just what the pages need, with content-hashed asset names and the headers file. Deploy that folder to any static host. On **Cloudflare Pages**: framework **None**, build command `npm run build`, output directory `dist`, `NODE_VERSION=22`, production branch `main`. The production site is at <https://housepainter.r7orbit.io/> and is embedded in an iframe on r7orbit.io.
+
+`npm run preview` serves `dist/` the way Pages does. The exact settings, the headers, the iframe attributes the app needs (`allow-forms` and `allow-downloads` as well as scripts, same-origin and pointer lock), what it requests, browser needs and a post-deploy checklist are in **[docs/DEPLOY.md](docs/DEPLOY.md)**.
+
 ## What's here
 
 | File | What it is |
 |---|---|
 | `index.html` | The start page. |
 | `editor.html` + `editor.js` | The plan editor. |
-| `paint.html` + `paint-app.js` + `house3d.js` | The 3D paint studio and walkthrough (Three.js r128). |
+| `paint.html` + `paint-app.js` + `house3d.js` | The 3D paint studio and walkthrough (Three.js r128, from `vendor/`). |
 | `floorplan.html` + `floorplan.js` | The 2D floor plan: after / before / changes views and the paint-surface map. |
 | `house-core.js` | The shared pipeline, for browser and Node: wall joinery, room zones, paintable wall surfaces, room shapes, and the Blender export. |
 | `house-loader.js` | Picks the house for a page (`?house=…`, an opened file, or the example) and builds it. |
@@ -107,6 +113,7 @@ The script writes `house_<scheme>.blend` and `renders/<scheme>/<view>.png`. The 
 | `fixtures.js` | The fixture library and the geometry shared by the editor, studio, walkthrough and Blender: every fixture can face any way. |
 | `storage.js` | Where schemes are kept: this browser, or the Claude artifact runtime's shared database. It also makes share links and saves files. |
 | `paint-colors.js` | The House Painter palette. |
+| `vendor/` | The third-party libraries (three.js, PDF.js, tesseract.js, onnxruntime-web), pinned and with their licences: [vendor/README.md](vendor/README.md). |
 | `houses/<id>/house.json` | A house. `waterford-4563c` is the example (with seven schemes in `schemes/`); `starter-cottage` is a small template; `bay-cottage` has angled walls (a cut corner and a bay), `round-cottage` curved ones, `vaulted-cabin` sloped ceilings, a roof and a porch, and `two-storey` two floors with a staircase. |
 | `build_house.py` | Builds the Blender model, applies an exported scheme, and renders views. |
 | `blender_addon/` | The Blender add-on (File > Import). |
@@ -114,13 +121,15 @@ The script writes `house_<scheme>.blend` and `renders/<scheme>/<view>.png`. The 
 | `examples/` | A scheme exported with **Export for Blender**. |
 | `data/` | The palette builder and other data tools: [data/README.md](data/README.md). |
 | `ui/` | The interface's stylesheets, self-hosted fonts and logo, built on the R7 Orbit design tokens: [docs/DESIGN.md](docs/DESIGN.md). |
-| `tests/`, `tools/` | Unit tests; and scripts that build the site and the add-on. |
-| `docs/` | The getting-started guide, the house file format and the interface design notes. |
+| `tests/`, `tools/` | Unit tests; and scripts that build the site (`build.js`), preview it (`preview.js`), test it in an iframe in a browser (`e2e/`) and build the add-on. |
+| `404.html`, `_headers` | The not-found page and the Cloudflare Pages headers. |
+| `docs/` | The getting-started guide, the house file format, the optional learned model, [deploying](docs/DEPLOY.md) and the interface design notes ([DESIGN.md](docs/DESIGN.md)). |
 
 ## Developing
 
 ```bash
-npm test                         # unit tests: core, fixtures, palette, schemes, pages
+npm test                         # unit tests: core, fixtures, palette, schemes, pages, the production build
+npm run build                    # the deployable site, in dist/ (see Deploying)
 blender -b --factory-startup -P tools/test_addon.py   # add-on, end to end
 node data/ascii_js.js            # keep page scripts ASCII-safe after editing them
 ```

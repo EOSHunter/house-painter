@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping. This project is small and has no build step: it is plain JavaScript pages that read JSON, plus a Blender script. If you can run `python -m http.server` and `npm test`, you can work on it.
+Thanks for helping. This project is small and has no build step while you work on it: it is plain JavaScript pages that read JSON, plus a Blender script. If you can run `python -m http.server` and `npm test`, you can work on it. (`npm run build` makes the deployable `dist/`: see [docs/DEPLOY.md](docs/DEPLOY.md).)
 
 ## Running it
 

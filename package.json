@@ -10,7 +10,8 @@
     "test": "node --test \"tests/*.test.js\"",
     "serve": "python -m http.server 8770",
     "palette": "node data/build_palette.js",
-    "site": "node tools/build_site.js",
+    "build": "node tools/build.js",
+    "preview": "node tools/preview.js",
     "addon": "python tools/build_addon.py"
   }
 }

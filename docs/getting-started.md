@@ -6,7 +6,7 @@ From a floor plan on paper to a painted, rendered house. It takes about 15 minut
 
 ## 1. Open the tools
 
-- **On the web:** open the project's page and press **Trace your house**. (The site is published with GitHub Pages; the address is in the repository's About box.)
+- **On the web:** open the project's page and press **Trace your house**. (The address is in the repository's About box.)
 - **On your own computer:** download or clone the repository, then in its folder run
 
   ```bash
@@ -29,7 +29,7 @@ Open the **plan editor**. The steps down the left side follow this order, and ti
 
 **2. Set the scale.** Click two points on the blueprint whose real distance you know, like the two ends of the overall width, then type it: `56'`, `26'8"`, or `12.5` for feet. Pick the longest dimension you can find, because small errors in the points matter less over a long distance. You can set the scale again at any time.
 
-**Or let it read the dimensions.** If the plan has dimension lines with their numbers (`40'-0"`), press **Read dimensions…** in the Blueprint box. The first time, it asks to load a free text-reading tool (tesseract.js, about 10 MB, from a public server); your picture is read on your own computer and never uploaded. It matches each number it can read to the dimension line beside it, shows you what it found, and sets the scale when you agree. It works best on a straightened picture with clear lettering. If it can't find enough, it says so and you click two points as above.
+**Or let it read the dimensions.** If the plan has dimension lines with their numbers (`40'-0"`), press **Read dimensions…** in the Blueprint box. The first time, it asks to load a free text-reading tool (tesseract.js, about 7 MB, from the same site as the page); your picture is read on your own computer and never uploaded. It matches each number it can read to the dimension line beside it, shows you what it found, and sets the scale when you agree. It works best on a straightened picture with clear lettering. If it can't find enough, it says so and you click two points as above.
 
 #### Let the editor suggest the walls
 
@@ -135,7 +135,7 @@ Every wall, ceiling, door and cabinet door arrives as its own material, named `P
 | The page is blank, or says it can't load the house | Serve the folder with `python -m http.server`. Pages opened with `file://` can't read other files. |
 | The blueprint is gone after I reopened the editor | The image lives in your browser, not in `house.json`. Upload it again: its scale and position are remembered. |
 | Importing a plain `house.json` into Blender fails | That needs [Node.js](https://nodejs.org/) to be installed. A scheme exported from the studio carries the house and doesn't. |
-| My PDF doesn't load | The PDF reader is fetched from a CDN, so you need to be online. Or save the page as an image and upload that. |
+| My PDF doesn't load | The PDF reader loads the first time you open a PDF, so the page has to be served (not opened from `file://`). Or save the page as an image and upload that. |
 
 If you're stuck, [open an issue](https://github.com/EOSHunter/house-painter/issues) and attach your `house.json`.
 

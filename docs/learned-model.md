@@ -11,7 +11,7 @@ which pixels of the picture are wall, door and window. The same tidying as alway
 outside/inside, doors and windows. The model replaces the *looking* (what is wall); the *measuring* is still ours. You still review every
 suggestion before it is added.
 
-The first time, the editor loads onnxruntime-web (the engine that runs the file, Apache-2.0/MIT) from a public CDN.
+The first time, the editor loads onnxruntime-web (the engine that runs the file, MIT, about 11 MB) from the same site as the page (`vendor/onnxruntime-web-1.20.1/`), not from a CDN.
 
 ## What kind of file
 
