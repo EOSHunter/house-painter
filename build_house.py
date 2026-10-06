@@ -8,6 +8,7 @@ trim piece has its own material, keyed exactly as on the page), applies a scheme
   blender -b -P build_house.py -- [--scheme FILE.json] [--house houses/<id>/house.json]
                                  [--views export,doll,top,rooms,kitchen,...]
                                  [--light day|overcast|evening|true] [--samples 64] [--res 1600x1000] [--render]
+                                 [--keep-scene] [--no-save]
 
   --scheme   JSON from the page's "Export for Blender" button. It contains the house too, so nothing else is needed.
              Without it, the house is primer white with its cabinets in their default colours.
@@ -19,6 +20,8 @@ trim piece has its own material, keyed exactly as on the page), applies a scheme
              <room>   one room, by its id in the house file
              (default: export if the file has a camera, plus doll and rooms)
   --render   render the views (otherwise just build and save the .blend)
+  --keep-scene  build into the scene that is already open instead of starting an empty one (used by the Blender add-on)
+  --no-save  don't write house_<scheme>.blend
 
 Outputs: house_<scheme>.blend and renders/<scheme>/<view>.png next to this file.
 Units: plan feet (x east, y south, z up) -> Blender metres (X = x, Y = -y, Z up).
@@ -73,7 +76,8 @@ WOODS = {   # same species and parameters as house3d.js
 TILE_W, TILE_H = 2.5, 5.0
 
 # ----------------------------------------------------------------------------- scene
-bpy.ops.wm.read_factory_settings(use_empty=True)
+KEEP_SCENE, NO_SAVE = bool(arg('--keep-scene')), bool(arg('--no-save'))   # the Blender add-on builds into the open scene and leaves saving to the user
+if not KEEP_SCENE: bpy.ops.wm.read_factory_settings(use_empty=True)
 scene = bpy.context.scene
 scene.unit_settings.system = 'METRIC'
 COLL = {}
@@ -637,7 +641,7 @@ scene.camera = VIEWS['doll'][0]
 set_light(LIGHT, False)
 
 blend = os.path.join(HERE, f'house_{SLUG}.blend')
-bpy.ops.wm.save_as_mainfile(filepath=blend)
+if not NO_SAVE: bpy.ops.wm.save_as_mainfile(filepath=blend)
 print('SAVED', blend, '| scheme:', (SCHEME or {}).get('scheme', {}).get('name', '(none)'), '| light:', LIGHT,
       '| paint materials:', len(PAINT), '| cabinet fronts:', sum(v['door'] + v['drawer'] for v in PART_N.values()))
 

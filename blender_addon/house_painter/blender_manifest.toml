@@ -1,0 +1,21 @@
+schema_version = "1.0.0"
+
+id = "house_painter"
+version = "0.1.0"
+name = "House Painter"
+tagline = "Import a painted house from the House Painter web app"
+maintainer = "House Painter authors"
+type = "add-on"
+
+website = "https://github.com/EOSHunter/house-painter"
+
+tags = ["Import-Export", "Scene"]
+
+blender_version_min = "4.2.0"
+
+license = [
+  "SPDX:MIT",
+]
+
+[permissions]
+files = "Read the files you choose; write a temporary floor texture"

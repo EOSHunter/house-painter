@@ -1,7 +1,7 @@
 // Extends the three mid-century schemes to the whole house. Starts from the live documents (so edits made on the
 // page are kept) and only fills surfaces that have no colour yet.
 //   node data/build_house_schemes.js <dir with live scheme json>
-const { SCHEMES_DIR } = require('./example-house.js'); require('../paint-colors.js');
+const { SCHEMES_DIR } = require('./example-house.js'); require('./colors.js');
 const R = window.ROOMS, C = window.PAINT_COLORS, fs = require('fs'), path = require('path');
 const liveDir = process.argv[2];
 const p = (b, code) => { const x = C[b].find(c => c[0] === code); if (!x) throw new Error('missing ' + b + ' ' + code); return { b, c: x[0], n: x[1], h: x[2] }; };

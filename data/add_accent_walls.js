@@ -1,7 +1,7 @@
 // Adds accent walls (one per room) to every scheme, using colours from that scheme's own palette.
 //   bed wall: master MBR-W1, bedroom 1 BR1-W, bedroom 2 BR2-N   feature wall: living LIV-E3   vanity wall: HB-E, MB-W
 //   node data/add_accent_walls.js <dir with live scheme json>
-const { SCHEMES_DIR } = require('./example-house.js'); require('../paint-colors.js');
+const { SCHEMES_DIR } = require('./example-house.js'); require('./colors.js');
 const C = window.PAINT_COLORS, fs = require('fs'), path = require('path');
 const p = (b, code) => { const x = C[b].find(c => c[0] === code); if (!x) throw new Error('missing ' + b + ' ' + code); return { b, c: x[0], n: x[1], h: x[2] }; };
 const sw = c => p('sw', c), behr = c => p('behr', c);

@@ -1,0 +1,16 @@
+{
+  "name": "house-painter",
+  "version": "0.1.0",
+  "description": "Trace your house from a blueprint, plan paint colours in 3D, walk through it, and render it in Blender.",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/EOSHunter/house-painter.git" },
+  "homepage": "https://github.com/EOSHunter/house-painter",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "test": "node --test \"tests/*.test.js\"",
+    "serve": "python -m http.server 8770",
+    "palette": "node data/build_palette.js",
+    "site": "node tools/build_site.js",
+    "addon": "python tools/build_addon.py"
+  }
+}

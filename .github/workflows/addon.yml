@@ -1,0 +1,24 @@
+name: Blender add-on
+
+# Pushing a tag like v0.1.0 builds the add-on and attaches house_painter-<version>.zip to a GitHub release.
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python tools/build_addon.py
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/house_painter-*.zip --generate-notes --title "House Painter $GITHUB_REF_NAME"

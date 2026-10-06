@@ -6,3 +6,13 @@ __pycache__/
 
 # raw colour-book downloads (re-fetch with the commands in README, then run data/build_colors.js)
 data/src/
+
+# optional colour books built from your own downloads (never committed; see data/README.md)
+paint-colors-extra.js
+
+# a local copy of a scheme as originally authored, before remapping to the shipped palette
+**/schemes-original/
+
+# built artefacts
+dist/
+_site/

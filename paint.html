@@ -281,9 +281,7 @@
         </header>
         <label class="ihp-room"><input type="checkbox" id="ihpRoom"> <span id="ihpRoomLabel">Paint every wall in this room</span></label>
         <div class="seg" id="ihpSheen" role="group" aria-label="Sheen"></div>
-        <div class="seg" role="group" aria-label="Brand">
-          <button data-ibrand="sw" aria-pressed="true">Sherwin-Williams</button><button data-ibrand="behr" aria-pressed="false">Behr</button><button data-ibrand="wood" aria-pressed="false">Wood</button>
-        </div>
+        <div class="seg" id="ihBrandTabs" role="group" aria-label="Colour book"></div>
         <input class="search" id="ihpSearch" type="search" placeholder="Search name, code or #hex" autocomplete="off">
         <div class="ihp-chips" id="ihpChips"></div>
         <footer class="ihp-foot"><button class="btn" id="ihpUndo">Undo</button><button class="btn primary" id="ihpDone">Done · keep walking</button></footer>
@@ -299,15 +297,10 @@
     <section class="sel" id="selBox"></section>
     <h2>Colours</h2>
     <section class="picker">
-      <div class="seg" role="group" aria-label="Brand">
-        <button data-brand="sw" aria-pressed="true">Sherwin-Williams</button>
-        <button data-brand="behr" aria-pressed="false">Behr</button>
-        <button data-brand="wood" aria-pressed="false">Wood</button>
-        <button data-brand="custom" aria-pressed="false">Custom</button>
-      </div>
+      <div class="seg" id="brandTabs" role="group" aria-label="Colour book"></div>
       <input class="search" id="search" type="search" placeholder="Search name, code or #hex" autocomplete="off">
       <div id="chipArea"></div>
-      <p class="note">Screen colours are the brands' published approximations. Check a real chip in your own light before buying.</p>
+      <p class="note">Screen colours are approximations. Check a real chip in your own light before buying.</p>
     </section>
     <section class="totals">
       <h2 style="margin-left:0">Paint needed</h2>
@@ -324,4 +317,4 @@
 <script src="house-core.js"></script>
 <script src="fixtures.js"></script>
 <!-- picks the house (?house=<url> | ?house=local | the example), builds it, then loads the rest -->
-<script src="house-loader.js" data-default="houses/waterford-4563c/house.json" data-then="paint-colors.js house3d.js paint-app.js"></script>
+<script src="house-loader.js" data-default="houses/waterford-4563c/house.json" data-then="paint-colors.js paint-colors-extra.js? house3d.js paint-app.js"></script>

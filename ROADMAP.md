@@ -75,18 +75,21 @@ Still to do:
 - [ ] Sinks, a range and a fridge that are separate fixtures, so a kitchen can be built from a plain run plus an appliance of any size.
 - [ ] More fixtures: dishwasher, corner cabinets, a pantry with shelves, a double vanity, a freestanding tub.
 
-## Phase 4: release
+## Phase 4: release ✅ (what's left needs the repository owner)
 
-- [ ] License: MIT for the code.
-- [ ] Paint brands:
-  - ship a generic palette by default;
-  - make the Sherwin-Williams and Behr books an import that users build themselves with the scripts in `data/`.
-  
-  The brands own those names and codes, and the source data isn't licensed for redistribution.
-- [ ] A Blender add-on (Blender 4.2+ extension) with an **Import House Painter scheme** menu item, for people who don't use the command line.
-- [ ] GitHub Pages deployment of the studio, floor plan and editor.
-- [ ] A CONTRIBUTING guide, a code of conduct, issue templates, and a small test suite in which the core's surface IDs and areas for both example houses are locked by snapshot.
-- [ ] Docs: a getting-started guide with screenshots, plus "trace your house in 15 minutes".
+- [x] **Licence:** MIT, with third-party notices in [NOTICE.md](NOTICE.md).
+- [x] **Paint brands:** the project ships its own palette, 124 original colours (`paint-colors.js`, built by `data/build_palette.js`). Sherwin-Williams and Behr are no longer part of it. A paint maker's book is an optional extra that you build from data you download yourself (`paint-colors-extra.js`, git-ignored): see [data/README.md](data/README.md). The studio shows the palette, plus an extra tab for each book it finds. The seven example schemes and the example export were remapped to the nearest palette colours (the biggest shift is 6 dE).
+- [x] **Blender add-on** (`blender_addon/`, Blender 4.2+ extension): **File > Import > House Painter scheme (.json)**. Tested end to end, from the source tree and from the packaged zip (`python tools/build_addon.py`, then `blender -b --factory-startup -P tools/test_addon.py`), and the manifest validates with Blender's own checker.
+- [x] **GitHub Pages:** `index.html` is the start page, `tools/build_site.js` assembles the site, and `.github/workflows/pages.yml` deploys it.
+- [x] **Tests and CI:** 36 unit tests (`npm test`) run on every push. The surface IDs and areas of both example houses are locked by snapshot, and the tests also check the palette, the shipped schemes and every file a page loads.
+- [x] **Community files:** CONTRIBUTING, a code of conduct, issue and pull request templates.
+- [x] **Docs:** a [getting-started guide](docs/getting-started.md) with pictures, including "trace your house in 15 minutes".
+
+Still to do by hand:
+- [ ] Turn on GitHub Pages (Settings > Pages > Source: GitHub Actions).
+- [ ] Tag a release (`git tag v0.1.0 && git push --tags`): `.github/workflows/addon.yml` attaches the add-on zip. Neither workflow could be run from here, so the first run is the real test.
+- [ ] The earlier commits still contain the Sherwin-Williams and Behr colour books. Removing them from the history needs a history rewrite and a force push, which is the owner's call.
+- [ ] Confirm you are happy to publish `textures/desert_sand_plank.png`, a crop of a flooring reference photo, and the traced Fleetwood plan.
 
 ## Phase 5: later
 

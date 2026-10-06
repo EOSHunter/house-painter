@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: How do I trace my house?
+    url: https://github.com/EOSHunter/house-painter/blob/main/docs/getting-started.md
+    about: A step-by-step guide, from a blueprint to a rendered room.
+  - name: The house file format
+    url: https://github.com/EOSHunter/house-painter/blob/main/docs/house-format.md
+    about: Every field of house.json, if you want to write or edit one by hand.

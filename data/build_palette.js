@@ -1,0 +1,68 @@
+// Builds paint-colors.js: the House Painter palette that ships with the project.
+// These are original names and values, not any paint maker's, so the project can be redistributed freely.
+// Edit the list below and run:  node data/build_palette.js
+// Codes are "HP 1xx" for whites, "HP 2xx" for neutrals, and so on by family. Never reuse or renumber a code:
+// saved schemes refer to colours by code.
+const fs = require('fs');
+
+const FAMILIES = [
+  [1, 'Whites & creams', [
+    ['Chalk White', '#F4F2EC'], ['Soft Linen', '#EFEBE0'], ['Warm Cream', '#F2E8D2'], ['Parchment', '#EADFC6'], ['Oat Milk', '#E6DCCB'], ['Cool Paper', '#F0F1EF'],
+    ['Pale Frost', '#E8ECEC'], ['Bone', '#E3DDD0'], ['Butter Cream', '#F3E5B8'], ['Eggshell Glow', '#F0EAD9'], ['Ivory Lace', '#F6F0E2'], ['Rice Paper', '#EDE6D6']]],
+  [2, 'Neutrals', [
+    ['Putty', '#D6CEC0'], ['Mushroom', '#BFB5A6'], ['Driftwood', '#B3A794'], ['Stone Wash', '#C9C5BC'], ['Pebble', '#A8A296'], ['Warm Taupe', '#9C8F7E'],
+    ['Flannel', '#8E8C88'], ['Slate Dust', '#75777A'], ['Graphite', '#4B4D52'], ['Soft Charcoal', '#34363A'], ['Ash', '#D9D8D3'], ['Silver Birch', '#C8C9C6'],
+    ['Greige Suede', '#9F9484'], ['Cobblestone', '#837B70'],
+    ['Khaki Moss', '#8D8767'], ['Bronze Smoke', '#55514B']]],
+  [3, 'Blues', [
+    ['Morning Mist', '#D5E1E8'], ['Sky Wash', '#B7CEDD'], ["Robin's Egg", '#9CC5D3'], ['Harbor Blue', '#5F8CA6'], ['Denim', '#3F6A8C'], ['Deep Lagoon', '#2C5873'],
+    ['Midnight Navy', '#1F2F4A'], ['Ink', '#17223A'], ['Dusty Cornflower', '#7C93B8'], ['Steel Fog', '#8DA0AB'], ['Teal Slate', '#3F6B73'], ['Peacock', '#1F6E7A'],
+    ['Powder Blue', '#C4D7E6'], ['Cadet', '#4E6E8E'], ['Twilight Blue', '#2F4468'], ['Ice Water', '#DCE8EE'],
+    ['Lagoon Teal', '#4F8F92'], ['Deep Teal', '#3A706D'], ['Pine Teal', '#506A66'], ['Navy Slate', '#2F3E4E']]],
+  [4, 'Greens', [
+    ['Sage Whisper', '#CBD3C0'], ['Soft Sage', '#A9B79B'], ['Fern', '#7E9B6A'], ['Olive Grove', '#7A7A3E'], ['Moss', '#5E6B3A'], ['Forest Floor', '#3F5A3C'],
+    ['Emerald Hall', '#1F5A46'], ['Pine Needle', '#264A3B'], ['Eucalyptus', '#8AA89A'], ['Sea Glass', '#A9CFC2'], ['Mint Cream', '#D4EADC'], ['Avocado', '#8A8F3A'],
+    ['Deep Fir', '#1F3A33'], ['Jade', '#3E8E72'], ['Celadon', '#B5D1B6'], ['Spruce', '#36574A'],
+    ['Rock Moss', '#4A5748'], ['Olive Mist', '#94935E']]],
+  [5, 'Yellows & golds', [
+    ['Lemon Sorbet', '#F4E7A0'], ['Sunbeam', '#F2D16B'], ['Marigold', '#E8B63A'], ['Honey Gold', '#D6A03A'], ['Brass', '#B8923C'], ['Mustard Seed', '#C79A2B'],
+    ['Ochre', '#B8812E'], ['Straw', '#E2CF8E'], ['Antique Gold', '#C9A24D'], ['Saffron', '#E9A825'],
+    ['Gold Sand', '#D2B07A']]],
+  [6, 'Oranges & rusts', [
+    ['Apricot', '#F0C09A'], ['Tangerine', '#E8872E'], ['Burnt Orange', '#C8571E'], ['Terracotta', '#B4552F'], ['Rust', '#9C4424'], ['Cinnamon', '#8A4A2B'],
+    ['Clay', '#C07A57'], ['Peach Fuzz', '#F2CDB4'], ['Pumpkin', '#D9701F'], ['Amber', '#DD9A3F'],
+    ['Terra Rose', '#D18C72']]],
+  [7, 'Reds & pinks', [
+    ['Blush', '#F2D4CE'], ['Rose Dust', '#DDA8A0'], ['Coral', '#E47A63'], ['Brick', '#A4412F'], ['Cranberry', '#8A2A3A'], ['Oxblood', '#5E1F26'],
+    ['Salmon Pink', '#EBA08E'], ['Dusty Mauve', '#B58A8E'], ['Raspberry', '#B03060'], ['Poppy', '#D94A32'], ['Shell Pink', '#F5E1DA'], ['Garnet', '#7A2434'],
+    ['Clay Rose', '#C9A092'], ['Wine Brick', '#6E3430']]],
+  [8, 'Purples', [
+    ['Lavender Haze', '#D9D3E6'], ['Wisteria', '#A79BC4'], ['Plum', '#5E3A5E'], ['Eggplant', '#3F2A45'], ['Heather', '#8A7A9E'], ['Aubergine', '#4A2B3F'],
+    ['Orchid', '#B58FB8'], ['Thistle', '#C8BCD4'],
+    ['Plum Wine', '#664156']]],
+  [9, 'Browns', [
+    ['Latte', '#C9AD8B'], ['Caramel', '#A9763F'], ['Walnut Brown', '#6B4A32'], ['Espresso', '#3B2A22'], ['Chestnut', '#7A4A2E'], ['Mocha', '#8B6B56'],
+    ['Tobacco', '#6D5236'], ['Cocoa', '#5A3E31'], ['Sandstone', '#D1BC9A'], ['Biscuit', '#D9C09A']]],
+  [10, 'Blacks', [['Soft Black', '#1E1F22'], ['Ink Black', '#101114'], ['Coal', '#2B2C2F']]]
+];
+// quick picks shown first in the picker
+const POPULAR = ['Chalk White', 'Soft Linen', 'Warm Cream', 'Putty', 'Stone Wash', 'Sage Whisper', 'Morning Mist', 'Harbor Blue', 'Emerald Hall',
+  'Honey Gold', 'Terracotta', 'Brick', 'Midnight Navy', 'Soft Charcoal'];
+
+const colors = [], seen = new Set();
+for (const [fam, , list] of FAMILIES) list.forEach(([name, hex], i) => {
+  const code = 'HP ' + (fam * 100 + i + 1);
+  if (!/^#[0-9A-F]{6}$/.test(hex)) throw new Error('bad hex ' + name + ' ' + hex);
+  if (seen.has(name)) throw new Error('duplicate name ' + name);
+  seen.add(name); colors.push([code, name, hex]);
+});
+const byName = Object.fromEntries(colors.map(c => [c[1], c[0]]));
+const popular = POPULAR.map(n => { if (!byName[n]) throw new Error('unknown popular colour ' + n); return byName[n]; });
+
+const out = `/* The House Painter palette: ${colors.length} original colours, [code, name, hex], grouped by family (HP 1xx whites, 2xx neutrals, 3xx blues, ...).
+ * Generated by data/build_palette.js. Screen colours are approximations: check a real chip in your own light.
+ * Extra colour books (for example a paint maker's own) load from paint-colors-extra.js when that file exists; see data/README.md. */
+window.PAINT_COLORS = ${JSON.stringify({ books: [{ id: 'hp', label: 'House Painter palette', tab: 'Palette', colors, popular }] })};
+`;
+fs.writeFileSync(__dirname + '/../paint-colors.js', out);
+console.log('palette:', colors.length, 'colours,', popular.length, 'quick picks');

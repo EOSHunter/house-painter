@@ -1,4 +1,5 @@
-// Builds paint-colors.js from the downloaded colour books.
+// Builds paint-colors-extra.js (optional, never committed) from colour books you download yourself.
+// The paint makers own those names, codes and values, so they are not shipped with the project. See data/README.md.
 //   Sherwin-Williams: data/src/sw.json (colornerd, matches SW's published RGB)
 //   Behr:             data/src/behr_all.js (Behr's own colour data, behr.com)
 const fs = require('fs');
@@ -24,8 +25,9 @@ for (const [b, list] of Object.entries(popular)) {
   const book = b === 'sw' ? sw : behr;
   popular[b] = list.map(n => { const c = book.find(x => x[1].toLowerCase() === n.toLowerCase()); if (!c) console.warn('missing', b, n); return c && c[0]; }).filter(Boolean);
 }
-const out = '/* Paint colour books. Sherwin-Williams (' + sw.length + ') and Behr (' + behr.length + ').\n' +
-  ' * [code, name, hex]. Hex values are the brands\' published screen approximations — confirm with a real chip. */\n' +
-  'window.PAINT_COLORS = ' + JSON.stringify({ sw, behr, popular }) + ';\n';
-fs.writeFileSync(__dirname + '/../paint-colors.js', out);
-console.log('sw', sw.length, 'behr', behr.length, 'bytes', out.length, JSON.stringify(popular));
+const books = [{ id: 'sw', label: 'Sherwin-Williams', colors: sw, popular: popular.sw }, { id: 'behr', label: 'Behr', colors: behr, popular: popular.behr }];
+const out = '/* Extra paint colour books: Sherwin-Williams (' + sw.length + ') and Behr (' + behr.length + '), [code, name, hex].\n' +
+  " * Built locally by data/build_colors.js from your own downloads; not part of the project. Hex values are the brands' published screen approximations. */\n" +
+  '(window.PAINT_COLORS.books ||= []).push(...' + JSON.stringify(books) + ');\n';
+fs.writeFileSync(__dirname + '/../paint-colors-extra.js', out);
+console.log('sw', sw.length, 'behr', behr.length, 'bytes', out.length);

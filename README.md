@@ -1,37 +1,14 @@
 # House Painter
 
-A 3D paint planner for real houses.
-- Pick real Sherwin-Williams and Behr colours, or wood finishes, for every wall, ceiling, cabinet door, interior door and trim piece.
-- See them in 3D under different light.
-- Walk through the house and repaint it like a game.
-- Export a scheme that Blender renders with the same colours.
+Trace your house from a blueprint, try a colour on every wall, ceiling, cabinet door and trim piece in 3D, walk through the rooms, and render the result in Blender. Free and open source, with no account and no upload: it all runs in your browser.
 
-Every house is one JSON file. The example is a remodelled 1998 Fleetwood **Waterford Park 4563C** double-wide (56' × 26'-8", 3 bed / 2 bath). Where this is heading, a plan editor so anyone can trace their own blueprint, is in [ROADMAP.md](ROADMAP.md).
+![A cutaway of the example house, rendered in Blender](renders/cozy-deco-emerald-brass/doll.png)
 
-![Dollhouse view of the Cozy deco · Emerald & brass scheme](renders/cozy-deco-emerald-brass/doll.png)
+- **Plan editor.** Upload a photo or PDF of a floor plan, set the scale, click the walls, drop in doors, windows, rooms, cabinets and fixtures.
+- **Paint studio.** Every wall face has its own colour. See it in true colour or under daylight, overcast and evening light, share a scheme as a link, and walk through with WASD.
+- **Blender.** Export a scheme and the Blender add-on rebuilds the house with the same colours, ready to render.
 
-![Kitchen, rendered from an exported view](renders/cozy-deco-emerald-brass/export.png)
-
-## What's here
-
-| File | What it is |
-|---|---|
-| `houses/<id>/house.json` | **A house.** Walls, doors, windows, rooms, cabinets, heights and flooring, in feet. See [docs/house-format.md](docs/house-format.md). |
-| `houses/waterford-4563c/` | The example house, with seven mid-century / Art Deco schemes in `schemes/`. |
-| `houses/starter-cottage/` | A small template house to copy for your own. |
-| `house-core.js` | The shared pipeline, for browser and Node: wall joinery, room zones, the paintable wall surfaces, room shapes, and the Blender export. |
-| `house-loader.js` | Picks the house for a page (`?house=…`, an opened file, or the example) and builds it. |
-| `paint.html` + `paint-app.js` + `house3d.js` | The 3D paint studio and walkthrough (Three.js r128). |
-| `storage.js` | Where schemes are kept: this browser, or the Claude artifact runtime's shared database. It also makes share links and saves files. |
-| `editor.html` + `editor.js` | The plan editor: trace a blueprint (image or PDF) into a house file, with a live 3D preview. |
-| `fixtures.js` | The fixture library and geometry shared by the editor, the paint studio and the walkthrough: every fixture can face any way. |
-| `floorplan.html` + `floorplan.js` | The 2D floor plan: after / before / changes views and the paint-surface map. |
-| `paint-colors.js` | Colour books: 1,526 Sherwin-Williams and 5,443 Behr colours (code, name, hex). |
-| `build_house.py` | Builds the Blender model, applies an exported scheme, and renders views. |
-| `export_house_json.js` | Compiles a house file for Blender and checks it for problems. |
-| `examples/*.json` | A scheme exported with **Export for Blender**. |
-| `data/*.js` | Build helpers: the colour-book compiler, a CIEDE2000 colour matcher, and the example schemes. |
-| `textures/` | Plank textures (the example's is cropped from a photo of the actual flooring). |
+New here? Read the **[getting-started guide](docs/getting-started.md)**.
 
 ## Running it
 
@@ -42,61 +19,61 @@ python -m http.server 8770
 ```
 
 Then open:
-- `http://localhost:8770/editor.html`: the plan editor, to trace your own house
-- `http://localhost:8770/paint.html`: the paint studio, with the example house
-- `http://localhost:8770/paint.html?house=houses/starter-cottage/house.json`: any house file by URL
-- `http://localhost:8770/paint.html#walk`: straight into the walkthrough
-- `http://localhost:8770/floorplan.html`: the floor plan (it takes `?house=` too)
+
+| Address | What |
+|---|---|
+| `http://localhost:8770/` | The start page |
+| `http://localhost:8770/editor.html` | The plan editor: trace your own house |
+| `http://localhost:8770/paint.html` | The paint studio, with the example house |
+| `http://localhost:8770/paint.html?house=houses/starter-cottage/house.json` | Any house file, by address |
+| `http://localhost:8770/paint.html#walk` | Straight into the walkthrough |
+| `http://localhost:8770/floorplan.html` | The 2D floor plan (it takes `?house=` too) |
+
+A published copy can be hosted on GitHub Pages: `.github/workflows/pages.yml` builds and deploys it (Settings > Pages > Source: GitHub Actions).
 
 ## Your own house
 
-The easy way is the plan editor (`editor.html`):
-1. Upload a photo, scan or PDF of your floor plan.
+1. Open the plan editor and upload a photo, scan or PDF of your floor plan.
 2. Set its scale: click both ends of a dimension you know and type its length.
-3. Click corner to corner around the outside walls, then draw the inside walls. You can type a length and press Enter for an exact wall.
+3. Click corner to corner around the outside walls, then draw the inside walls. Type a length and press Enter for an exact wall.
 4. Click doors and windows onto walls, then click inside each space to make it a room and name it.
-5. Optional: press `F` and place cabinets, appliances and bath fixtures. They back onto the nearest wall, `T` turns a free-standing one, and the inspector sets sizes, fronts and paint groups. Pick the flooring too: a wood, a colour or your own photo.
-6. Check the heights, then press **Paint it**.
+5. Optional: press `F` and place cabinets, appliances and bath fixtures, and pick the flooring.
+6. Press **Paint it**.
 
-Everything stays in your browser until you save `house.json`. **Edit house** in the paint studio brings you back.
+Everything stays in your browser until you save `house.json`. **Edit house** in the paint studio brings you back. The full walkthrough, with pictures, is in [docs/getting-started.md](docs/getting-started.md), and every field of the file is in [docs/house-format.md](docs/house-format.md). You can also write the file by hand: copy `houses/starter-cottage/house.json`.
 
-Or write the file by hand:
+To check a file from the command line:
 
-1. Copy `houses/starter-cottage/house.json` to `houses/<your-id>/house.json`.
-2. Trace your walls, openings and rooms, using [docs/house-format.md](docs/house-format.md) for the fields.
-3. Check it:
-
-   ```bash
-   node export_house_json.js houses/<your-id>/house.json out.json
-   ```
-
-   This prints any problems.
-4. Open it in either of two ways:
-   - `paint.html?house=houses/<your-id>/house.json`;
-   - **Open file…** in the studio, which keeps the house in your browser.
-
-Schemes are saved separately for each house. A plan editor that traces a blueprint image for you is the next phase on the [roadmap](ROADMAP.md).
+```bash
+node export_house_json.js houses/<your-id>/house.json out.json
+```
 
 ## Using the paint studio
 
-- **Pick a surface:** click a wall, ceiling, cabinet, single cabinet door or drawer, door, or trim in the model, or use the room list. Shift-click adds more.
-- **Pick a colour:** search by name, number (`7029`) or hex (`#D1CBC1` finds the nearest paints), and choose a sheen.
+- **Pick a surface:** click a wall, ceiling, cabinet, single cabinet door or drawer, door or trim in the model, or use the room list. Shift-click adds more.
+- **Pick a colour:** search the palette by name, code or hex (`#D1CBC1` finds the nearest colours), and choose a sheen.
 - **Wood:** walnut, teak, white oak, red oak, cherry, maple, rosewood or ebonized oak, with tileable grain at real-world scale.
 - **Views:** dollhouse, top-down, outside, and face-a-wall (double-click). The field-of-view slider widens the inside views.
-- **Lighting:**
-  - True colour shows the chip colour exactly on every wall.
-  - Daylight, Overcast and Evening (2700K bulbs) show how real light shifts it.
+- **Lighting:** True colour shows the chip colour exactly on every wall. Daylight, Overcast and Evening (2700K bulbs) show how real light shifts it.
 - **Walkthrough:** WASD to move, Shift to run, the mouse to look. Point at a surface and click it to open the paint panel.
 - **Share link:** copies a link with the scheme inside it. If the house came from a file, the link carries the house too.
 - **Open file…:** opens a house file, or imports a scheme file from **Export for Blender**.
 - **Paint needed:** square feet and gallons per colour (2 coats at about 350 sq ft per gallon).
-- **Export for Blender:** saves `house-<scheme>.json`, which contains the house, every surface's final colour, wood and sheen, and the camera you're looking through.
+- **Export for Blender:** saves `house-<scheme>.json`, which contains the house, every surface's final colour, wood and sheen, and the camera you're looking at.
 
-Screen colours are the brands' published approximations. Check real chips in your own light before buying.
+Screen colours are approximations. Check real chips in your own light before buying.
+
+## Colours
+
+The studio ships with the **House Painter palette**, 124 original colours (`paint-colors.js`). It is not any paint maker's book, so the project can be redistributed freely. To see a paint maker's colours too, build an extra book from data you download yourself: see [data/README.md](data/README.md). The extra book appears as another tab, and it is never committed to this repository.
 
 Schemes save in your browser. When the page is published as a Claude artifact, they save to the artifact's shared database, so everyone with the link sees the same schemes. To use another backend, implement the small interface at the top of `storage.js`.
 
 ## Rendering a scheme in Blender
+
+**With the add-on.** Build it with `python tools/build_addon.py` (or take `house_painter-<version>.zip` from a release). In Blender 4.2 or newer, use **Edit > Preferences > Get Extensions > Install from Disk**. Then **File > Import > House Painter scheme (.json)**. The scene arrives with cameras for your exported view, the dollhouse and every room.
+
+**From the command line.**
 
 ```bash
 "C:/Program Files/Blender Foundation/Blender 5.1/blender.exe" -b -P build_house.py -- --scheme examples/house-cozy-deco-emerald-brass.json --render
@@ -110,30 +87,45 @@ Schemes save in your browser. When the page is published as a Claude artifact, t
 | `--light` | `day`, `overcast`, `evening` or `true`. The default is the lighting you exported with. |
 | `--samples`, `--res` | Cycles samples (default 64) and image size (default `1600x1000`). |
 | `--render` | Render the views. Without it, the script only builds and saves the `.blend`. |
+| `--keep-scene`, `--no-save` | Build into the open scene, and don't write a `.blend` (what the add-on uses). |
 
-The script writes `house_<scheme>.blend` and `renders/<scheme>/<view>.png`. The Blender build uses the same surface keys, cabinet-door numbering and wood grain as the page. Interior light is calibrated so a wall facing the camera renders close to its paint chip.
+The script writes `house_<scheme>.blend` and `renders/<scheme>/<view>.png`. The Blender build uses the same surface keys, cabinet-door numbering and wood grain as the page, and interior light is calibrated so a wall facing the camera renders close to its chip.
 
-## Rebuilding
+![Kitchen, rendered from an exported view](renders/cozy-deco-emerald-brass/export.png)
+
+## What's here
+
+| File | What it is |
+|---|---|
+| `index.html` | The start page. |
+| `editor.html` + `editor.js` | The plan editor. |
+| `paint.html` + `paint-app.js` + `house3d.js` | The 3D paint studio and walkthrough (Three.js r128). |
+| `floorplan.html` + `floorplan.js` | The 2D floor plan: after / before / changes views and the paint-surface map. |
+| `house-core.js` | The shared pipeline, for browser and Node: wall joinery, room zones, paintable wall surfaces, room shapes, and the Blender export. |
+| `house-loader.js` | Picks the house for a page (`?house=…`, an opened file, or the example) and builds it. |
+| `fixtures.js` | The fixture library and the geometry shared by the editor, studio, walkthrough and Blender: every fixture can face any way. |
+| `storage.js` | Where schemes are kept: this browser, or the Claude artifact runtime's shared database. It also makes share links and saves files. |
+| `paint-colors.js` | The House Painter palette. |
+| `houses/<id>/house.json` | A house. `waterford-4563c` is the example (with seven schemes in `schemes/`); `starter-cottage` is a small template. |
+| `build_house.py` | Builds the Blender model, applies an exported scheme, and renders views. |
+| `blender_addon/` | The Blender add-on (File > Import). |
+| `export_house_json.js` | Compiles a house file for Blender and checks it for problems. |
+| `examples/` | A scheme exported with **Export for Blender**. |
+| `data/` | The palette builder and other data tools: [data/README.md](data/README.md). |
+| `tests/`, `tools/` | Unit tests; and scripts that build the site and the add-on. |
+| `docs/` | The getting-started guide and the house file format. |
+
+## Developing
 
 ```bash
-node data/ascii_js.js                # keep the page scripts ASCII-safe after editing them
+npm test                         # unit tests: core, fixtures, palette, schemes, pages
+blender -b --factory-startup -P tools/test_addon.py   # add-on, end to end
+node data/ascii_js.js            # keep page scripts ASCII-safe after editing them
 ```
 
-To rebuild the colour books, download them into `data/src/`, then compile:
-
-```bash
-curl -L -o data/src/sw.json https://raw.githubusercontent.com/jpederson/colornerd/master/json/sherwin-williams.json
-curl -L -A "Mozilla/5.0" -o data/src/behr_all.js https://www.behr.com/mainService/services/colornx/all.js
-node data/build_colors.js
-```
-
-To find the nearest real paints to any colour, by CIEDE2000:
-
-```bash
-node data/match_colors.js "#C35530" "#2A4F43"
-```
+See [CONTRIBUTING.md](CONTRIBUTING.md) and the [roadmap](ROADMAP.md).
 
 ## Notes
 
-- The example's geometry is traced from a photo of the 1998 Fleetwood sheet and is accurate to about ±0.3 ft. Field-measure before ordering anything.
-- Colour data: Sherwin-Williams values come from [colornerd](https://github.com/jpederson/colornerd), and Behr values from behr.com. Paint names and codes belong to their brands. See the [roadmap](ROADMAP.md) for how a public release will handle them.
+- The example house's geometry is traced from a photo of the 1998 Fleetwood sheet and is accurate to about ±0.3 ft. Field-measure before ordering anything.
+- Licensed under the [MIT licence](LICENSE). Third-party notices are in [NOTICE.md](NOTICE.md).

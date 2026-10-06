@@ -262,8 +262,11 @@
       const big = rr.reduce((m, q) => ((q[2] - q[0]) * (q[3] - q[1]) > (m[2] - m[0]) * (m[3] - m[1]) ? q : m), rr[0]);
       if (!big) return;
       const cx = (big[0] + big[2]) / 2, cy = (big[1] + big[3]) / 2, fs = 12 * k;
+      // a label only when it fits inside the room at this zoom (about 6.6 px per letter); zoom in to see the small ones
+      const roomW = (big[2] - big[0]) / k, roomH = (big[3] - big[1]) / k;
+      if (roomW < r.name.length * 6.6 + 10 || roomH < 18) return;
       h += `<text class="roomlabel" x="${N(cx)}" y="${N(cy)}" font-size="${N(fs)}" stroke-width="${N(3 * k)}">${esc(r.name)}</text>`;
-      h += `<text class="roomlabel sub" x="${N(cx)}" y="${N(cy + fs * 1.15)}" font-size="${N(fs * 0.85)}" stroke-width="${N(3 * k)}">${esc(r.id)}</text>`;
+      if (roomH >= 34 && roomW >= r.id.length * 6.2 + 10) h += `<text class="roomlabel sub" x="${N(cx)}" y="${N(cy + fs * 1.15)}" font-size="${N(fs * 0.85)}" stroke-width="${N(3 * k)}">${esc(r.id)}</text>`;
     });
     $('#lRooms').innerHTML = h;
     // fixtures: wall cabinets and shelves are dashed outlines underneath, everything at counter or floor level sits on top

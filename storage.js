@@ -18,7 +18,7 @@
  *   artifact  the Claude artifact runtime (window.claude): a shared database, viewer identity and downloads
  *   local     localStorage
  * A scheme document: { name, a: { <paintKey>: { b, c, n, h, s } }, house, created, updated, by }
- *   b = brand ('sw' | 'behr' | 'wood' | 'custom'), c = code, n = name, h = hex, s = sheen
+ *   b = colour book ('hp' = the House Painter palette, 'wood', 'custom', or an extra book), c = code, n = name, h = hex, s = sheen
  */
 (function () {
   const LS = 'paintstudio.schemes.v1';

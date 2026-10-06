@@ -1,5 +1,6 @@
 /*
  * Picks the house to show, builds it with HouseCore, then loads the page's own scripts in order.
+ * A script name ending in "?" is optional: if it is missing the page carries on (extra colour books use this).
  *
  *   <script src="house-core.js"></script>
  *   <script src="house-loader.js" data-default="houses/waterford-4563c/house.json" data-then="a.js b.js"></script>
@@ -56,9 +57,10 @@
   }
 
   function loadScripts(list) {
-    return list.reduce((p, src) => p.then(() => new Promise((ok, bad) => {
+    return list.reduce((p, name) => p.then(() => new Promise((ok, bad) => {
+      const optional = name.endsWith('?'), src = optional ? name.slice(0, -1) : name;
       const s = document.createElement('script'); s.src = src; s.async = false;
-      s.onload = ok; s.onerror = () => bad(new Error('Could not load ' + src));
+      s.onload = ok; s.onerror = () => (optional ? ok() : bad(new Error('Could not load ' + src)));
       document.body.appendChild(s);
     })), Promise.resolve());
   }

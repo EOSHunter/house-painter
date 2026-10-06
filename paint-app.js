@@ -1,7 +1,7 @@
 /*
  * Paint Studio app: selection, colour picker, camera views, schemes, totals, share links, export for Blender.
  * Reads the house from window.HOUSE / window.ROOMS (house-loader.js) and keeps schemes through storage.js.
- * Scheme assignments: { <targetKey>: {b, c, n, h, s} }  b = brand ('sw' | 'behr' | 'wood' | 'custom'), c = code, n = name, h = hex, s = sheen
+ * Scheme assignments: { <targetKey>: {b, c, n, h, s} }  b = colour book id ('hp' for the House Painter palette, 'wood', 'custom', or any extra book), c = code, n = name, h = hex, s = sheen
  */
 (function () {
   const H = window.HOUSE, R = window.ROOMS, C = window.PAINT_COLORS, B = window.House3D, T = THREE;
@@ -40,14 +40,17 @@
     .sort((a, b) => (DIR_ORDER[a.s.dir] - DIR_ORDER[b.s.dir]) || a.key.localeCompare(b.key, 'en', { numeric: true }));
   const defaultSheen = t => ({ ceiling: 'flat', trim: 'semigloss', door: 'semigloss', cabinet: 'satin', cabdoor: 'satin', siding: 'satin' }[t.kind] || 'eggshell');
   const SHEEN_LABEL = { flat: 'Flat', eggshell: 'Eggshell', satin: 'Satin', semigloss: 'Semi-gloss' };
-  const BRAND_LABEL = { sw: 'Sherwin-Williams', behr: 'Behr', wood: 'Wood', custom: 'Custom' };
+  const BOOKS = C.books;                                      // colour books: the House Painter palette, plus any extra ones (paint-colors-extra.js)
+  const BRAND_LABEL = new Proxy({ wood: 'Wood', custom: 'Custom', ...Object.fromEntries(BOOKS.map(b => [b.id, b.label])) }, { get: (t, k) => (k in t ? t[k] : String(k)) });   // a scheme made with a book that isn't loaded still reads sensibly
 
   // colour books \u2192 objects
-  const BOOK = { sw: C.sw.map(([c, n, h]) => ({ b: 'sw', c, n, h })), behr: C.behr.map(([c, n, h]) => ({ b: 'behr', c, n, h })),
-    wood: Object.entries(B.WOODS).map(([c, w]) => ({ b: 'wood', c, n: w.n, h: w.avg })) };
-  const byCode = {}; for (const b of ['sw', 'behr']) BOOK[b].forEach(x => { byCode[b + '|' + x.c] = x; });
-  BOOK.wood.forEach(x => { byCode['wood|' + x.c] = x; });
-  const POPULAR = { sw: C.popular.sw.map(c => byCode['sw|' + c]), behr: C.popular.behr.map(c => byCode['behr|' + c]), wood: BOOK.wood };
+  const BOOK = Object.fromEntries(BOOKS.map(bk => [bk.id, bk.colors.map(([c, n, h]) => ({ b: bk.id, c, n, h }))]));
+  BOOK.wood = Object.entries(B.WOODS).map(([c, w]) => ({ b: 'wood', c, n: w.n, h: w.avg }));
+  const byCode = {}; for (const id in BOOK) BOOK[id].forEach(x => { byCode[id + '|' + x.c] = x; });
+  const POPULAR = { wood: BOOK.wood };
+  for (const bk of BOOKS) { const p = (bk.popular || []).map(c => byCode[bk.id + '|' + c]).filter(Boolean); POPULAR[bk.id] = p.length ? p : BOOK[bk.id].slice(0, 18); }
+  const TABS = BOOKS.map(b => [b.id, b.tab || b.label]).concat([['wood', 'Wood']]);
+  const tabsHTML = (attr, cur, extra) => TABS.concat(extra || []).map(([id, l]) => `<button ${attr}="${id}" aria-pressed="${id === cur}">${esc(l)}</button>`).join('');
 
   // ------------------------------------------------------------------ state
   let schemes = [];            // [{id, name, a, created, updated, by}]
@@ -56,7 +59,7 @@
   let dirty = false, saving = Promise.resolve(), saveTimer = 0;
   let store = null, canWrite = true, held = false;           // held: a scheme opened from a link/file stays up until you pick another
   const sel = new Set();
-  let brand = 'sw', query = '', undoStack = [];
+  let brand = BOOKS[0].id, query = '', undoStack = [];
   let view = { kind: 'doll' };
 
   // ------------------------------------------------------------------ 3D
@@ -570,6 +573,7 @@
     const x = c.dataset.b === 'custom' ? usedColours().find(v => v.b === 'custom' && v.c === c.dataset.c) : byCode[c.dataset.b + '|' + c.dataset.c];
     if (x) paint([...sel], x);
   });
+  $('#brandTabs').innerHTML = tabsHTML('data-brand', brand, [['custom', 'Custom']]);
   document.querySelectorAll('[data-brand]').forEach(b => b.onclick = () => {
     brand = b.dataset.brand; document.querySelectorAll('[data-brand]').forEach(x => x.setAttribute('aria-pressed', x === b));
     $('#search').hidden = brand === 'custom'; renderChips();
@@ -709,7 +713,7 @@
   // ------------------------------------------------------------------ walkthrough: its own full-screen experience
   // Walk with WASD + mouse; point at a wall to see what it is; click to free the mouse and open the paint panel on the
   // right. While the panel is open the camera stays put, so the mouse is only for choosing colours.
-  let immersive = false, picker = null, iBrand = 'sw', iQuery = '', promptT = 0;
+  let immersive = false, picker = null, iBrand = BOOKS[0].id, iQuery = '', promptT = 0;
   const appEl = document.querySelector('.app');
   $('#ihGo').innerHTML = ROOM_ORDER.map(id => `<option value="${id}">${esc(R.byId[id].name)}</option>`).join('');
   function updateRoomLabel() {
@@ -805,6 +809,7 @@
     const keys = pickerTargets().filter(k => A[k]); if (keys.length) paint(keys, null, b.dataset.s);
     renderPicker();
   });
+  $('#ihBrandTabs').innerHTML = tabsHTML('data-ibrand', iBrand);
   document.querySelectorAll('[data-ibrand]').forEach(b => b.onclick = () => {
     iBrand = b.dataset.ibrand; document.querySelectorAll('[data-ibrand]').forEach(x => x.setAttribute('aria-pressed', x === b)); renderPicker();
   });
@@ -926,7 +931,7 @@
     const filename = `house-${slug}.json`;
     try {
       const r = await PaintStore.saveFile(filename, data);
-      if (r === 'saved') toast(`Saved ${filename}. Render it with build_house.py --scheme ${filename}`);
+      if (r === 'saved') toast(`Saved ${filename}. In Blender: File > Import > House Painter scheme (see the README).`);
     } catch { showText('Export for Blender', `Saving files isn't available here. Copy this text into a file named ${filename}.`, data, 200); }
   }
   function showText(title, note, text, rows) {                // fallback when the clipboard or downloads are blocked
