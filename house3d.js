@@ -4,10 +4,12 @@
  * paint-surface boundaries, so each face of each box carries the material of exactly one surface.
  *
  * Coordinates: plan feet (x east, y south, z up) \u2192 three.js (X = x, Y = z, Z = y). 1 unit = 1 ft.
- * window.House3D.build() \u2192 { root, ceilings, pickables, material(key), keyAt(hit), roomInfo, surfaceView }
+ * window.House3DBuild(HOUSE, ROOMS) -> { root, ceilings, pickables, material(key), keyAt(hit), roomInfo, surfaceView, ... }
+ * When the page already has window.HOUSE / window.ROOMS, window.House3D is built from them on load.
  */
 (function () {
-  const H = window.HOUSE, R = window.ROOMS, T = THREE;
+function build(H, R) {
+  const T = THREE;
   const CEIL = R.ceilingHeight;                              // openings carry their own z0/z1 (house-core.js)
   const T_HALF = H.T / 2;
   const BASE_H = 0.375, BASE_T = 0.03, CASE_W = 0.29, CASE_T = 0.035, DOOR_T = 0.115, DOOR_OPEN = 68;
@@ -500,8 +502,11 @@
     return { eye: new T.Vector3(mx + nx * dist, ez, my + ny * dist), target: new T.Vector3(mx, s.room === 'exterior' ? 2.5 : 4.0, my), dist };
   }
 
-  window.House3D = {
+  return {
     root, ceilings, pickables, material, setPaint, defaultHex, keyAt, roomInfo, surfaceView, loadFloorTexture, SHEEN, cabParts, WOODS, woodSwatch,
     center: new T.Vector3(H.W / 2, 0, H.D / 2)
   };
+}
+  window.House3DBuild = build;
+  if (window.HOUSE && window.ROOMS) window.House3D = build(window.HOUSE, window.ROOMS);
 })();

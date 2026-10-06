@@ -32,22 +32,33 @@ blueprint image ──► Plan editor ──► house.json ──► Paint studi
 - [x] The Blender export is self-contained, and `build_house.py --house` builds any house file.
 - [x] A second house, `houses/starter-cottage`, serves as a template and as proof that nothing is tied to the example.
 
-## Phase 2: plan editor
+## Phase 2: plan editor ✅
 
-A web page that turns a blueprint into a `house.json`.
+`editor.html` turns a blueprint into a `house.json`.
 
-- [ ] Upload an image or PDF page of the blueprint, shown under a drawing grid.
-- [ ] Set the scale by clicking two points and typing a known length (for example the overall 56').
-- [ ] Draw walls that snap to straight lines and to existing wall ends, and mark them exterior or interior.
-- [ ] Drop doors, windows and cased openings onto walls: drag to size, flip the hinge and swing.
-- [ ] A heights panel with house defaults, plus overrides on a selected door or window.
-- [ ] Rooms:
-  - click inside a closed space to create it, using the same flood fill the core already uses;
-  - name it;
-  - draw split lines to divide open-plan areas.
-- [ ] Live 3D preview, using the same `house3d.js` the paint studio uses.
-- [ ] Save the `house.json` file, or send it straight to the paint studio.
-- [ ] Undo/redo, and editing an existing house file.
+- [x] Upload an image or a PDF page of the blueprint, shown under a drawing grid. The image stays in the browser (IndexedDB). Its scale and position are saved in the house file, so re-uploading the same image lines it up again.
+- [x] Opacity and rotation sliders for skewed photos. A Move tool lines the image up.
+- [x] Set the scale by clicking two points and typing a known length (`56'`, `26'8"`, `12.5`).
+- [x] Draw walls by clicking corner to corner:
+  - walls lock to horizontal or vertical;
+  - ends snap to other walls' ends and centre lines, otherwise to a 1" grid (Alt turns snapping off);
+  - type a length and press Enter for an exact wall;
+  - closing the outside loop switches to inside walls.
+- [x] Doors, windows and cased openings click onto walls. Drag the ends to size them, and drag the middle to slide them. Outside doors swing inward by default.
+- [x] Inspector with exact feet-and-inches inputs for every wall, opening, room and house setting. Heights are set per house, with overrides on single doors and windows.
+- [x] Rooms:
+  - click inside a closed space to fill it on a 3" grid (doorways count as closed);
+  - name it, and the wall-ID prefix follows;
+  - split lines divide open-plan areas exactly.
+- [x] Live 3D preview, built by the same `house3d.js` the paint studio uses.
+- [x] Save `house.json`, or **Paint it**, which opens the house in the paint studio. The studio has an **Edit house** button that comes back.
+- [x] Undo/redo, autosave, and opening existing house files. Loading a house file and saving it rebuilds the example house with identical surfaces.
+- [x] A guided steps panel, a list of problems to fix before painting, and floor-plan labels for houses without hand-placed ones.
+
+Still to do:
+- [ ] Moving a wall doesn't drag the walls joined to it. Each wall moves on its own, and joinery tidies the ends.
+- [ ] Touch: panning and zooming work, but drawing needs a mouse or pen for now.
+- [ ] Editing the floor plan's labels, dimensions and notes (`plan`), and the walkthrough start point.
 
 ## Phase 3: fixtures
 

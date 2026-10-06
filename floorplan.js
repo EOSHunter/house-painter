@@ -217,6 +217,9 @@
     H.walls.forEach(w=>{ if(!vis(w.status)) return; o+=wallSVG(w); });
     // labels
     H.labels.forEach(l=>{ o+=roomLabel(l); });
+    // houses without hand-placed labels (e.g. from the plan editor): name each room at the middle of its biggest piece
+    if(!H.labels.length) R.rooms.forEach(r=>{ const big=r.shape.reduce((m,q)=>(q[2]-q[0])*(q[3]-q[1])>(m[2]-m[0])*(m[3]-m[1])?q:m, r.shape[0]); if(!big) return;
+      const w=big[2]-big[0], sz=w<5?8:w<9?10:12.5; o+=roomLabel({x:(big[0]+big[2])/2, y:(big[1]+big[3])/2, t:esc(r.name.toUpperCase()), size:sz}); });
     // dimensions
     o+=dimH(0,H.W,-4.3,ftin(H.W));
     o+=dimV(0,H.D,-3.6,ftin(H.D));

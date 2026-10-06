@@ -23,6 +23,7 @@ Every house is one JSON file. The example is a remodelled 1998 Fleetwood **Water
 | `house-loader.js` | Picks the house for a page (`?house=…`, an opened file, or the example) and builds it. |
 | `paint.html` + `paint-app.js` + `house3d.js` | The 3D paint studio and walkthrough (Three.js r128). |
 | `storage.js` | Where schemes are kept: this browser, or the Claude artifact runtime's shared database. It also makes share links and saves files. |
+| `editor.html` + `editor.js` | The plan editor: trace a blueprint (image or PDF) into a house file, with a live 3D preview. |
 | `floorplan.html` + `floorplan.js` | The 2D floor plan: after / before / changes views and the paint-surface map. |
 | `paint-colors.js` | Colour books: 1,526 Sherwin-Williams and 5,443 Behr colours (code, name, hex). |
 | `build_house.py` | Builds the Blender model, applies an exported scheme, and renders views. |
@@ -40,12 +41,24 @@ python -m http.server 8770
 ```
 
 Then open:
+- `http://localhost:8770/editor.html`: the plan editor, to trace your own house
 - `http://localhost:8770/paint.html`: the paint studio, with the example house
 - `http://localhost:8770/paint.html?house=houses/starter-cottage/house.json`: any house file by URL
 - `http://localhost:8770/paint.html#walk`: straight into the walkthrough
 - `http://localhost:8770/floorplan.html`: the floor plan (it takes `?house=` too)
 
 ## Your own house
+
+The easy way is the plan editor (`editor.html`):
+1. Upload a photo, scan or PDF of your floor plan.
+2. Set its scale: click both ends of a dimension you know and type its length.
+3. Click corner to corner around the outside walls, then draw the inside walls. You can type a length and press Enter for an exact wall.
+4. Click doors and windows onto walls, then click inside each space to make it a room and name it.
+5. Check the heights, then press **Paint it**.
+
+Everything stays in your browser until you save `house.json`. **Edit house** in the paint studio brings you back.
+
+Or write the file by hand:
 
 1. Copy `houses/starter-cottage/house.json` to `houses/<your-id>/house.json`.
 2. Trace your walls, openings and rooms, using [docs/house-format.md](docs/house-format.md) for the fields.

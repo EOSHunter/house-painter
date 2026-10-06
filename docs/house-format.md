@@ -35,7 +35,8 @@ Copy [`houses/starter-cottage/house.json`](../houses/starter-cottage/house.json)
 | `fixtures` | | See [Fixtures](#fixtures). |
 | `start` | | `{ "x", "y", "yaw" }`: where the walkthrough starts. Defaults to just inside the first exterior door. For `yaw`, 0 faces north (−y), π faces south, −π/2 faces east and π/2 faces west. |
 | `renderRooms` | | Room ids Blender renders for `--views rooms`. Defaults to every room of 40 sq ft or more. |
-| `plan` | | Floor-plan extras: `tints`, `labels`, `dims`, `texts`, `callouts`, `notes`. Only `floorplan.html` uses these. |
+| `plan` | | Floor-plan extras: `tints`, `labels`, `dims`, `texts`, `callouts`, `notes`. Only `floorplan.html` uses these. Rooms without labels are named automatically. |
+| `editor` | | Written by the plan editor and ignored by everything else. `underlay` holds the blueprint's name, size, scale (`s`, in feet per pixel), position (`ox`, `oy`), rotation and opacity. `splits` holds the zone lines between open-plan rooms. |
 
 ## Walls
 

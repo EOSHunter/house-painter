@@ -262,7 +262,7 @@
   const hfov = () => 2 * Math.atan(Math.tan(camera.fov * Math.PI / 360) * camera.aspect);   // horizontal field of view, radians
   function dollhouse() {
     exitWalk(); view = { kind: 'doll' }; B.ceilings.visible = false; fill.intensity = 0; camera.fov = 40; camera.updateProjectionMatrix(); setOrbit(true);
-    const dir = new T.Vector3(22, 44, 40).normalize(), dist = Math.max(63 * K, SPAN * 0.55 / Math.tan(hfov() / 2));
+    const dir = new T.Vector3(22, 44, 40).normalize(), dist = Math.max(63 * K, SPAN * 0.55 / Math.tan(hfov() / 2), SPAN * 0.5 / Math.tan(camera.fov * Math.PI / 360));
     flyTo(C3.clone().addScaledVector(dir, dist), C3.clone()); pressView('vDoll'); hud();
   }
   function topDown() {
@@ -829,6 +829,8 @@
     const sub = $('#houseName');
     sub.textContent = `${H.name} \u00b7 ${ftin(H.W)} \u00d7 ${ftin(H.D)}`;
     if (SRC.kind !== 'default') sub.insertAdjacentHTML('beforeend', ' \u00b7 <a href="?" style="color:inherit">example house</a>');
+    // the plan editor opens the same house: by URL, or the copy kept in this browser
+    $('#editBtn').href = 'editor.html?house=' + encodeURIComponent(SRC.kind === 'local' ? 'local' : (SRC.url || 'houses/' + H.id + '/house.json'));
   }
 
   async function boot() {
