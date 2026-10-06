@@ -96,13 +96,13 @@ test('the interface files ship: every url() in the built CSS resolves, every fon
   }
 });
 
-test('the landing page has no header or nav of its own: only the R7 Orbit back link, and the project links in the footer', () => {
+test('the landing page has the R7 Orbit site header (wordmark and the five site links, all to r7orbit.io and out of any frame), and the project links in the footer', () => {
   const html = read('index.html');
-  assert.ok(!/<header\b|site-header|site-nav/.test(html), 'index.html still has a site header / nav');
-  const back = /<div class="home-back">\s*<a class="wordmark" href="https:\/\/r7orbit\.io" target="_top"><img src="assets\/r7-mark\.[0-9a-f]{10}\.svg" alt="" width="21" height="18">R7 Orbit<\/a>\s*<\/div>/;
-  assert.match(html, back);
-  assert.ok(html.indexOf('home-back') < html.indexOf('<main'), 'the back link comes before the page');
-  const footer = html.slice(html.indexOf('<footer'));
+  const header = html.slice(html.indexOf('<header'), html.indexOf('</header>'));
+  assert.match(header, /<a class="wordmark" href="https:\/\/r7orbit\.io\/" target="_top"[^>]*><img src="assets\/r7-mark\.[0-9a-f]{10}\.svg" alt="" width="21" height="18">R7 Orbit<\/a>/);
+  for (const [slug, label] of [['news', 'News'], ['blog', 'Blog'], ['vlogs', 'Vlogs'], ['projects', 'Projects'], ['about', 'About R7 Orbit']])
+    assert.match(header, new RegExp(`<a href="https://r7orbit\\.io/${slug}/" target="_top">${label}</a>`));
+  assert.ok(html.indexOf('<header') < html.indexOf('<main'), 'the header comes before the page');  const footer = html.slice(html.indexOf('<footer'));
   for (const label of ['GitHub', 'Getting started', 'House file format', 'Blender add-on', 'MIT licence'])
     assert.match(footer, new RegExp(`<a href="https://github\.com/EOSHunter/house-painter[^"]*" target="_blank" rel="noopener">${label}</a>`));
   assert.ok(/<h1>/.test(html) && /class="btn solid lg" href="editor\.html"/.test(html) && /class="btn lg" href="paint\.html"/.test(html), 'the heading and the calls to action stay');
