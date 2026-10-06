@@ -1,0 +1,200 @@
+/* Copied from the R7 Orbit site: src/styles/design-system/tokens.css @ 97dd4eb3b1335e7b3039a536d768cc38526be9a4.
+   Only change: font URLs are relative to this file (fonts/...) instead of /fonts/..., so the app works under a sub-path. Do not add app rules here: they go in base.css. See docs/DESIGN.md. */
+/*
+  R7 Orbit design tokens, for the web.
+  Obsidian, ivory, brass. Every visual decision resolves to a variable here.
+
+  The names and values match the app (src/renderer/tokens.css) where they are shared. Anything added for a website is
+  marked "web". Change a value here and everything that uses it follows.
+*/
+
+/* web: each face is split in two files with the same glyphs as the Latin subset it came from. "core" (ASCII and the
+   typographic punctuation the site prints: curly quotes, dashes, ellipsis, arrows) is all most pages need; "rest" (accented
+   letters and the other Latin symbols) is downloaded only by a page that has one of those characters. Same look, about a
+   third fewer font bytes on every page (Lighthouse LCP). The two unicode-ranges do not overlap. docs/DECISIONS.md, "Fonts". */
+@font-face { font-family: 'Cormorant Garamond'; font-style: normal; font-weight: 400 500; font-display: swap; src: url('fonts/cormorant-garamond-core-400-normal.woff2') format('woff2'); unicode-range: U+0020-007E, U+00A0, U+00A9, U+00AB, U+00AE, U+00B0, U+00B7, U+00BB, U+00D7, U+2013-2014, U+2018-2019, U+201C-201D, U+2022, U+2026, U+2032-2033, U+2122, U+2191, U+2193, U+2212; }
+@font-face { font-family: 'Cormorant Garamond'; font-style: normal; font-weight: 400 500; font-display: swap; src: url('fonts/cormorant-garamond-rest-400-normal.woff2') format('woff2'); unicode-range: U+00A1-00A8, U+00AA, U+00AC-00AD, U+00AF, U+00B1-00B6, U+00B8-00BA, U+00BC-00D6, U+00D8-00FF, U+0102, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+2002, U+2009, U+200B, U+201A, U+201E, U+2039-203A, U+2044, U+20AC, U+2215, U+FEFF; }
+/* web: weight 500 is served by the 400 file (one request fewer on every page; the difference is slight at display sizes). */
+@font-face { font-family: 'Cormorant Garamond'; font-style: normal; font-weight: 600; font-display: swap; src: url('fonts/cormorant-garamond-core-600-normal.woff2') format('woff2'); unicode-range: U+0020-007E, U+00A0, U+00A9, U+00AB, U+00AE, U+00B0, U+00B7, U+00BB, U+00D7, U+2013-2014, U+2018-2019, U+201C-201D, U+2022, U+2026, U+2032-2033, U+2122, U+2191, U+2193, U+2212; }
+@font-face { font-family: 'Cormorant Garamond'; font-style: normal; font-weight: 600; font-display: swap; src: url('fonts/cormorant-garamond-rest-600-normal.woff2') format('woff2'); unicode-range: U+00A1-00A8, U+00AA, U+00AC-00AD, U+00AF, U+00B1-00B6, U+00B8-00BA, U+00BC-00D6, U+00D8-00FF, U+0102, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+2002, U+2009, U+200B, U+201A, U+201E, U+2039-203A, U+2044, U+20AC, U+2215, U+FEFF; }
+@font-face { font-family: 'Cormorant Garamond'; font-style: italic; font-weight: 400; font-display: swap; src: url('fonts/cormorant-garamond-core-400-italic.woff2') format('woff2'); unicode-range: U+0020-007E, U+00A0, U+00A9, U+00AB, U+00AE, U+00B0, U+00B7, U+00BB, U+00D7, U+2013-2014, U+2018-2019, U+201C-201D, U+2022, U+2026, U+2032-2033, U+2122, U+2191, U+2193, U+2212; }
+@font-face { font-family: 'Cormorant Garamond'; font-style: italic; font-weight: 400; font-display: swap; src: url('fonts/cormorant-garamond-rest-400-italic.woff2') format('woff2'); unicode-range: U+00A1-00A8, U+00AA, U+00AC-00AD, U+00AF, U+00B1-00B6, U+00B8-00BA, U+00BC-00D6, U+00D8-00FF, U+0102, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+2002, U+2009, U+200B, U+201A, U+201E, U+2039-203A, U+2044, U+20AC, U+2215, U+FEFF; }
+@font-face { font-family: 'Cormorant Garamond'; font-style: italic; font-weight: 500; font-display: swap; src: url('fonts/cormorant-garamond-core-500-italic.woff2') format('woff2'); unicode-range: U+0020-007E, U+00A0, U+00A9, U+00AB, U+00AE, U+00B0, U+00B7, U+00BB, U+00D7, U+2013-2014, U+2018-2019, U+201C-201D, U+2022, U+2026, U+2032-2033, U+2122, U+2191, U+2193, U+2212; }
+@font-face { font-family: 'Cormorant Garamond'; font-style: italic; font-weight: 500; font-display: swap; src: url('fonts/cormorant-garamond-rest-500-italic.woff2') format('woff2'); unicode-range: U+00A1-00A8, U+00AA, U+00AC-00AD, U+00AF, U+00B1-00B6, U+00B8-00BA, U+00BC-00D6, U+00D8-00FF, U+0102, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+2002, U+2009, U+200B, U+201A, U+201E, U+2039-203A, U+2044, U+20AC, U+2215, U+FEFF; }
+@font-face { font-family: 'Inter Variable'; font-style: normal; font-weight: 100 900; font-display: swap; src: url('fonts/inter-core-wght-normal.woff2') format('woff2-variations'); unicode-range: U+0020-007E, U+00A0, U+00A9, U+00AB, U+00AE, U+00B0, U+00B7, U+00BB, U+00D7, U+2013-2014, U+2018-2019, U+201C-201D, U+2022, U+2026, U+2032-2033, U+2122, U+2191, U+2193, U+2212; }
+@font-face { font-family: 'Inter Variable'; font-style: normal; font-weight: 100 900; font-display: swap; src: url('fonts/inter-rest-wght-normal.woff2') format('woff2-variations'); unicode-range: U+00A1-00A8, U+00AA, U+00AC-00AD, U+00AF, U+00B1-00B6, U+00B8-00BA, U+00BC-00D6, U+00D8-00FF, U+0102, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+2002, U+2009, U+200B, U+201A, U+201E, U+2039-203A, U+2044, U+20AC, U+2215, U+FEFF; }
+@font-face { font-family: 'JetBrains Mono Variable'; font-style: normal; font-weight: 100 800; font-display: swap; src: url('fonts/jetbrains-mono-core-wght-normal.woff2') format('woff2-variations'); unicode-range: U+0020-007E, U+00A0, U+00A9, U+00AB, U+00AE, U+00B0, U+00B7, U+00BB, U+00D7, U+2013-2014, U+2018-2019, U+201C-201D, U+2022, U+2026, U+2032-2033, U+2122, U+2191, U+2193, U+2212; }
+@font-face { font-family: 'JetBrains Mono Variable'; font-style: normal; font-weight: 100 800; font-display: swap; src: url('fonts/jetbrains-mono-rest-wght-normal.woff2') format('woff2-variations'); unicode-range: U+00A1-00A8, U+00AA, U+00AC-00AD, U+00AF, U+00B1-00B6, U+00B8-00BA, U+00BC-00D6, U+00D8-00FF, U+0102, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+2002, U+2009, U+200B, U+201A, U+201E, U+2039-203A, U+2044, U+20AC, U+2215, U+FEFF; }
+/* web: metric-matched fallbacks, so the swap to the web fonts does not reflow headings (CLS). Values from average glyph width and vertical metrics. */
+@font-face { font-family: 'Cormorant Fallback'; font-style: normal; src: local('Times New Roman'), local('Times'); size-adjust: 97.4%; ascent-override: 94.9%; descent-override: 29.5%; line-gap-override: 0%; }
+@font-face { font-family: 'Cormorant Fallback'; font-style: italic; src: local('Times New Roman Italic'), local('Times-Italic'), local('Times Italic'); size-adjust: 87.5%; ascent-override: 105.6%; descent-override: 32.8%; line-gap-override: 0%; }
+@font-face { font-family: 'Inter Fallback'; src: local('Arial'), local('Helvetica'); size-adjust: 107.6%; ascent-override: 90%; descent-override: 22.4%; line-gap-override: 0%; }
+@font-face { font-family: 'JetBrains Mono Fallback'; src: local('Courier New'), local('Liberation Mono'), local('Courier'); size-adjust: 100%; ascent-override: 102%; descent-override: 30%; line-gap-override: 0%; }
+
+:root {
+  /* ------------------------------------------------------------------------------------------------ Colour: surfaces */
+  /* Stepped tones of warm black. Depth is tone, never heavy shadow. */
+  --bg: #09090a;
+  --surface-1: #0f0f11;
+  --surface-2: #151518;
+  --surface-3: #1b1b1f;
+  --void: #020203;                        /* web: the dark inside the logo; the deepest tone, for wells and the mark's fill */
+
+  /* ---------------------------------------------------------------------------------------------------- Colour: lines */
+  --line: rgb(236 228 210 / 0.08);        /* hairline: dividers, card edges */
+  --line-strong: rgb(236 228 210 / 0.16);  /* inputs, hovered edges */
+  --line-brass: rgb(201 169 106 / 0.42);   /* selected, focused, needs you */
+
+  /* ---------------------------------------------------------------------------------------------------- Colour: text */
+  /* Ivory, never pure white. */
+  --text: #ece6d8;
+  --text-2: #a39e92;
+  --text-3: #827e75;                       /* web: lifted from the app's #6b675f so small text passes 4.5:1 (see DESIGN_SYSTEM.md) */
+  --text-3-app: #6b675f;                   /* the app's dimmest text; 3.5:1, for big or decorative text only */
+
+  /* ---------------------------------------------------------------------------------------------------- Colour: brass */
+  /* The single accent. */
+  --brass: #c9a96a;
+  --brass-bright: #e3c98f;
+  --brass-dim: #8c7647;
+  --on-brass: #14110a;                     /* text and icons that sit on a brass fill */
+  --brass-highlight: #f1dca8;              /* web: the orbiting dot; the brightest brass, for tiny points of light */
+  --brass-leaf: #ecd49a;                   /* web: light end of the logo gradient */
+  --brass-shadow: #9a7c46;                 /* web: dark end of the logo gradient */
+  --brass-deep: #5c4d2c;                   /* web: brass in shadow; borders on brass-tinted surfaces */
+
+  /* Scrims: a dark veil over media (video posters, the play ring, duration badges). Always dark, so text on it is ivory. */
+  --scrim: rgb(9 9 10 / 0.6);              /* web */
+  --scrim-strong: rgb(9 9 10 / 0.78);      /* web: badges on media */
+  --header-veil: rgb(9 9 10 / 0.82);       /* web: the sticky header's translucent background (blurred behind) */
+  --on-scrim: #ece6d8;                     /* web: text and icons on a scrim */
+
+  /* Brass as light on dark: tints used behind things that need a little warmth */
+  --brass-wash-1: rgb(201 169 106 / 0.05);
+  --brass-wash-2: rgb(201 169 106 / 0.07);
+  --brass-wash-3: rgb(201 169 106 / 0.12);
+
+  /* The logo's brass, as a gradient. Use for the mark and, rarely, one hero word. */
+  --brass-gradient: linear-gradient(135deg, var(--brass-leaf) 0%, var(--brass) 50%, var(--brass-shadow) 100%);
+
+  /* --------------------------------------------------------------------------------------------------- Colour: status */
+  /* Desaturated, used sparingly. */
+  --st-working: var(--brass);
+  --st-attention: var(--brass-bright);
+  --st-done: #8fa58a;
+  --st-failed: #b5685e;
+  --st-idle: #77736b;
+  --st-failed-text: #d9a39b;               /* error text on dark: the red, lightened to read */
+  --st-failed-wash: rgb(181 104 94 / 0.1);
+  --st-done-wash: rgb(143 165 138 / 0.07);
+
+  /* ------------------------------------------------------------------------------------------------------ Typography */
+  --font-display: 'Cormorant Garamond', 'Cormorant Fallback', 'Times New Roman', serif;
+  --font-ui: 'Inter Variable', 'Inter Fallback', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', 'JetBrains Mono Fallback', Consolas, monospace;
+
+  /* Sizes. The app is dense (13px base); a website reads at 17px. Each has a job. */
+  --fs-2xs: 0.625rem;                      /* 10px  eyebrows, tiny labels (always uppercase + tracked) */
+  --fs-xs: 0.6875rem;                      /* 11px  captions, meta, chips */
+  --fs-sm: 0.8125rem;                      /* 13px  the app's body; dense UI */
+  --fs-md: 0.9375rem;                      /* 15px  UI text, card text */
+  --fs-base: 1.0625rem;                    /* 17px  article body */
+  --fs-lg: 1.25rem;                        /* 20px  lead paragraph */
+  --fs-xl: 1.5rem;                         /* 24px  h4 */
+  --fs-2xl: 2rem;                          /* 32px  h3 */
+  --fs-3xl: 2.75rem;                       /* 44px  h2 (the app's empty-state h1) */
+  --fs-4xl: clamp(2.75rem, 1.6rem + 4.4vw, 4.25rem);   /* h1, fluid  44 -> 68px */
+  --fs-5xl: clamp(3.25rem, 1.2rem + 7.6vw, 6rem);      /* display, fluid  52 -> 96px */
+
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+
+  --lh-tight: 1.05;                        /* big display type */
+  --lh-snug: 1.2;                          /* headings */
+  --lh-ui: 1.5;                            /* UI */
+  --lh-prose: 1.7;                         /* reading */
+
+  --tracking-tight: -0.01em;
+  --tracking-normal: 0.005em;
+  --tracking-wide: 0.12em;                 /* small uppercase labels */
+  --tracking-wider: 0.22em;                /* eyebrows */
+  --tracking-wordmark: 0.34em;             /* the R7 ORBIT wordmark */
+
+  /* ------------------------------------------------------------------------------------------------ Space and shape */
+  /* A 4px grid. */
+  --s-0: 0;
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+  --s-7: 48px;
+  --s-8: 64px;                             /* web */
+  --s-9: 96px;                             /* web */
+  --s-10: 128px;                           /* web */
+
+  /* Small radii read as precision. */
+  --r-xs: 2px;                             /* web: tick marks, scrollbar thumbs */
+  --r-sm: 4px;                             /* buttons, inputs, tabs */
+  --r-md: 8px;                             /* inner panels, code blocks */
+  --r-lg: 12px;                            /* cards, dialogs */
+  --r-xl: 20px;                            /* web: hero panels, large media */
+  --r-icon: 22%;                           /* web: the app icon plate (112 of 512) */
+  --r-full: 999px;                         /* chips, dots */
+
+  --bw: 1px;                               /* every border is a hairline */
+  --bw-accent: 3px;                        /* the status rail on the left edge of a card */
+
+  /* -------------------------------------------------------------------------------------------------------- Elevation */
+  --shadow-float: 0 18px 50px rgb(0 0 0 / 0.55), 0 2px 8px rgb(0 0 0 / 0.4);   /* things lifted off the page: menus, a dragged card */
+  --shadow-raise: 0 8px 24px rgb(0 0 0 / 0.35);                                 /* web: a card on hover */
+  --glow-brass: 0 0 28px 0 rgb(201 169 106 / 0.12);                             /* "needs you" breathing */
+  --glow-dot: 0 0 10px var(--brass);                                            /* the little attention dot */
+
+  /* ---------------------------------------------------------------------------------------------------------- Motion */
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-fast: 140ms;                       /* hover, colour changes */
+  --dur: 240ms;                            /* most things */
+  --dur-slow: 420ms;                       /* things arriving */
+  --dur-orbit: 14s;                        /* web: one lap of the dot while busy */
+  --dur-orbit-idle: 42s;                   /* web: one lap while quiet */
+
+  /* ------------------------------------------------------------------------------------------------- Focus and layers */
+  --focus-ring: 2px solid var(--brass-bright);  /* web: keyboard focus, always visible */
+  --focus-offset: 2px;
+  --selection: rgb(201 169 106 / 0.3);
+
+  --z-base: 0;
+  --z-raised: 1;
+  --z-sticky: 10;
+  --z-overlay: 20;
+  --z-modal: 30;
+  --z-toast: 40;
+
+  /* ------------------------------------------------------------------------------------------------------------ Layout */
+  --w-prose: 68ch;                         /* web: a reading column */
+  --w-content: 1120px;                     /* web: the page */
+  --w-wide: 1360px;                        /* web: full-bleed sections' inner limit */
+  --gutter: clamp(16px, 4vw, 40px);        /* web: page side padding */
+
+  /* Breakpoints (CSS cannot read variables inside @media, so these are the numbers to write there) */
+  --bp-sm: 640px;
+  --bp-md: 900px;
+  --bp-lg: 1200px;
+  --bp-xl: 1480px;
+
+  /* ---------------------------------------------------------------------------------------------------------- Texture */
+  /* The faint engraved dot grid behind the app's canvas, like a dial plate. Fade it out toward the edges with a mask. */
+  --grid-dot: radial-gradient(circle at 1px 1px, rgb(236 228 210 / 0.045) 1px, transparent 0);
+  --grid-size: 32px;
+  /* The icon's plate: a warm black that is a shade lighter at the top */
+  --plate-gradient: radial-gradient(70% 70% at 50% 45%, #17171a 0%, var(--bg) 100%);
+
+  color-scheme: dark;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --dur-fast: 0.001ms; --dur: 0.001ms; --dur-slow: 0.001ms; }
+}

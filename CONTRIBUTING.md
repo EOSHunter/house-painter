@@ -24,6 +24,7 @@ house.json ──► house-core.js ──► HOUSE + ROOMS ──► editor.js  
 - **`house3d.js`** and **`build_house.py`** build the same model twice, once in Three.js and once in Blender. They have to agree.
 - **`storage.js`** is where schemes are kept. Add a backend there if you want your own.
 - **`docs/house-format.md`** is the contract for the house file.
+- **`ui/`** holds all the interface CSS. It uses the R7 Orbit tokens only (no raw colours, sizes or shadows); `docs/DESIGN.md` has the rules and `tests/ui-tokens.test.js` checks them.
 
 ## Rules that keep it working
 

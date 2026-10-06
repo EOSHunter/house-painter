@@ -692,7 +692,7 @@
     room: 'Click inside a closed space to make it a room. Doorways count as closed.',
     split: 'Draw a line across an open space to split it into rooms (kitchen | dining). Then use Room on each side.',
     fixture: 'Pick something from the list on the right, then click where it goes. Against a wall it backs onto the wall on its own. <kbd>T</kbd> turns it when it is free-standing. <kbd>Esc</kbd> stops.',
-    trace: 'Suggested walls are orange. Click one to leave it out, then press Add. Nothing you drew is touched until you do.',
+    trace: 'Suggested walls are gold. Click one to leave it out, then press Add. Nothing you drew is touched until you do.',
     label: 'Click to put a room name on the floor plan. Drag a label to move it; edit its text on the right.',
     dim: 'Click two points to measure between them. A level or plumb pair of points makes a dimension line on the floor plan.',
     start: 'Click where the walkthrough should start. Drag the dot on the arrow to turn it.',
@@ -1807,7 +1807,7 @@
         ${field('Walls at an angle', 'tr_angled', TR.opts.angled ? '1' : '0', { select: [['1', 'Look for them (cut corners, bays, diagonal walls)'], ['0', 'Only level and plumb walls']] })}
         <div class="actions"><button class="btn primary" data-act="trace-run"${TR.busy ? ' disabled' : ''}>${r ? 'Find again' : 'Find walls'}</button></div>`;
       if (r) h += `<h3 style="font-size:14px">${kept.length} of ${r.length} walls kept</h3>
-        <p class="note">${r.filter(w => w.ext).length} outside, ${r.filter(w => !w.ext).length} inside, ${r.reduce((t, w) => t + w.openings.length, 0)} gaps (as doors and windows). Found in ${(TR.ms / 1000).toFixed(1)} s. Click an orange wall to leave it out, click it again to bring it back. Door and window types are guesses: you can change each one afterwards.</p>
+        <p class="note">${r.filter(w => w.ext).length} outside, ${r.filter(w => !w.ext).length} inside, ${r.reduce((t, w) => t + w.openings.length, 0)} gaps (as doors and windows). Found in ${(TR.ms / 1000).toFixed(1)} s. Click a gold wall to leave it out, click it again to bring it back. Door and window types are guesses: you can change each one afterwards.</p>
         <div class="actions"><button class="btn primary" data-act="trace-add"${kept.length ? '' : ' disabled'}>Add ${kept.length} walls</button><button class="btn" data-act="trace-cancel">Cancel</button></div>`;
       $('#inspTitle').textContent = title; box.innerHTML = h; return;
     }

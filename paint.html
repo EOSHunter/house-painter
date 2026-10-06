@@ -1,206 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
 <meta charset="utf-8">
 <title>Paint Studio</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<style>
-  /* Layout: a neutral "light booth" — model centre stage, rooms deck on the left, the fan deck of chips on the right.
-     Neutrals carry no hue on purpose: a tinted UI shifts how paint colours read on screen. */
-  :root {
-    --bg: #E9EAEC; --panel: #F7F7F8; --raised: #FFFFFF; --ink: #1C1D20; --muted: #686C73; --line: #D6D8DC;
-    --stage: #DADCDF; --select: #1D5BFF; --select-soft: rgba(29, 91, 255, .12); --ok: #2B7A4B; --warn: #B4471E;
-    --f-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
-    --f-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
-    --f-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
-    --r: 6px;
-  }
-  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-    --bg: #16171A; --panel: #1E1F23; --raised: #26282C; --ink: #ECECEE; --muted: #9A9DA4; --line: #33353A;
-    --stage: #2A2C30; --select: #6F98FF; --select-soft: rgba(111, 152, 255, .16); --ok: #5CC28A; --warn: #F08A5D; color-scheme: dark } }
-  :root[data-theme="dark"] {
-    --bg: #16171A; --panel: #1E1F23; --raised: #26282C; --ink: #ECECEE; --muted: #9A9DA4; --line: #33353A;
-    --stage: #2A2C30; --select: #6F98FF; --select-soft: rgba(111, 152, 255, .16); --ok: #5CC28A; --warn: #F08A5D; color-scheme: dark }
-
-  [hidden] { display: none !important; }
-  html, body { height: 100%; }
-  body { background: var(--bg); color: var(--ink); font: 14px/1.45 var(--f-body); }
-  button, input, select { font: inherit; color: inherit; }
-  button { cursor: pointer; }
-  :focus-visible { outline: 2px solid var(--select); outline-offset: 2px; }
-
-  .app { height: 100%; display: grid; grid-template-columns: 280px minmax(0, 1fr) 360px; grid-template-rows: auto minmax(0, 1fr); }
-  .top { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
-  .brand { font: 700 18px/1.1 var(--f-display); letter-spacing: -.01em; display: flex; flex-direction: column; }
-  .brand small { font: 500 11px var(--f-mono); color: var(--muted); letter-spacing: .04em; text-transform: uppercase; }
-  .scheme { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: auto; }
-  .scheme label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
-  .scheme select { min-width: 170px; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--r); background: var(--raised); }
-  .btn { padding: 6px 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--raised); font-size: 13px; }
-  .btn:hover { border-color: var(--muted); }
-  .btn.primary { background: var(--ink); color: var(--panel); border-color: var(--ink); }
-  .btn:disabled { opacity: .45; cursor: not-allowed; }
-  .status { font-size: 12px; color: var(--muted); min-width: 120px; }
-  .status.ok { color: var(--ok); } .status.warn { color: var(--warn); }
-
-  /* rooms deck */
-  .rooms { background: var(--panel); border-right: 1px solid var(--line); overflow: auto; padding-block: 8px 24px; }
-  .rooms h2, .paint h2 { font: 600 11px var(--f-mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 10px 16px 6px; }
-  details.room { border-bottom: 1px solid var(--line); }
-  details.room > summary { list-style: none; display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 9px 16px; cursor: pointer; }
-  details.room > summary::-webkit-details-marker { display: none; }
-  details.room > summary:hover { background: var(--select-soft); }
-  details.room[open] > summary { background: var(--raised); }
-  .rname { font-weight: 600; }
-  .rarea { font: 12px var(--f-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
-  .rdots { grid-column: 1 / -1; display: flex; gap: 3px; flex-wrap: wrap; }
-  .rdots i { width: 14px; height: 6px; border-radius: 1px; background: var(--c); box-shadow: inset 0 0 0 1px rgba(0,0,0,.12); }
-  .rbody { padding: 2px 8px 10px; background: var(--raised); }
-  .ractions { display: flex; gap: 6px; padding: 4px 8px 8px; }
-  .ractions .btn { font-size: 12px; padding: 4px 8px; }
-  .row { width: 100%; display: grid; grid-template-columns: 22px 1fr auto; align-items: center; gap: 8px; padding: 5px 8px; border: 0; border-radius: var(--r); background: transparent; text-align: left; }
-  .row:hover { background: var(--select-soft); }
-  .row.on { background: var(--select-soft); box-shadow: inset 0 0 0 1.5px var(--select); }
-  .row .dot { width: 22px; height: 16px; border-radius: 3px; background: var(--c); box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); }
-  .row .lbl { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .row .lbl small { display: block; font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
-  .row .sf { font: 11px var(--f-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
-  details.parts { margin: 0 0 4px 30px; border-left: 2px solid var(--line); }
-  details.parts > summary { cursor: pointer; padding: 4px 8px; font-size: 12px; color: var(--muted); list-style: none; }
-  details.parts > summary::before { content: "\25B8"; display: inline-block; margin-right: 6px; transition: transform .15s; }
-  details.parts[open] > summary::before { transform: rotate(90deg); }
-  details.parts .row { padding-block: 3px; }
-  details.parts .row .dot { width: 16px; height: 18px; border-radius: 2px; }
-
-  /* stage */
-  .stage { position: relative; background: var(--stage); min-height: 0; }
-  #c { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
-  .controls { position: absolute; top: 12px; left: 12px; display: grid; gap: 8px; justify-items: start; max-width: calc(100% - 24px); }
-  .viewbar { display: flex; gap: 6px; flex-wrap: wrap; }
-  .lightbar { display: grid; gap: 6px; padding: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); max-width: 360px; }
-  .lightbar .seg { background: var(--raised); }
-  .lightbar .seg button { padding: 5px 8px; white-space: nowrap; }
-  .exp { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
-  .exp input { flex: 1; accent-color: var(--ink); }
-  .lightnote { margin: 0; font-size: 12px; color: var(--muted); }
-  .lvseg { display: inline-flex; gap: 4px; align-items: center; }
-  .lvseg .lvlabel { font: 600 11px var(--f-mono); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 2px 0 6px; }
-  .rlevel { font-weight: 400; color: var(--muted); font-size: 11px; margin-left: 4px; }
-  .fov { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; cursor: default; }
-  .fov span { color: var(--muted); }
-  .fov input { width: 90px; accent-color: var(--ink); }
-  .fov output { font-family: var(--f-mono); font-variant-numeric: tabular-nums; min-width: 3ch; }
-  .toast { position: absolute; left: 50%; top: 74px; transform: translateX(-50%); padding: 8px 14px; border-radius: 8px; background: var(--ink); color: var(--panel); font-size: 13px; box-shadow: 0 8px 24px rgba(0,0,0,.2); max-width: calc(100% - 24px); }
-  .exportbox textarea { width: 100%; height: 200px; font: 11px var(--f-mono); border: 1px solid var(--line); border-radius: var(--r); background: var(--raised); color: var(--ink); resize: vertical; }
-  .crosshair { position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; transform: translate(-50%, -50%); pointer-events: none; }
-  .crosshair::before, .crosshair::after { content: ""; position: absolute; background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.55); }
-  .crosshair::before { left: 8px; top: 0; width: 2px; height: 18px; }
-  .crosshair::after { top: 8px; left: 0; height: 2px; width: 18px; }
-  .walkhint { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); display: grid; gap: 4px; justify-items: center; text-align: center;
-    padding: 8px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; font-size: 12px; max-width: calc(100% - 24px); box-shadow: 0 6px 20px rgba(0,0,0,.12); }
-  .walkhint #walkMsg { font-weight: 600; font-size: 13px; }
-  .walkhint .keys { color: var(--muted); }
-  kbd { font: 11px var(--f-mono); padding: 1px 5px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; background: var(--raised); color: var(--ink); }
-  .pad { position: absolute; left: 14px; bottom: 14px; display: grid; grid-template-columns: repeat(3, 48px); grid-template-rows: repeat(2, 48px); gap: 6px; }
-  .pad button { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); font-size: 18px; touch-action: none; user-select: none; }
-  .pad [data-k="w"] { grid-column: 2; grid-row: 1; } .pad [data-k="a"] { grid-column: 1; grid-row: 2; }
-  .pad [data-k="s"] { grid-column: 2; grid-row: 2; } .pad [data-k="d"] { grid-column: 3; grid-row: 2; }
-  @media (hover: none) { .walkhint .keys { display: none; } }
-
-  /* walkthrough: the stage takes the whole page; everything else steps aside */
-  .app.immersive { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr); }
-  .app.immersive > .top, .app.immersive > .rooms, .app.immersive > .paint,
-  .app.immersive .controls, .app.immersive .help, .app.immersive .hud { display: none !important; }
-  .app.immersive .stage { grid-column: 1; grid-row: 1; height: 100%; min-height: 0; }
-  @media (max-width: 860px) { .app.immersive { display: grid; height: 100%; } .app.immersive .stage { height: 100%; } html:has(.app.immersive), body:has(.app.immersive) { height: 100%; } }
-  .ihud { position: absolute; inset: 0; pointer-events: none; }
-  .ihud > * { pointer-events: auto; }
-  .ih-bar { position: absolute; top: 10px; left: 10px; right: 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
-    padding: 8px 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 20px rgba(0,0,0,.14); }
-  .ih-where { display: grid; line-height: 1.1; padding-right: 6px; }
-  .ih-where small { font: 600 10px var(--f-mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
-  .ih-where span { font: 700 16px var(--f-display); }
-  .ih-field { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
-  .ih-field select { padding: 5px 6px; border: 1px solid var(--line); border-radius: var(--r); background: var(--raised); color: var(--ink); max-width: 210px; }
-  .ih-light button { padding: 5px 8px; }
-  .ih-spacer { flex: 1; }
-  .ih-prompt { position: absolute; left: 50%; top: calc(50% + 22px); transform: translateX(-50%); display: grid; justify-items: center; gap: 1px;
-    padding: 6px 12px; border-radius: 8px; background: rgba(20,21,24,.82); color: #fff; font-size: 13px; font-weight: 600; pointer-events: none; text-align: center; white-space: nowrap; }
-  .ih-prompt small { font-weight: 400; font-size: 11px; opacity: .85; }
-  .ih-picker { position: absolute; top: 74px; right: 10px; bottom: 10px; width: min(380px, calc(100% - 20px)); display: grid; grid-template-rows: auto auto auto auto auto minmax(0, 1fr) auto; gap: 10px;
-    padding: 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 16px 50px rgba(0,0,0,.28); }
-  .ihp-head { display: grid; grid-template-columns: 56px 1fr auto; gap: 12px; align-items: center; }
-  .ihp-x { width: 32px; height: 32px; border: 1px solid var(--line); border-radius: 8px; background: var(--raised); font-size: 18px; line-height: 1; }
-  .ihp-room { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-  .ihp-chips { overflow: auto; min-height: 0; display: grid; gap: 8px; align-content: start; }
-  .ihp-chips h2 { margin: 4px 0 0; font: 600 11px var(--f-mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
-  .ihp-foot { display: flex; justify-content: space-between; gap: 8px; }
-  .app.immersive .walkhint { bottom: 12px; }
-  @media (max-width: 860px) { .ih-picker { top: auto; height: 62%; } .ih-field span { display: none; } }
-  .viewbar .btn[aria-pressed="true"] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
-  .hud { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; box-shadow: 0 6px 20px rgba(0,0,0,.12); max-width: calc(100% - 24px); }
-  .hud .where { font-weight: 600; padding: 0 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .hud .btn { border-radius: 999px; padding: 4px 10px; }
-  .tip { position: absolute; pointer-events: none; padding: 4px 8px; font-size: 12px; background: var(--ink); color: var(--panel); border-radius: 4px; white-space: nowrap; transform: translate(12px, 12px); }
-  .help { position: absolute; bottom: 64px; right: 12px; font-size: 12px; color: var(--muted); background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 6px 10px; max-width: 260px; }
-
-  /* paint deck */
-  .paint { background: var(--panel); border-left: 1px solid var(--line); overflow: auto; padding-block: 8px 24px; }
-  .sel { margin: 4px 16px 12px; padding: 12px; border: 1px solid var(--line); border-radius: var(--r); background: var(--raised); display: grid; gap: 10px; }
-  .sel-head { display: grid; grid-template-columns: 56px 1fr; gap: 12px; align-items: center; }
-  .bigchip { width: 56px; height: 56px; border-radius: 4px; background: var(--c); box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); }
-  .sel-title { font: 600 15px/1.25 var(--f-display); text-wrap: balance; }
-  .sel-sub { font-size: 12px; color: var(--muted); }
-  .sel-sub code { font-family: var(--f-mono); }
-  .seg { display: flex; border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
-  .seg button { flex: 1; padding: 6px 4px; font-size: 12px; border: 0; border-right: 1px solid var(--line); background: transparent; }
-  .seg button:last-child { border-right: 0; }
-  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--panel); }
-  .sel-actions { display: flex; gap: 6px; flex-wrap: wrap; }
-  .sel-actions .btn { font-size: 12px; padding: 5px 8px; }
-  .empty { color: var(--muted); font-size: 13px; }
-  .picker { margin: 0 16px; display: grid; gap: 10px; }
-  .search { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--raised); }
-  .chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
-  .chip { display: grid; grid-template-rows: 54px auto; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: var(--raised); text-align: left; overflow: hidden; }
-  .chip .sw { background: var(--c); background-image: var(--img, none); background-size: cover; background-position: center; }
-  .chip .meta { padding: 5px 6px 6px; display: grid; gap: 1px; min-width: 0; }
-  .chip .nm { font-size: 12px; font-weight: 600; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-  .chip .cd { font: 10px var(--f-mono); color: var(--muted); letter-spacing: .02em; }
-  .chip:hover { border-color: var(--muted); transform: translateY(-1px); }
-  .chip.cur { box-shadow: 0 0 0 2px var(--select); border-color: var(--select); }
-  .chip:disabled { cursor: not-allowed; transform: none; }   /* never dim a swatch: it would misrepresent the colour */
-  .note { font-size: 12px; color: var(--muted); }
-  .custom { display: grid; grid-template-columns: 56px 1fr auto; gap: 8px; align-items: center; }
-  .custom input[type=color] { width: 56px; height: 40px; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: none; }
-  .custom input[type=text] { padding: 8px; border: 1px solid var(--line); border-radius: var(--r); background: var(--raised); min-width: 0; }
-  .totals { margin: 16px 16px 0; }
-  .totals table { width: 100%; border-collapse: collapse; font-size: 12px; }
-  .totals td { padding: 6px 4px; border-top: 1px solid var(--line); vertical-align: middle; }
-  .totals td.num { text-align: right; font-family: var(--f-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .totals .dot { display: inline-block; width: 18px; height: 14px; border-radius: 2px; background: var(--c); box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); vertical-align: -2px; margin-right: 6px; }
-
-  .dialog { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,.35); padding: 16px; z-index: 10; }
-  .dialog .box { width: min(380px, 100%); background: var(--panel); border-radius: 10px; padding: 18px; display: grid; gap: 12px; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
-  .dialog h3 { margin: 0; font: 700 17px var(--f-display); }
-  .dialog input { padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--raised); }
-  .dialog .row-btns { display: flex; justify-content: flex-end; gap: 8px; }
-
-  @media (max-width: 1100px) { .app { grid-template-columns: 250px minmax(0, 1fr) 320px; } }
-  @media (max-width: 860px) {
-    html, body { height: auto; }
-    .app { display: block; height: auto; }
-    .stage { height: 62vh; min-height: 360px; }
-    .rooms, .paint { border: 0; overflow: visible; }
-    .paint { border-top: 1px solid var(--line); }
-    .help, .lightnote { display: none; }
-    .scheme { margin-left: 0; }
-  }
-  @media (prefers-reduced-motion: reduce) { .chip:hover { transform: none; } }
-</style>
-
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preload" href="ui/fonts/inter-core-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="ui/fonts/cormorant-garamond-core-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="ui/tokens.css">
+<link rel="stylesheet" href="ui/base.css">
+<link rel="stylesheet" href="ui/paint.css">
+</head>
+<body>
 <div class="app">
   <header class="top">
-    <div class="brand">Paint Studio <small id="houseName">Loading the house…</small></div>
+    <h1 class="brand">Paint Studio <small id="houseName">Loading the house…</small></h1>
     <div class="scheme">
       <label for="schemeSel">Scheme</label>
       <select id="schemeSel" aria-label="Paint scheme"></select>
@@ -208,11 +21,13 @@
       <button class="btn" id="dupScheme">Duplicate</button>
       <button class="btn" id="renameScheme">Rename</button>
       <button class="btn" id="delScheme">Delete</button>
+      <span class="vr" aria-hidden="true"></span>
       <button class="btn" id="undoBtn" title="Undo (Ctrl+Z)">Undo</button>
       <button class="btn" id="shareBtn" title="Copy a link that opens this scheme">Share link</button>
-      <a class="btn" id="editBtn" href="editor.html" title="Change walls, doors, windows, rooms and heights" style="text-decoration:none">Edit house</a>
+      <a class="btn" id="editBtn" href="editor.html" title="Change walls, doors, windows, rooms and heights">Edit house</a>
       <button class="btn" id="openBtn" title="Open a house file, or import a scheme file">Open file…</button>
       <input type="file" id="fileIn" accept=".json,application/json" hidden>
+      <span class="vr" aria-hidden="true"></span>
       <button class="btn" id="exportBtn" title="Save this scheme and view as a file for the Blender renderer">Export for Blender</button>
       <span class="status" id="saveState" aria-live="polite">Loading schemes…</span>
     </div>
@@ -249,9 +64,9 @@
     </div>
     <div class="help" id="help">Click a wall to pick it, Shift-click to add more. Double-click to face it. Drag to orbit, scroll to zoom.</div>
     <div class="hud" id="hud" hidden>
-      <button class="btn" id="prevWall" aria-label="Previous wall">◀</button>
+      <button class="btn icon" id="prevWall" aria-label="Previous wall"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3.5 5.5 8l4.5 4.5"/></svg></button>
       <span class="where" id="where"></span>
-      <button class="btn" id="nextWall" aria-label="Next wall">▶</button>
+      <button class="btn icon" id="nextWall" aria-label="Next wall"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5"/></svg></button>
       <button class="btn" id="exitRoom">Dollhouse</button>
     </div>
     <div class="tip" id="tip" hidden></div>
@@ -281,7 +96,7 @@
         <header class="ihp-head">
           <div class="bigchip" id="ihpChip"></div>
           <div><div class="sel-title" id="ihpTitle"></div><div class="sel-sub" id="ihpSub"></div></div>
-          <button class="ihp-x" id="ihpClose" aria-label="Close">×</button>
+          <button class="ihp-x" id="ihpClose" aria-label="Close"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
         </header>
         <label class="ihp-room"><input type="checkbox" id="ihpRoom"> <span id="ihpRoomLabel">Paint every wall in this room</span></label>
         <div class="seg" id="ihpSheen" role="group" aria-label="Sheen"></div>
@@ -292,7 +107,7 @@
       </aside>
     </div>
     <div class="pad" id="pad" hidden aria-label="Move">
-      <button data-k="w" aria-label="Forward">▲</button><button data-k="a" aria-label="Left">◀</button><button data-k="s" aria-label="Back">▼</button><button data-k="d" aria-label="Right">▶</button>
+      <button data-k="w" aria-label="Forward"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 10 8 5.5l4.5 4.5"/></svg></button><button data-k="a" aria-label="Left"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3.5 5.5 8l4.5 4.5"/></svg></button><button data-k="s" aria-label="Back"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6"/></svg></button><button data-k="d" aria-label="Right"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5"/></svg></button>
     </div>
   </main>
 
@@ -312,7 +127,7 @@
     </section>
   </aside>
 </div>
-<div class="dialog" id="dialog" hidden></div>
+<div class="dialog" id="dialog" role="dialog" aria-modal="true" aria-label="Dialog" hidden></div>
 
 <script src="vendor/three-r128/three.min.js"></script>
 <script src="vendor/three-r128/OrbitControls.js"></script>
@@ -322,3 +137,5 @@
 <script src="fixtures.js"></script>
 <!-- picks the house (?house=<url> | ?house=local | the example), builds it, then loads the rest -->
 <script src="house-loader.js" data-default="houses/waterford-4563c/house.json" data-then="paint-colors.js paint-colors-extra.js? house3d.js paint-app.js"></script>
+</body>
+</html>

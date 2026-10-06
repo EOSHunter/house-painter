@@ -4,237 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Plan Editor</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<style>
-  /* Same neutral "light booth" as the paint studio. The plan is drawn like a drafting sheet over the blueprint. */
-  :root {
-    --bg: #E9EAEC; --panel: #F7F7F8; --raised: #FFFFFF; --ink: #1C1D20; --muted: #686C73; --line: #D6D8DC;
-    --stage: #F3F2EE; --grid: rgba(28, 29, 32, .07); --grid-major: rgba(28, 29, 32, .14);
-    --wall: #3A3D44; --wall-ext: #1C1D20; --open: #F3F2EE; --select: #1D5BFF; --select-soft: rgba(29, 91, 255, .12);
-    --ok: #2B7A4B; --warn: #B4471E; --removed: #D6453D; --new: #2A9457; --snap: #E0457B;
-    --f-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
-    --f-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
-    --f-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
-    --r: 6px;
-  }
-  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-    --bg: #16171A; --panel: #1E1F23; --raised: #26282C; --ink: #ECECEE; --muted: #9A9DA4; --line: #33353A;
-    --stage: #202226; --grid: rgba(236, 236, 238, .06); --grid-major: rgba(236, 236, 238, .13);
-    --wall: #C9CBD0; --wall-ext: #ECECEE; --open: #202226; --select: #6F98FF; --select-soft: rgba(111, 152, 255, .16);
-    --ok: #5CC28A; --warn: #F08A5D; --removed: #FF6B61; --new: #4CC785; --snap: #FF7AA8; color-scheme: dark } }
-  :root[data-theme="dark"] {
-    --bg: #16171A; --panel: #1E1F23; --raised: #26282C; --ink: #ECECEE; --muted: #9A9DA4; --line: #33353A;
-    --stage: #202226; --grid: rgba(236, 236, 238, .06); --grid-major: rgba(236, 236, 238, .13);
-    --wall: #C9CBD0; --wall-ext: #ECECEE; --open: #202226; --select: #6F98FF; --select-soft: rgba(111, 152, 255, .16);
-    --ok: #5CC28A; --warn: #F08A5D; --removed: #FF6B61; --new: #4CC785; --snap: #FF7AA8; color-scheme: dark }
-
-  [hidden] { display: none !important; }
-  * { box-sizing: border-box; }
-  html, body { height: 100%; margin: 0; }
-  body { background: var(--bg); color: var(--ink); font: 14px/1.45 var(--f-body); }
-  button, input, select { font: inherit; color: inherit; }
-  button { cursor: pointer; }
-  :focus-visible { outline: 2px solid var(--select); outline-offset: 2px; }
-  code, .mono { font-family: var(--f-mono); }
-
-  .app { height: 100%; display: grid; grid-template-columns: 272px minmax(0, 1fr) 304px; grid-template-rows: auto minmax(0, 1fr) auto; }
-  .top { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
-  .brand { font: 700 18px/1.1 var(--f-display); letter-spacing: -.01em; display: flex; flex-direction: column; margin-right: 6px; }
-  .brand small { font: 500 11px var(--f-mono); color: var(--muted); letter-spacing: .04em; text-transform: uppercase; }
-  .btn { padding: 6px 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--raised); font-size: 13px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
-  .btn:hover { border-color: var(--muted); }
-  .btn.primary { background: var(--ink); color: var(--panel); border-color: var(--ink); }
-  .btn:disabled { opacity: .45; cursor: not-allowed; }
-  .btn.danger { color: var(--warn); }
-  .spacer { flex: 1; }
-  .group { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-
-  .tools { display: flex; border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; background: var(--raised); }
-  .tools button { display: grid; justify-items: center; gap: 0; padding: 5px 10px 4px; border: 0; border-right: 1px solid var(--line); background: transparent; font-size: 12px; line-height: 1.2; }
-  .tools button:last-child { border-right: 0; }
-  .tools button kbd { font: 10px var(--f-mono); color: var(--muted); }
-  .tools button[aria-pressed="true"] { background: var(--ink); color: var(--panel); }
-  .tools button[aria-pressed="true"] kbd { color: inherit; opacity: .7; }
-  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; background: var(--raised); }
-  .seg button { padding: 5px 9px; font-size: 12px; border: 0; border-right: 1px solid var(--line); background: transparent; }
-  .seg button:last-child { border-right: 0; }
-  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--panel); }
-
-  /* left: steps */
-  .side { background: var(--panel); overflow: auto; padding: 8px 0 24px; }
-  .side.left { border-right: 1px solid var(--line); }
-  .side.right { border-left: 1px solid var(--line); }
-  .side h2 { font: 600 11px var(--f-mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 12px 16px 6px; }
-  ol.steps { list-style: none; margin: 0; padding: 0 8px; counter-reset: step; }
-  ol.steps li { counter-increment: step; }
-  .step { width: 100%; display: grid; grid-template-columns: 24px 1fr; gap: 2px 10px; padding: 8px; border: 0; border-radius: var(--r); background: transparent; text-align: left; }
-  .step:hover { background: var(--select-soft); }
-  .step::before { content: counter(step); grid-row: span 2; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font: 600 12px var(--f-mono); border: 1.5px solid var(--line); color: var(--muted); }
-  .step.done::before { content: "\2713"; background: var(--ok); border-color: var(--ok); color: #fff; }
-  .step.cur { background: var(--raised); box-shadow: inset 0 0 0 1px var(--line); }
-  .step b { font-weight: 600; }
-  .step span { font-size: 12px; color: var(--muted); grid-column: 2; }
-  .step:not(.cur) span { display: none; }
-  .under { margin: 4px 16px 0; padding: 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--raised); display: grid; gap: 8px; font-size: 12px; }
-  .under .row2 { display: grid; grid-template-columns: 74px 1fr; align-items: center; gap: 8px; }
-  .under input[type=range] { width: 100%; accent-color: var(--ink); }
-  .under .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .roomlist { padding: 0 8px; display: grid; gap: 2px; }
-  .roomrow { display: grid; grid-template-columns: 14px 1fr auto; gap: 8px; align-items: center; padding: 5px 8px; border: 0; border-radius: var(--r); background: transparent; text-align: left; font-size: 13px; }
-  .roomrow:hover { background: var(--select-soft); }
-  .roomrow.on { background: var(--select-soft); box-shadow: inset 0 0 0 1.5px var(--select); }
-  .roomrow i { width: 14px; height: 14px; border-radius: 3px; background: var(--c); }
-  .roomrow small { font: 11px var(--f-mono); color: var(--muted); }
-  .empty { color: var(--muted); font-size: 13px; padding: 0 16px; margin: 0; }
-  .linkish { background: none; border: 0; padding: 0; color: var(--select); text-decoration: underline; font-size: 12px; }
-
-  /* stage */
-  .stage { position: relative; min-height: 0; background: var(--stage); display: grid; grid-template-columns: minmax(0, 1fr); }
-  .stage.split { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  .planwrap { position: relative; min-height: 0; min-width: 0; }
-  #plan { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; user-select: none; }
-  #plan.t-select, #plan.t-trace { cursor: default; } #plan.t-pan, #plan.panning { cursor: grabbing; }
-  #plan.t-wall, #plan.t-split, #plan.t-scale, #plan.t-room, #plan.t-door, #plan.t-window, #plan.t-cased, #plan.t-fixture { cursor: crosshair; }
-  #plan.t-move { cursor: move; }
-  .p3 { position: relative; min-height: 0; border-left: 1px solid var(--line); background: var(--stage); }
-  .p3 canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-  .p3 .msg { position: absolute; left: 12px; right: 12px; bottom: 12px; padding: 8px 10px; border-radius: var(--r); background: var(--panel); border: 1px solid var(--line); font-size: 12px; color: var(--muted); white-space: pre-line; }
-  .p3 .tag { position: absolute; left: 12px; top: 12px; font: 600 11px var(--f-mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
-  .hint { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); max-width: calc(100% - 24px); padding: 7px 12px; border-radius: 8px; background: var(--panel); border: 1px solid var(--line); box-shadow: 0 6px 20px rgba(0,0,0,.1); font-size: 12px; text-align: center; pointer-events: none; }
-  .hint kbd, .welcome kbd { font: 11px var(--f-mono); padding: 1px 5px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; background: var(--raised); }
-  .zoom { position: absolute; right: 12px; top: 12px; display: grid; gap: 4px; }
-  .zoom button { width: 32px; height: 32px; border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); font-size: 16px; line-height: 1; }
-  .welcome { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; pointer-events: none; }
-  .welcome .card { pointer-events: auto; width: min(460px, 100%); display: grid; gap: 12px; padding: 22px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); box-shadow: 0 16px 50px rgba(0,0,0,.12); }
-  .welcome h1 { margin: 0; font: 700 22px/1.15 var(--f-display); letter-spacing: -.01em; }
-  .welcome p { margin: 0; color: var(--muted); }
-  .welcome .group .btn { padding: 8px 12px; }
-  .toast { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); padding: 8px 14px; border-radius: 8px; background: var(--ink); color: var(--panel); font-size: 13px; box-shadow: 0 8px 24px rgba(0,0,0,.2); max-width: calc(100% - 24px); z-index: 5; }
-
-  /* plan drawing */
-  .wall rect.body { fill: var(--wall); }
-  .wall.ext rect.body { fill: var(--wall-ext); }
-  .wall.removed rect.body { fill: rgba(214, 69, 61, .14); stroke: var(--removed); stroke-dasharray: 4 3; }
-  .wall.new rect.body { fill: var(--new); }
-  .hit { fill: transparent; }
-  .wall path.body { fill: none; stroke: var(--wall); }
-  .wall.ext path.body { stroke: var(--wall-ext); }
-  .wall.removed path.body { stroke: rgba(214, 69, 61, .4); stroke-dasharray: 4 3; }
-  .wall.new path.body { stroke: var(--new); }
-  .wall:hover path.body { filter: brightness(1.25); }
-  .ghostarc { stroke: var(--select); stroke-opacity: .35; pointer-events: none; }
-  #plan.traced .wall rect.body, #plan.traced .wall.ext rect.body { fill: var(--select); fill-opacity: .85; }   /* stand out on the blueprint */
-  .wall:hover rect.body, .opening:hover .shape { filter: brightness(1.25); }
-  .opening .gap { fill: transparent; }
-  .opening .shape { stroke: var(--wall); fill: none; }
-  .opening .win { fill: var(--open); fill-opacity: .55; stroke: var(--wall); }
-  .opening .leaf { stroke: var(--wall-ext); stroke-linecap: round; }
-  .opening .arc { stroke: var(--muted); fill: none; stroke-dasharray: 3 2; }
-  .opening .panel { fill: var(--open); stroke: var(--wall); stroke-dasharray: 3 2; }
-  .room rect { stroke: none; }
-  .roomlabel { font-family: var(--f-body); font-weight: 600; fill: var(--ink); text-anchor: middle; paint-order: stroke; stroke: var(--stage); stroke-linejoin: round; pointer-events: none; }
-  .roomlabel.sub { font-weight: 400; fill: var(--muted); font-family: var(--f-mono); }
-  .fx { fill: none; stroke: var(--muted); stroke-dasharray: 2 2; pointer-events: none; }
-  .splitline { stroke: var(--select); stroke-dasharray: 6 4; }
-  .sel-outline { fill: none; stroke: var(--select); }
-  .handle { fill: var(--raised); stroke: var(--select); cursor: grab; }
-  .dim { font-family: var(--f-mono); font-weight: 500; fill: var(--select); text-anchor: middle; paint-order: stroke; stroke: var(--stage); stroke-linejoin: round; pointer-events: none; }
-  .ghost { fill: var(--select-soft); stroke: var(--select); stroke-dasharray: 4 3; pointer-events: none; }
-  .ghost.bad { fill: rgba(214, 69, 61, .12); stroke: var(--removed); }
-  .plabel text { fill: var(--ink); text-anchor: middle; paint-order: stroke; stroke: var(--stage); stroke-linejoin: round; cursor: grab; }
-  .plabel.on text { fill: var(--select); }
-  .pdim line, .pdim text { stroke: var(--select); stroke-width: 1px; fill: none; vector-effect: non-scaling-stroke; }
-  .pdim text { fill: var(--select); stroke: none; text-anchor: middle; font-family: var(--f-mono); }
-  .pdim.on line { stroke-width: 2px; }
-  .pstart circle { fill: var(--select); stroke: var(--stage); stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
-  .pstart line { stroke: var(--select); }
-  .pstart text { fill: #fff; pointer-events: none; }
-  .pstart.on circle:first-child { stroke: var(--ink); }
-  .notecard { padding: 8px; margin: 6px 0; border: 1px solid var(--line); border-radius: var(--r); }
-  .field textarea { width: 100%; font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--r); background: var(--raised); color: var(--ink); resize: vertical; }
-  #lBelow rect { fill: var(--muted); opacity: .22; pointer-events: none; }
-  #lBelow path { stroke: var(--muted); opacity: .22; pointer-events: none; }
-  #lBelow .stairghost { fill: none; stroke: var(--muted); stroke-dasharray: 3 2; opacity: .5; }
-  .pvoid rect { fill: rgba(0, 0, 0, .12); stroke: var(--select); stroke-dasharray: 5 3; vector-effect: non-scaling-stroke; }
-  .pvoid line { stroke: var(--select); opacity: .5; vector-effect: non-scaling-stroke; }
-  .pvoid text { fill: var(--select); font-family: var(--f-mono); pointer-events: none; }
-  .pvoid.on rect { stroke-width: 2px; }
-  .snapmark { fill: none; stroke: var(--snap); pointer-events: none; }
-  .guide { stroke: var(--snap); stroke-dasharray: 2 3; pointer-events: none; }
-  .scalept { fill: var(--snap); pointer-events: none; }
-  /* suggested walls from the tracer */
-  .sugg .sbody { fill: #E8731A; fill-opacity: .55; stroke: #E8731A; stroke-width: 1; }
-  .sugg .shit { fill: transparent; }
-  .sugg:hover .sbody { fill-opacity: .8; }
-  .sugg.off .sbody { fill: none; stroke-dasharray: 3 3; stroke-opacity: .5; }
-  .sgap { fill: none; stroke: #E8731A; stroke-width: 1.5; stroke-dasharray: 3 2; pointer-events: none; }
-  .sgap.window { stroke: #1D8FD6; } .sgap.cased { stroke: #8A5CD1; }
-  #plan .sugg .sbody, #plan .sgap { vector-effect: non-scaling-stroke; }
-  /* fixtures */
-  .fxs .body { fill: var(--raised); fill-opacity: .9; stroke: var(--muted); stroke-width: 1; }
-  .fxs .front { stroke: var(--wall-ext); stroke-width: 3; stroke-linecap: round; pointer-events: none; }
-  .fxs.hi .body { fill: none; stroke-dasharray: 4 3; pointer-events: stroke; }
-  .fxs.thin .body { fill: var(--muted); stroke: none; }
-  .fxs.on .body { stroke: var(--select); stroke-width: 2; stroke-dasharray: none; }
-  .fxs:hover .body { stroke: var(--select); }
-  .fxlabel { fill: var(--muted); text-anchor: middle; font-family: var(--f-body); font-weight: 500; pointer-events: none; }
-  .ghostfx { fill: var(--select-soft); stroke: var(--select); stroke-dasharray: 4 3; pointer-events: none; }
-  .ghostfx.bad { fill: rgba(214, 69, 61, .14); stroke: var(--removed); }
-  .front.ghostfx { fill: none; stroke: var(--select); stroke-dasharray: none; stroke-width: 3; }
-  .lib { display: grid; gap: 4px; } .lib h4 { margin: 4px 0 0; font: 600 11px var(--f-mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
-  .libgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
-  .libgrid button { display: grid; gap: 1px; text-align: left; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--r); background: var(--raised); font-size: 12px; line-height: 1.25; }
-  .libgrid button small { font: 11px var(--f-mono); color: var(--muted); }
-  .libgrid button[aria-pressed="true"] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
-  .libgrid button[aria-pressed="true"] small { color: inherit; opacity: .75; }
-  .insp .seg { width: 100%; } .insp .seg button { flex: 1; }
-  /* outlines keep the same on-screen width and dash at any zoom */
-  #plan .ghost, #plan .splitline, #plan .sel-outline, #plan .handle, #plan .snapmark, #plan .guide, #plan .fx, #plan .opening *, #plan .wall rect.body, #plan .nse, #plan .fxs .body, #plan .fxs .front { vector-effect: non-scaling-stroke; }
-
-  /* inspector */
-  .insp { padding: 0 16px; display: grid; gap: 12px; }
-  .insp h3 { margin: 0; font: 700 16px/1.25 var(--f-display); }
-  .insp .sub { font-size: 12px; color: var(--muted); margin-top: -8px; }
-  .field { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
-  .field input, .field select { width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: var(--r); background: var(--raised); color: var(--ink); font-size: 13px; }
-  .field input.bad { border-color: var(--warn); box-shadow: 0 0 0 1px var(--warn); }
-  .field input[type=color] { padding: 2px; height: 34px; }
-  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  .trio { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
-  .note { font-size: 12px; color: var(--muted); margin: 0; }
-  .note.warn { color: var(--warn); }
-  .actions { display: flex; gap: 6px; flex-wrap: wrap; }
-  .chips { display: flex; gap: 4px; flex-wrap: wrap; }
-  .chips button { font: 11px var(--f-mono); padding: 3px 7px; border: 1px solid var(--line); border-radius: 999px; background: var(--raised); }
-
-  /* status bar */
-  .status { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px 18px; align-items: center; padding: 6px 16px; border-top: 1px solid var(--line); background: var(--panel); font: 12px var(--f-mono); color: var(--muted); }
-  .status .problems { color: var(--warn); background: none; border: 0; font: inherit; padding: 0; text-decoration: underline; }
-  .status .okay { color: var(--ok); }
-
-  .dialog { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,.35); padding: 16px; z-index: 10; }
-  .dialog .box { width: min(440px, 100%); max-height: calc(100vh - 32px); overflow: auto; background: var(--panel); border-radius: 10px; padding: 18px; display: grid; gap: 12px; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
-  .dialog h3 { margin: 0; font: 700 17px var(--f-display); }
-  .dialog ul { margin: 0; padding-left: 18px; font-size: 13px; }
-  .dialog .row-btns { display: flex; justify-content: flex-end; gap: 8px; }
-
-  @media (max-width: 1100px) { .app { grid-template-columns: 236px minmax(0, 1fr) 270px; } .tools button { padding: 5px 7px 4px; } }
-  @media (max-width: 860px) {
-    html, body { height: auto; }
-    .app { display: block; }
-    .stage { height: 70vh; min-height: 380px; }
-    .stage.split { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
-    .p3 { border-left: 0; border-top: 1px solid var(--line); }
-    .side { border: 0 !important; border-top: 1px solid var(--line) !important; }
-  }
-</style>
+<link rel="preload" href="ui/fonts/inter-core-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="ui/fonts/cormorant-garamond-core-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="ui/tokens.css">
+<link rel="stylesheet" href="ui/base.css">
+<link rel="stylesheet" href="ui/editor.css">
 </head>
 <body>
 <div class="app">
   <header class="top">
-    <div class="brand">Plan Editor <small id="houseName">My house</small></div>
+    <h1 class="brand">Plan Editor <small id="houseName">My house</small></h1>
     <div class="tools" role="group" aria-label="Tools">
       <button data-tool="select" aria-pressed="true" title="Select and move (V)">Select<kbd>V</kbd></button>
       <button data-tool="wall" aria-pressed="false" title="Draw walls (W)">Wall<kbd>W</kbd></button>
@@ -273,7 +52,7 @@
     <div class="under" id="underBox"></div>
     <input type="file" id="underFile" accept="image/*,application/pdf" hidden>
     <input type="file" id="modelFile" accept=".onnx" hidden>
-<input type="file" id="floorFile" accept="image/*" hidden>
+    <input type="file" id="floorFile" accept="image/*" hidden>
     <h2>Floors</h2>
     <div class="roomlist" id="levelBox"></div>
     <h2>Rooms</h2>
@@ -296,12 +75,12 @@
         <rect id="gridB" x="-1000" y="-1000" width="2000" height="2000" fill="url(#gridMajor)" pointer-events="none"/>
         <g id="lRooms"></g><g id="lFix"></g><g id="lWalls"></g><g id="lOpen"></g><g id="lSplits"></g><g id="lPlan"></g><g id="lTrace"></g><g id="lSel"></g><g id="lGhost"></g>
       </svg>
-      <div class="zoom"><button id="zIn" aria-label="Zoom in">+</button><button id="zOut" aria-label="Zoom out">−</button><button id="zFit" aria-label="Fit to drawing" title="Fit (H)">⤢</button></div>
+      <div class="zoom"><button id="zIn" aria-label="Zoom in"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"/></svg></button><button id="zOut" aria-label="Zoom out"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8h9"/></svg></button><button id="zFit" aria-label="Fit to drawing" title="Fit (H)"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 6V3h3M10 3h3v3M13 10v3h-3M6 13H3v-3"/></svg></button></div>
       <div class="hint" id="hint" hidden></div>
       <div class="toast" id="toast" role="status" hidden></div>
       <div class="welcome" id="welcome" hidden>
         <div class="card">
-          <h1>Trace your house</h1>
+          <h2>Trace your house</h2>
           <p>Put your blueprint underneath and set its scale. Then let the editor suggest the walls, or click corner to corner to draw them yourself. Doors, windows and rooms come next, and the steps on the left walk you through it.</p>
           <div class="group">
             <button class="btn primary" id="wUpload">Upload a blueprint</button>
@@ -322,7 +101,7 @@
 
   <footer class="status" id="status" aria-live="polite"></footer>
 </div>
-<div class="dialog" id="dialog" hidden></div>
+<div class="dialog" id="dialog" role="dialog" aria-modal="true" aria-label="Dialog" hidden></div>
 
 <script src="vendor/three-r128/three.min.js"></script>
 <script src="vendor/three-r128/OrbitControls.js"></script>

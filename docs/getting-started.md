@@ -39,7 +39,7 @@ This is optional, and it works on the picture only: nothing is sent anywhere, an
 
 1. In the **Blueprint** box on the left, press **Straighten**. The editor measures how tilted the picture is and levels it (you can still fine-tune with the Rotate slider).
 2. Make sure the scale is set, then press **Suggest walls…** and **Find walls**. It takes a second or two.
-3. Suggested walls appear in orange, with gaps in them marked as doors (orange) and windows (blue). **Click a wall to leave it out**, and click it again to bring it back.
+3. Suggested walls appear in gold, with gaps in them marked as doors (dashed) and windows (dotted). **Click a wall to leave it out**, and click it again to bring it back.
 4. If it picked up too much or too little, change the settings and press **Find again**:
    - *How the walls are drawn*: **Solid** (filled in, the usual case), **Outlined** (two thin lines) or **Thin** (a single line, the least reliable).
    - *Shortest wall*: lower it to catch short stubs.

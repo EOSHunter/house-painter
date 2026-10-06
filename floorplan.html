@@ -4,92 +4,20 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Floor Plan</title>
-<style>
-  :root{
-    --paper:#f6f3ec; --card:#ffffff; --ink:#1c1e22; --wall:#23262b; --muted:#666b73; --rule:#d9d4c8;
-    --open:#efe5d2; --bed:#f4f1ea; --clos:#e4dfd3; --wet:#d8e7ee; --util:#dfeadf;
-    --cabB:#5b7487; --cabW:#ffffff; --app:#d6dade; --line:#8c929a;
-    --red:#d6453d; --green:#2a9457; --accent:#2457d6;
-  }
-  @media (prefers-color-scheme: dark){
-    :root{
-      --paper:#13161a; --card:#1a1e24; --ink:#e8e6e1; --wall:#ece9e2; --muted:#9aa0a8; --rule:#2c323a;
-      --open:#2b2620; --bed:#20252b; --clos:#282d34; --wet:#1c2e38; --util:#1f2d25;
-      --cabB:#6f8da3; --cabW:#d8dce0; --app:#4a5058; --line:#7b828b;
-      --red:#ff6b61; --green:#4cc785; --accent:#7aa2ff;
-    }
-  }
-  *{box-sizing:border-box}
-  html,body{margin:0;background:var(--paper);color:var(--ink);font-family:"Segoe UI",system-ui,-apple-system,sans-serif}
-  .wrap{max-width:1280px;margin:0 auto;padding:20px 16px 48px}
-  header{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:flex-end;justify-content:space-between;margin-bottom:14px}
-  h1{font-size:22px;margin:0 0 2px;letter-spacing:.2px}
-  .sub{color:var(--muted);font-size:13px}
-  .seg{display:inline-flex;border:1px solid var(--rule);border-radius:10px;overflow:hidden;background:var(--card)}
-  .seg button{font:inherit;font-size:13px;padding:8px 14px;border:0;background:transparent;color:var(--ink);cursor:pointer;border-right:1px solid var(--rule)}
-  .seg button:last-child{border-right:0}
-  .seg button[aria-pressed="true"]{background:var(--accent);color:#fff}
-  .plan{background:var(--card);border:1px solid var(--rule);border-radius:12px;padding:6px;overflow-x:auto}
-  svg{display:block;width:100%;min-width:760px;height:auto}
-  /* svg styling */
-  .paper{fill:var(--card)}
-  .f-open{fill:var(--open)} .f-bed{fill:var(--bed)} .f-clos{fill:var(--clos)} .f-wet{fill:var(--wet)} .f-util{fill:var(--util)}
-  .wall{fill:var(--wall)}
-  .wall.removed{fill:rgba(214,69,61,.14);stroke:var(--red);stroke-width:1.4;stroke-dasharray:5 3}
-  .win{fill:var(--card);stroke:var(--wall);stroke-width:1}
-  .panel{fill:var(--card);stroke:var(--wall);stroke-width:.9;stroke-dasharray:3 2}
-  .glass{stroke:var(--wall);stroke-width:.8}
-  .leaf{stroke:var(--wall);stroke-width:2.2;stroke-linecap:round}
-  .swing{fill:none;stroke:var(--line);stroke-width:.9}
-  .fx{stroke:var(--wall);stroke-width:.9}
-  .cabB{fill:var(--cabB)} .cabW{fill:var(--cabW)} .app{fill:var(--app)} .counter{fill:var(--card);stroke:var(--wall)}
-  .fxt{fill:none;stroke:var(--wall);stroke-width:.9}
-  .fxfill{fill:var(--card);stroke:var(--wall);stroke-width:.9}
-  .dashed{fill:none;stroke:var(--muted);stroke-width:1;stroke-dasharray:4 3}
-  .hair{stroke:var(--wall);stroke-width:.7;fill:none}
-  .removed-fx .fx,.removed-fx .fxt,.removed-fx .fxfill,.removed-fx .dashed,.removed-fx .hair{stroke:var(--red);stroke-dasharray:5 3}
-  .removed-fx .fxfill,.removed-fx .fx{fill:rgba(214,69,61,.12)}
-  .removed-fx text{fill:var(--red)}
-  .added-fx text{fill:var(--green)}
-  .room{font-size:12.5px;font-weight:700;letter-spacing:.9px;fill:var(--ink);text-anchor:middle;paint-order:stroke;stroke:var(--card);stroke-width:0}
-  .rsub{font-size:10px;fill:var(--muted);text-anchor:middle;letter-spacing:.3px}
-  svg.lvp .room,svg.lvp .rsub{fill:#2a2218;paint-order:stroke;stroke:rgba(255,255,255,.6);stroke-width:3px;stroke-linejoin:round}
-  svg.lvp .dashed{stroke:#4a3f30}
-  .surf{stroke:var(--card);stroke-width:.6;cursor:help}
-  .surf.hot{stroke:var(--ink);stroke-width:2.5}
-  .surft{font-size:7px;font-weight:700;fill:var(--ink);text-anchor:middle;paint-order:stroke;stroke:var(--card);stroke-width:2.5px}
-  .surf-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
-  .surf-room h3{font-size:13px;margin:0 0 4px;display:flex;justify-content:space-between}
-  .surf-room h3 span{font-weight:400;color:var(--muted)}
-  .surf-room table{width:100%;border-collapse:collapse;font-size:12px}
-  .surf-room td{padding:2px 4px;border-top:1px solid var(--rule)} .surf-room td.num{text-align:right;color:var(--muted);white-space:nowrap}
-  .surf-room tr:hover{background:var(--rule)}
-  .small{font-size:9.5px}
-  .dim{stroke:var(--muted);stroke-width:1;fill:none}
-  .dimt{font-size:11px;fill:var(--ink);text-anchor:middle;font-weight:600}
-  .dimbg{fill:var(--card)}
-  .callout circle{fill:var(--red);stroke:#fff;stroke-width:1.5}
-  .callout text{fill:#fff;font-size:12px;font-weight:700;text-anchor:middle}
-  .tiny{font-size:8px;fill:var(--muted);letter-spacing:.4px}
-  /* notes */
-  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-top:16px}
-  .card{background:var(--card);border:1px solid var(--rule);border-radius:12px;padding:14px 16px}
-  .card h2{font-size:14px;margin:0 0 8px;letter-spacing:.3px}
-  .card ol,.card ul{margin:0;padding-left:18px;font-size:13px;line-height:1.5}
-  .card li{margin-bottom:4px}
-  .sw{display:inline-block;width:12px;height:12px;border-radius:2px;vertical-align:-1px;margin-right:6px;border:1px solid var(--line)}
-  .badge{display:inline-flex;width:18px;height:18px;border-radius:50%;background:var(--red);color:#fff;font-size:11px;font-weight:700;align-items:center;justify-content:center;margin-right:6px}
-  .hide-in-changes{display:block}
-</style>
+<link rel="preload" href="ui/fonts/inter-core-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="ui/fonts/cormorant-garamond-core-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="ui/tokens.css">
+<link rel="stylesheet" href="ui/base.css">
+<link rel="stylesheet" href="ui/floorplan.css">
 </head>
 <body>
-<div class="wrap">
+<main class="wrap">
   <header>
     <div>
       <h1 id="title">Floor plan</h1>
       <div class="sub" id="subtitle"></div>
     </div>
-    <div style="display:flex;flex-wrap:wrap;gap:8px">
+    <div class="group">
       <div class="seg" role="group" aria-label="Floor">
         <button data-floor="lvp"   aria-pressed="true" id="floorBtn">Floor</button>
         <button data-floor="rooms" aria-pressed="false">Room colors</button>
@@ -103,25 +31,25 @@
     </div>
   </header>
 
-  <div class="plan"><svg id="svg" role="img" aria-label="Floor plan"></svg></div>
+  <div class="plan" role="region" aria-label="Floor plan drawing" tabindex="0"><svg id="svg" role="img" aria-label="Floor plan"></svg></div>
 
-  <div id="surfList" class="card" style="margin-top:16px;display:none">
-    <h2>Paintable surfaces <span id="surfCount" style="font-weight:400;color:var(--muted)"></span></h2>
-    <p style="font-size:13px;color:var(--muted);margin:0 0 10px" id="surfNote">One surface per wall face per room. Area is wall area at ceiling height minus doors and windows. Hover a row to find it on the plan.</p>
+  <div id="surfList" class="card" style="display:none">
+    <h2>Paintable surfaces <span id="surfCount"></span></h2>
+    <p id="surfNote">One surface per wall face per room. Area is wall area at ceiling height minus doors and windows. Hover a row to find it on the plan.</p>
     <div id="surfRooms" class="surf-grid"></div>
   </div>
 
   <div class="grid">
-    <div id="notes" style="display:contents"></div>
+    <div id="notes" class="notes"></div>
     <div class="card">
       <h2>Legend</h2>
-      <ul style="list-style:none;padding:0">
+      <ul class="legend">
         <li><span class="sw" id="floorSw"></span><span id="floorName">Flooring</span> — whole house</li>
         <li><span class="sw" style="background:var(--open)"></span>Open great room / hall (room-color view)</li>
         <li><span class="sw" style="background:var(--bed)"></span>Bedrooms &nbsp; <span class="sw" style="background:var(--clos)"></span>Closets</li>
         <li><span class="sw" style="background:var(--wet)"></span>Baths &nbsp; <span class="sw" style="background:var(--util)"></span>Utility</li>
         <li><span class="sw" style="background:var(--cabB)"></span>Dark cabinets &nbsp; <span class="sw" style="background:var(--cabW)"></span>Light cabinets</li>
-        <li><span class="sw" style="background:rgba(214,69,61,.2);border-color:var(--red)"></span>Removed (Changes view)</li>
+        <li><span class="sw removed"></span>Removed (Changes view)</li>
       </ul>
     </div>
   </div>
