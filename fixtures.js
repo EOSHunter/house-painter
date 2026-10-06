@@ -14,7 +14,7 @@
   else root.HouseFixtures = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
   // fixtures drawn before facing existed all assumed these; files that leave `front` out keep looking the same
-  const DEFAULT_FRONT = { app: 'e', range: 'e', front: 'e', shower: 'n', sink2: 's', barn: 's', stairs: 'e' };
+  const DEFAULT_FRONT = { app: 'e', range: 'e', front: 'e', shower: 'n', sink2: 's', barn: 's', stairs: 'e', porch: 's' };
   const kindKey = f => (f.k === 'box' && f.c === 'app' ? 'app' : f.k);
   const facing = f => (f.k === 'toilet' ? (f.dir || 'w') : f.front || DEFAULT_FRONT[kindKey(f)] || null);
   const along = d => d === 'n' || d === 's';                       // the front runs along x
@@ -132,6 +132,7 @@
     { id: 'washer', group: 'Laundry', name: 'Washer', size: [2.3, 2.2], make: () => ({ k: 'front', label: 'WASHER' }) },
     { id: 'dryer', group: 'Laundry', name: 'Dryer', size: [2.3, 2.2], make: () => ({ k: 'front', label: 'DRYER' }) },
     { id: 'stairs', group: 'Stairs', name: 'Straight stairs (up toward the front)', size: [3.5, 11], make: () => ({ k: 'stairs' }) },
+    { id: 'porch', group: 'Outside', name: 'Porch with a roof (open side to the front)', size: [10, 6], make: () => ({ k: 'porch' }) },
     { id: 'heater', group: 'Laundry', name: 'Water heater', size: [1.6, 1.6], free: true, make: () => ({ k: 'heater', r: 0.8 }) },
     { id: 'shelf', group: 'Laundry', name: 'Wire shelf', size: [4, 1], make: () => ({ k: 'shelf' }) }
   ];
@@ -155,10 +156,10 @@
     if (f.k === 'box' && f.c === 'app') return f.label === 'DW' ? 'Dishwasher' : 'Refrigerator';
     if (f.k === 'box' && f.c === 'counter') return 'Counter';
     return { upper: 'Upper cabinets', range: f.micro === false ? 'Range' : 'Range + microwave', ftub: 'Freestanding tub', toilet: 'Toilet', tub: 'Bathtub', shower: 'Shower', front: f.label ? f.label[0] + f.label.slice(1).toLowerCase() : 'Washer', heater: 'Water heater',
-      shelf: 'Wire shelf', stairs: 'Stairs', pumps: 'Pumps', sink2: 'Sink', oval: 'Basin', splash: 'Backsplash', barn: 'Barn door', steps: 'Steps', deck: 'Back steps' }[f.k] || f.k;
+      shelf: 'Wire shelf', stairs: 'Stairs', porch: 'Porch', pumps: 'Pumps', sink2: 'Sink', oval: 'Basin', splash: 'Backsplash', barn: 'Barn door', steps: 'Steps', deck: 'Back steps' }[f.k] || f.k;
   }
   // kinds the editor can select and move (the rest are plan drawings: labels, dashed lines, removed items)
-  const EDITABLE = new Set(['box', 'upper', 'range', 'toilet', 'tub', 'ftub', 'stairs', 'shower', 'front', 'heater', 'shelf', 'pumps', 'sink2', 'oval', 'splash', 'barn', 'steps', 'deck']);
+  const EDITABLE = new Set(['box', 'upper', 'range', 'toilet', 'tub', 'ftub', 'stairs', 'porch', 'shower', 'front', 'heater', 'shelf', 'pumps', 'sink2', 'oval', 'splash', 'barn', 'steps', 'deck']);
   const editable = f => EDITABLE.has(f.k) && f.st !== 'removed' && !!footprint(f);
 
   return { DEFAULT_FRONT, CATALOG, facing, footprint, place, turn, spin, resize, high, layer, width, depth, frame, cabinetLayout, create, describe, editable };

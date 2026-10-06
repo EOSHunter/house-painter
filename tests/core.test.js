@@ -391,3 +391,51 @@ test('floors: the Blender export carries each floor with its height', () => {
   assert.ok(b.levels[0].elevation > 8 && b.levels[0].house.walls.length > 0 && b.levels[0].house.surfaces.length > 0);
   assert.ok(b.ceilVoids.length === 1 && b.levels[0].house.voids.length === 1);
 });
+
+// ---------------------------------------------------------------------------------------------- roof and siding
+const roofed = type => { const h = load('starter-cottage'); h.roof = { type, pitch: 6, overhang: 1.5, rise: 'n' }; return h; };
+
+test('roof: validation', () => {
+  assert.deepEqual(HouseCore.validate(roofed('gable')), []);
+  const bad = (r, re) => { const h = load('starter-cottage'); h.roof = r; assert.ok(HouseCore.validate(h).some(p => re.test(p)), JSON.stringify(r)); };
+  bad({ type: 'dome' }, /"roof"/); bad({ type: 'gable', pitch: 40 }, /pitch/); bad({ type: 'gable', overhang: -1 }, /overhang/); bad({ type: 'gable', ridge: 'q' }, /ridge/); bad({ type: 'shed', rise: 'x' }, /rise/);
+  const sd = load('starter-cottage'); sd.siding = { profile: 'zigzag' }; assert.ok(HouseCore.validate(sd).some(p => /siding/.test(p)));
+});
+
+test('roof: a gable roof is two planes meeting at a ridge over the outside walls, with a gable wall at each end', () => {
+  const { HOUSE, LEVELS } = HouseCore.build(roofed('gable')), r = HOUSE.roof, [x0, y0, x1, y1] = r.footprint;
+  assert.equal(r.planes.length, 2); assert.equal(r.gables.length, 2);
+  assert.deepEqual([x0, y0, x1, y1], [0, 0, 36, 24]);
+  const top = LEVELS[0].ROOMS.ceilingMax, zs = r.planes.flat().map(q => q[2]);
+  assert.ok(Math.abs(Math.max(...zs) - (top + 12 * 0.5)) < 1e-6, 'the ridge is half the span times the pitch above the walls: ' + Math.max(...zs));
+  assert.ok(Math.abs(Math.min(...zs) - (top - 1.5 * 0.5)) < 1e-6, 'the eaves hang below the wall top');
+  assert.ok(r.planes.every(pl => pl.every(q => q[0] >= -1.5 - 1e-9 && q[0] <= 37.5 + 1e-9)), 'the roof reaches past the walls by the overhang');
+  assert.deepEqual(r.gables.map(g => g.side).sort(), ['E', 'W']);
+  assert.ok(r.gables.every(g => /^EXT-/.test(g.key)), 'each gable takes the siding of the wall under it: ' + r.gables.map(g => g.key));
+});
+
+test('roof: hip, shed and flat roofs', () => {
+  const hip = HouseCore.build(roofed('hip')).HOUSE.roof; assert.equal(hip.planes.length, 4); assert.equal(hip.gables.length, 0);
+  const shed = HouseCore.build(roofed('shed')).HOUSE.roof; assert.equal(shed.planes.length, 1); assert.ok(shed.gables.length >= 3, 'walls rise to meet a shed roof');
+  const flat = HouseCore.build(roofed('flat')).HOUSE.roof; assert.equal(flat.planes.length, 1); assert.ok(flat.planes[0].every(q => Math.abs(q[2] - flat.planes[0][0][2]) < 1e-9));
+  assert.equal(HouseCore.build(load('starter-cottage')).HOUSE.roof, undefined, 'no roof unless the file asks for one');
+});
+
+test('roof: on a house of two floors it sits on the top one', () => {
+  const h = load('two-storey'); h.roof = { type: 'gable', pitch: 6 };
+  const { HOUSE, LEVELS } = HouseCore.build(h);
+  assert.ok(Math.abs(HOUSE.roof.wallTop - (LEVELS[1].elevation + LEVELS[1].ROOMS.ceilingMax)) < 1e-9);
+});
+
+test('roof and siding reach the Blender export', () => {
+  const h = roofed('gable'); h.siding = { profile: 'lap', exposure: 0.5 };
+  const { HOUSE, ROOMS } = HouseCore.build(h), b = HouseCore.forBlender(HOUSE, ROOMS);
+  assert.equal(b.roof.planes.length, 2); assert.deepEqual(b.siding, { profile: 'lap', exposure: 0.5 });
+});
+
+test('the porch is a fixture with its back to the house and an open side in front', () => {
+  const FX = require('../fixtures.js');
+  const f = FX.create('porch', 's', [6, 24, 13, 29.5]);
+  assert.deepEqual(FX.footprint(f), [6, 24, 13, 29.5]); assert.equal(FX.facing(f), 's'); assert.equal(FX.describe(f), 'Porch');
+  assert.ok(FX.editable(f));
+});

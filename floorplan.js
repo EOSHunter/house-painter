@@ -267,6 +267,14 @@
     // dimensions
     o+=dimH(0,H.W,-4.3,ftin(H.W));
     o+=dimV(0,H.D,-3.6,ftin(H.D));
+    if(H.roof && LI===(LVS?LVS.length-1:0) && mode!=='surfaces'){                  // the roof's eaves and ridge, dashed, over the top floor
+      const r=H.roof, [x0,y0,x1,y1]=r.footprint, ov=r.overhang, ex0=x0-ov, ey0=y0-ov, ex1=x1+ov, ey1=y1+ov;
+      o+=`<rect class="dashed" x="${X(ex0)}" y="${Y(ey0)}" width="${(ex1-ex0)*S}" height="${(ey1-ey0)*S}" style="stroke-dasharray:8 5"/>`;
+      const hz=(x1-x0)>=(y1-y0), ym=(ey0+ey1)/2, xm=(ex0+ex1)/2;
+      if(r.type==='gable') o+= (r.planes.length && Math.abs(r.planes[0][2][1]-r.planes[0][3][1])<1e-6) ? `<line class="hair" style="stroke-dasharray:8 5" x1="${X(ex0)}" y1="${Y(ym)}" x2="${X(ex1)}" y2="${Y(ym)}"/>` : `<line class="hair" style="stroke-dasharray:8 5" x1="${X(xm)}" y1="${Y(ey0)}" x2="${X(xm)}" y2="${Y(ey1)}"/>`;
+      if(r.type==='hip'){ const h2=Math.min(ex1-ex0,ey1-ey0)/2; o+= hz ? `<polyline class="hair" style="stroke-dasharray:8 5" fill="none" points="${X(ex0)},${Y(ey0)} ${X(ex0+h2)},${Y(ym)} ${X(ex1-h2)},${Y(ym)} ${X(ex1)},${Y(ey0)} M ${X(ex0)},${Y(ey1)} ${X(ex0+h2)},${Y(ym)} ${X(ex1-h2)},${Y(ym)} ${X(ex1)},${Y(ey1)}"/>` : ''; }
+      o+=`<text class="rsub" font-size="8" x="${X(ex0)+4}" y="${Y(ey0)-4}" style="text-anchor:start">ROOF \u00b7 ${r.type.toUpperCase()} \u00b7 ${r.pitch}:12 \u00b7 ${ov}' overhang</text>`;
+    }
     (H.voids||[]).forEach(v=>{ o+=`<rect class="dashed" x="${X(v[0])}" y="${Y(v[1])}" width="${(v[2]-v[0])*S}" height="${(v[3]-v[1])*S}"/><line class="hair" x1="${X(v[0])}" y1="${Y(v[1])}" x2="${X(v[2])}" y2="${Y(v[3])}"/><line class="hair" x1="${X(v[2])}" y1="${Y(v[1])}" x2="${X(v[0])}" y2="${Y(v[3])}"/><text class="rsub" font-size="7" x="${X((v[0]+v[2])/2)}" y="${Y((v[1]+v[3])/2)}" style="font-weight:600;fill:var(--ink)">OPEN TO BELOW</text>`; });
     (P.dims||[]).forEach(d=>{ o+= d.x1!==undefined ? dimH(d.x1,d.x2,d.y,esc(d.label||ftin(d.x2-d.x1))) : dimV(d.y1,d.y2,d.x,esc(d.label||ftin(d.y2-d.y1))); });
     (P.texts||[]).forEach(t=>{ o+=`<text class="tiny" x="${X(t.x)}" y="${Y(t.y)}">${esc(t.t)}</text>`; });

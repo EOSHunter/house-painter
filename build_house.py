@@ -90,7 +90,7 @@ K = max(W, D) / 56                                          # camera distances w
 BASE_H, BASE_T, CASE_W, CASE_T, DOOR_T, DOOR_OPEN = 0.375, 0.03, 0.29, 0.035, 0.115, 68
 GROUND_Z = -2.0
 SHEEN = {'flat': 0.96, 'matte': 0.92, 'eggshell': 0.82, 'satin': 0.64, 'semigloss': 0.42, 'gloss': 0.24}
-DEFAULTS = {'wall': '#F1EFEA', 'ceiling': '#F5F4F0', 'trim': '#F6F6F3', 'exttrim': '#F4F4F0', 'doors': '#F3F3EF', 'extdoors': '#F3F3EF', 'siding': '#E9E8E2'}
+DEFAULTS = {'wall': '#F1EFEA', 'ceiling': '#F5F4F0', 'trim': '#F6F6F3', 'exttrim': '#F4F4F0', 'doors': '#F3F3EF', 'extdoors': '#F3F3EF', 'siding': '#E9E8E2', 'roof': '#5E5A57'}
 ITEM = {it['key']: it for it in H.get('items', [])}           # the house's cabinet runs and special doors
 for it in ITEM.values(): DEFAULTS[it['key']] = it.get('default') or ('#F3F3EF' if it.get('kind') == 'door' else '#F1F0EC')
 WOODS = {   # same species and parameters as house3d.js
@@ -221,6 +221,18 @@ def paint_mat(key):
         b.inputs['Roughness'].default_value = min(0.7, SHEEN.get(sheen, 0.64))
     else:
         b.inputs['Base Color'].default_value = lin(hexv)
+    sd = H0.get('siding')
+    if sd and sd.get('profile') != 'plain' and re.match(r'^EXT\d*-', key):         # the relief of the siding: lap boards, board and batten, shingles or stucco
+        nt = m.node_tree; uv = nt.nodes.new('ShaderNodeUVMap'); bump = nt.nodes.new('ShaderNodeBump')
+        if sd['profile'] == 'stucco':
+            tex = nt.nodes.new('ShaderNodeTexNoise'); tex.inputs['Scale'].default_value = 40; bump.inputs['Strength'].default_value = 0.12
+        else:
+            tex = nt.nodes.new('ShaderNodeTexBrick'); ex = sd.get('exposure') or 0.5
+            tex.offset = 0.5 if sd['profile'] == 'shingle' else 0.0
+            tex.inputs['Brick Width'].default_value, tex.inputs['Row Height'].default_value = ((40.0, ex) if sd['profile'] == 'lap' else (1.0, 40.0) if sd['profile'] == 'board' else (0.5, ex))
+            tex.inputs['Mortar Size'].default_value = 0.03; tex.inputs['Mortar Smooth'].default_value = 0.15
+            bump.inputs['Strength'].default_value = 0.7
+        nt.links.new(uv.outputs['UV'], tex.inputs['Vector']); nt.links.new(tex.outputs['Fac'], bump.inputs['Height']); nt.links.new(bump.outputs['Normal'], b.inputs['Normal'])
     m['paint_key'] = key; m['paint_name'] = (r or {}).get('name') or 'Primer white'; m['paint_code'] = (r or {}).get('code') or ''
     return m
 
@@ -690,6 +702,16 @@ def build_fixtures():
         elif k == 'ftub':                                      # freestanding: an oval shell, a darker well, a tap at one end
             fx.ellipse(f['cx'], f['cy'], f['rx'], f['ry'], 0, 2.0, M['porc']); fx.ellipse(f['cx'], f['cy'], f['rx'] * 0.84, f['ry'] * 0.78, 1.97, 2.01, M['reveal'])
             tx, ty = (f['cx'] - f['rx'] * 0.78, f['cy']) if f['rx'] >= f['ry'] else (f['cx'], f['cy'] - f['ry'] * 0.78); fx.ellipse(tx, ty, 0.05, 0.05, 2.0, 2.7, M['chrome'])
+        elif k == 'porch':                                     # a deck with posts and a sloping roof; its back is against the house
+            F = Frame(f); ze = f.get('eave', 7.4); za = f.get('attach') or max(ze + 0.9, CEIL - 0.7); so, of = 0.5, 0.6
+            F.box(fx, 0, 0, -0.9, F.P, F.Q, -0.02, M['deck'])
+            npost = max(2, f.get('posts') or math.ceil(F.Q / 7) + 1); tr = paint_mat('exttrim')
+            for i in range(npost): q = 0.1 + (F.Q - 0.5) * i / (npost - 1); F.box(obj('Trim', 'Porch_Trim'), F.P - 0.5, q, -0.02, F.P - 0.1, q + 0.4, ze - 0.4, tr)
+            F.box(obj('Trim', 'Porch_Trim'), F.P - 0.5, 0, ze - 0.4, F.P - 0.1, F.Q, ze, tr)
+            if f.get('roof', True):
+                zat = lambda pp: za + (ze - za) * pp / (F.P - 0.3)
+                pt = lambda pp, q: (*F.pt(pp, q), zat(pp) + 0.2)
+                roof_slab(obj('Roof', 'Porch_Roof'), [pt(0, -so), pt(0, F.Q + so), pt(F.P - 0.3 + of, F.Q + so), pt(F.P - 0.3 + of, -so)], (0, 0, -0.25), paint_mat('roof'), tr, tr)
         elif k == 'stairs':                                    # a straight flight: solid steps, the top one level with the floor above
             F = Frame(f); rise = f.get('rise') or (CEIL + 0.9); n = max(2, round(rise / 0.6)); rh = rise / n; tr = F.P / n
             for i in range(n): F.box(fx, tr * i, 0, 0, tr * (i + 1), F.Q, rh * (i + 1), M['stair'])
@@ -733,6 +755,22 @@ def build_fixtures():
         elif k == 'deck':
             st = obj('Exterior', 'Steps'); st.box(x0, y0 + 0.9, GROUND_Z, x1, y1, -0.25, M['deck']); st.box(x0, y0, GROUND_Z, x1, y0 + 0.9, -1.15, M['deck'])
 
+def roof_slab(ob, pts, off, top_m, bot_m, edge_m):
+    """A polygon with thickness: its top face, its underside (moved by off, in feet) and its edges."""
+    top = [ob.bm.verts.new(P(x, y, z)) for x, y, z in pts]; bot = [ob.bm.verts.new(P(x + off[0], y + off[1], z + off[2])) for x, y, z in pts]
+    n = len(pts); ob.face(top, top_m); ob.face(bot[::-1], bot_m)
+    for i in range(n): j = (i + 1) % n; ob.face((top[i], top[j], bot[j], bot[i]), edge_m)
+
+def build_roof():
+    rf = H0.get('roof')
+    if not rf: return
+    ob = obj('Roof', 'Roof'); roof_m, trim_m = paint_mat('roof'), paint_mat('exttrim')
+    for pl in rf['planes']: roof_slab(ob, pl, (0, 0, -rf['thick']), roof_m, trim_m, trim_m)
+    e = H0['E']
+    for g in rf['gables']:                                    # the wall under a roof end, in the colour of the siding it sits on
+        off = {'N': (0, e, 0), 'S': (0, -e, 0), 'E': (-e, 0, 0), 'W': (e, 0, 0)}[g['side']]
+        roof_slab(ob, g['pts'], off, paint_mat(g['key']) if g.get('key') else M['cut'], M['cut'], M['cut'])
+
 def build_shell(upper=False, slab=0.9, voids=()):
     fl = obj('Floor', 'Floor'); fm = floor_material()
     for x0, y0, x1, y1 in H.get('floorRects') or [[E, E, W - E, D - E]]:
@@ -775,8 +813,10 @@ for li, L in enumerate(LEVELS):                           # each floor in turn, 
     set_level(L['house'], L['elevation'])
     build_shell(upper=li > 0, slab=L['slab'], voids=L['ceilVoids']); build_walls(); build_slants(); build_fixtures()
 set_level(H0, 0.0)
+build_roof()
 for o in list(OBJS.values()): o.finish()
 COLL['Ceiling'].hide_render = True
+if 'Roof' in COLL: COLL['Roof'].hide_render = True          # a roof would hide the dollhouse; it shows in the outside view
 
 # ----------------------------------------------------------------------------- lights, world, cameras
 LIGHT = arg('--light') or ((SCHEME or {}).get('view', {}).get('lighting')) or 'day'
@@ -805,6 +845,7 @@ def set_light(mode, inside):
         elif mode == 'true': ld.color = (1, 1, 1); ld.energy = 0.55 * area if inside else 0
         else: ld.color = (1.0, 0.97, 0.93); ld.energy = (0.5 if mode == 'day' else 0.6) * area if inside else 0
     COLL['Ceiling'].hide_render = not inside
+    if 'Roof' in COLL: COLL['Roof'].hide_render = True
 
 def look(cam, eye, target):
     cam.location = eye; cam.rotation_euler = (Vector(target) - Vector(eye)).to_track_quat('-Z', 'Y').to_euler()
@@ -856,6 +897,7 @@ if arg('--render'):
         if name not in VIEWS: print('SKIP unknown view', name); continue
         cam, inside = VIEWS[name]
         scene.camera = cam; set_light(LIGHT, inside)
+        if 'Roof' in COLL: COLL['Roof'].hide_render = name != 'out'
         r.filepath = os.path.join(outdir, name + '.png')
         bpy.ops.render.render(write_still=True)
         print('RENDERED', r.filepath)

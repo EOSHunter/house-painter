@@ -141,10 +141,18 @@ Walls at any angle: a cut corner, a bay window, a diagonal partition. The exampl
 - [ ] A basement, split levels, and an upper floor that overhangs the one below it.
 - [ ] Heights for a whole upper floor in the plan editor (the house's heights are used).
 
+### Outside detail ✅ (first version)
+
+- [x] **Roof:** gable, hip, shed or flat over the outline of the top floor, with pitch and overhang. One paint item, with gable ends in the siding colour and fascia in the exterior trim.
+- [x] **Porch:** a fixture with a deck, posts and a sloping roof.
+- [x] **Siding profiles:** lap, board and batten, shingle and stucco relief in the studio and in Blender, under the paint colour.
+- [ ] A roof that follows an L- or T-shaped outline (valleys), dormers, chimneys, gutters.
+- [ ] Wrap-around porches and railings, garage doors, and windows in gable ends.
+- [ ] Per-surface siding profiles (shingles on a gable, lap below).
+
 ### Other ideas
 
 - [ ] Imports: Apple RoomPlan (iPhone LiDAR) USDZ/JSON, DXF, and SVG.
-- [ ] Exterior detail: roof, porch and siding profiles.
 
 ## Known limits today
 

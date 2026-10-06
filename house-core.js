@@ -70,6 +70,17 @@
         if (r.polys !== undefined && (!Array.isArray(r.polys) || !r.polys.every(poly => Array.isArray(poly) && poly.length >= 3 && poly.every(v => Array.isArray(v) && v.length === 2 && v.every(num))))) p.push(`Room ${i}: "polys" must be a list of polygons, each a list of at least three [x, y] points.`);
       });
     }
+    if (src.roof !== undefined) {
+      const r = src.roof;
+      if (!r || typeof r !== 'object' || !['gable', 'hip', 'shed', 'flat'].includes(r.type)) p.push('"roof" is { "type": "gable" | "hip" | "shed" | "flat", "pitch", "overhang", ... }.');
+      else {
+        if (r.pitch !== undefined && !(num(r.pitch) && r.pitch >= 0 && r.pitch <= 24)) p.push('Roof "pitch" is rise in inches for every 12 inches across, from 0 to 24 (6 is typical).');
+        if (r.overhang !== undefined && !(num(r.overhang) && r.overhang >= 0 && r.overhang <= 6)) p.push('Roof "overhang" is how far (feet) it reaches past the walls, from 0 to 6.');
+        if (r.ridge !== undefined && r.ridge !== 'x' && r.ridge !== 'y') p.push('Roof "ridge" is "x" (running east to west) or "y" (north to south).');
+        if (r.rise !== undefined && !'nesw'.includes(r.rise)) p.push('A shed roof "rise" is the side it climbs toward: n, e, s or w.');
+      }
+    }
+    if (src.siding !== undefined && !(src.siding && ['plain', 'lap', 'board', 'shingle', 'stucco'].includes(src.siding.profile))) p.push('"siding" is { "profile": "plain" | "lap" | "board" | "shingle" | "stucco", "exposure" }.');
     // more floors: each is a house of its own (walls, rooms, fixtures) standing on the one below; room ids are unique across all of them
     const allRooms = (src.rooms || []).slice();
     if (src.levels !== undefined) {
@@ -278,6 +289,55 @@
     }
     return cur;
   }
+  // A roof over the outside of the top floor: a rectangle (its outer walls' bounding box) with eaves. Returns plain polygons in feet:
+  // `planes` (roof surfaces, each a list of [x, y, z]) and `gables` (triangles or quads of wall under a roof end, with the side they face).
+  const ROOF_T = 0.3;
+  function buildRoof(spec, L) {
+    const H = L.HOUSE, rs = [];
+    for (const w of H.walls) if (w.ext && w.status !== 'removed') rs.push([w.x0, w.y0, w.x1, w.y1]);
+    for (const S of H.slants) if (S.ext && S.status !== 'removed') for (const q of slantPoly(S)) rs.push([q[0], q[1], q[0], q[1]]);
+    const X0 = rs.length ? Math.min(...rs.map(q => q[0])) : 0, Y0 = rs.length ? Math.min(...rs.map(q => q[1])) : 0, X1 = rs.length ? Math.max(...rs.map(q => q[2])) : H.W, Y1 = rs.length ? Math.max(...rs.map(q => q[3])) : H.D;
+    const type = spec.type, o = spec.overhang ?? 1.25, slope = (spec.pitch ?? (type === 'flat' ? 0 : 6)) / 12, zT = L.elevation + L.ROOMS.ceilingMax;
+    const xe0 = X0 - o, xe1 = X1 + o, ye0 = Y0 - o, ye1 = Y1 + o, planes = [], gables = [];
+    const ridge = spec.ridge || ((X1 - X0) >= (Y1 - Y0) ? 'x' : 'y');
+    const zAt = (d) => zT + d * slope;                                      // height of the roof surface d feet in from the wall line (negative: out past it)
+    if (type === 'flat') {
+      planes.push([[xe0, ye0, zT + 0.05], [xe1, ye0, zT + 0.05], [xe1, ye1, zT + 0.05], [xe0, ye1, zT + 0.05]]);
+    } else if (type === 'shed') {
+      const rise = spec.rise || 'n', along = rise === 'n' || rise === 's';        // along: the roof climbs along y
+      const span = along ? (Y1 - Y0) : (X1 - X0), zHigh = zAt(span), zLow = zT, f = (x, y) => {                     // the roof surface at a point: low at the far wall, rising to the chosen side
+        const t = rise === 'n' ? (Y1 - y) / (Y1 - Y0) : rise === 's' ? (y - Y0) / (Y1 - Y0) : rise === 'e' ? (x - X0) / (X1 - X0) : (X1 - x) / (X1 - X0);
+        return zLow + (zHigh - zLow) * t;
+      };
+      planes.push([[xe0, ye0], [xe1, ye0], [xe1, ye1], [xe0, ye1]].map(([x, y]) => [x, y, f(x, y)]));
+      // the walls on the high side (and the two ends) rise to meet it
+      const wall = (x0, y0, x1, y1, side) => gables.push({ side, pts: [[x0, y0, zT], [x1, y1, zT], [x1, y1, f(x1, y1)], [x0, y0, f(x0, y0)]] });
+      if (rise === 'n') wall(X0, Y0, X1, Y0, 'N'); else if (rise === 's') wall(X0, Y1, X1, Y1, 'S'); else if (rise === 'e') wall(X1, Y0, X1, Y1, 'E'); else wall(X0, Y0, X0, Y1, 'W');
+      if (along) { gables.push({ side: 'E', pts: [[X1, Y0, zT], [X1, Y1, zT], [X1, Y1, f(X1, Y1)], [X1, Y0, f(X1, Y0)]] }); gables.push({ side: 'W', pts: [[X0, Y0, zT], [X0, Y1, zT], [X0, Y1, f(X0, Y1)], [X0, Y0, f(X0, Y0)]] }); }
+      else { gables.push({ side: 'N', pts: [[X0, Y0, zT], [X1, Y0, zT], [X1, Y0, f(X1, Y0)], [X0, Y0, f(X0, Y0)]] }); gables.push({ side: 'S', pts: [[X0, Y1, zT], [X1, Y1, zT], [X1, Y1, f(X1, Y1)], [X0, Y1, f(X0, Y1)]] }); }
+    } else if (type === 'gable') {
+      if (ridge === 'x') {
+        const ym = (Y0 + Y1) / 2, zR = zAt((Y1 - Y0) / 2), zE = zAt(-o);
+        planes.push([[xe0, ye0, zE], [xe1, ye0, zE], [xe1, ym, zR], [xe0, ym, zR]], [[xe0, ye1, zE], [xe1, ye1, zE], [xe1, ym, zR], [xe0, ym, zR]]);
+        gables.push({ side: 'W', pts: [[X0, Y0, zT], [X0, Y1, zT], [X0, ym, zR]] }, { side: 'E', pts: [[X1, Y0, zT], [X1, Y1, zT], [X1, ym, zR]] });
+      } else {
+        const xm = (X0 + X1) / 2, zR = zAt((X1 - X0) / 2), zE = zAt(-o);
+        planes.push([[xe0, ye0, zE], [xm, ye0, zR], [xm, ye1, zR], [xe0, ye1, zE]], [[xe1, ye0, zE], [xm, ye0, zR], [xm, ye1, zR], [xe1, ye1, zE]]);
+        gables.push({ side: 'N', pts: [[X0, Y0, zT], [X1, Y0, zT], [xm, Y0, zR]] }, { side: 'S', pts: [[X0, Y1, zT], [X1, Y1, zT], [xm, Y1, zR]] });
+      }
+    } else {                                                                 // hip: four planes meeting at a ridge (a point on a square house)
+      const w = xe1 - xe0, h = ye1 - ye0, xm = (xe0 + xe1) / 2, ym = (ye0 + ye1) / 2, half = Math.min(w, h) / 2, zE = zAt(-o), zR = zE + half * slope;
+      const a = [xe0 + half, ym], b = [xe1 - half, ym], c = [xm, ye0 + half], d = [xm, ye1 - half];
+      if (w >= h) {
+        planes.push([[xe0, ye0, zE], [xe1, ye0, zE], [b[0], b[1], zR], [a[0], a[1], zR]], [[xe0, ye1, zE], [xe1, ye1, zE], [b[0], b[1], zR], [a[0], a[1], zR]],
+          [[xe0, ye0, zE], [xe0, ye1, zE], [a[0], a[1], zR]], [[xe1, ye0, zE], [xe1, ye1, zE], [b[0], b[1], zR]]);
+      } else {
+        planes.push([[xe0, ye0, zE], [xe0, ye1, zE], [d[0], d[1], zR], [c[0], c[1], zR]], [[xe1, ye0, zE], [xe1, ye1, zE], [d[0], d[1], zR], [c[0], c[1], zR]],
+          [[xe0, ye0, zE], [xe1, ye0, zE], [c[0], c[1], zR]], [[xe0, ye1, zE], [xe1, ye1, zE], [d[0], d[1], zR]]);
+      }
+    }
+    return { type, pitch: spec.pitch ?? (type === 'flat' ? 0 : 6), overhang: o, thick: ROOF_T, footprint: [X0, Y0, X1, Y1], wallTop: zT, planes, gables: gables.map(g => ({ ...g, pts: g.pts.map(q => q.map(v => +v.toFixed(3))) })) };
+  }
   const SLAB = 0.9;                                                     // thickness of a floor between storeys, in feet
   function build(src) {
     const problems = validate(src);
@@ -295,6 +355,17 @@
       const L = { id: lv.id || 'level' + (k + 2), name: lv.name || (k === 0 ? 'Upper floor' : 'Floor ' + (k + 2)), elevation, slab, HOUSE: built.HOUSE, ROOMS: built.ROOMS };
       LEVELS.push(L); prev = L;
     });
+    if (src.roof) {                                                    // a roof over the top floor; each gable-end wall takes the colour of the outside wall it sits on
+      const top = LEVELS[LEVELS.length - 1], roof = buildRoof(src.roof, top);
+      const ext = top.ROOMS.surfaces.filter(sf => sf.room === 'exterior' && sf.kind === 'siding');
+      for (const g of roof.gables) {
+        const mid = g.pts.reduce((t, q) => [t[0] + q[0] / g.pts.length, t[1] + q[1] / g.pts.length], [0, 0]);
+        const dirs = { N: [0, -1], S: [0, 1], E: [1, 0], W: [-1, 0] }[g.side], best = ext.map(sf => ({ sf, d: Math.abs((sf.normal[0] * dirs[0] + sf.normal[1] * dirs[1]) - 1) * 1000 + Math.hypot((sf.seg[0][0] + sf.seg[1][0]) / 2 - mid[0], (sf.seg[0][1] + sf.seg[1][1]) / 2 - mid[1]) })).sort((p, q) => p.d - q.d)[0];
+        g.key = best ? best.sf.id : null;
+      }
+      base.HOUSE.roof = roof;
+    }
+    if (src.siding) base.HOUSE.siding = { profile: src.siding.profile, exposure: src.siding.exposure ?? (src.siding.profile === 'shingle' ? 0.5 : src.siding.profile === 'board' ? 1 : 0.5) };
     LEVELS.forEach((L, i) => {                                         // stairs climb to the next floor unless they say how high they go
       for (const f of L.HOUSE.fixtures) if (f.k === 'stairs' && f.rise === undefined && LEVELS[i + 1]) f.rise = LEVELS[i + 1].elevation - L.elevation;
     });
@@ -708,7 +779,7 @@
       format: 'house-painter/built-house', version: 1, id: H.id, name: H.name,
       W: H.W, D: H.D, E: H.E, T: H.T, heights: H.heights, floor: H.floor, floorRects: H.floorRects,
       walls: H.walls, slants: H.slants, fixtures: H.fixtures, items: H.items, renderRooms: H.renderRooms,
-      voids: H.voids || [], surfaces, rooms, ceilingHeight: R.ceilingHeight, ceilingMax: R.ceilingMax, doorHeight: R.doorHeight, windowHead: R.windowHead
+      voids: H.voids || [], roof: H.roof || null, siding: H.siding || null, surfaces, rooms, ceilingHeight: R.ceilingHeight, ceilingMax: R.ceilingMax, doorHeight: R.doorHeight, windowHead: R.windowHead
     };
   }
 

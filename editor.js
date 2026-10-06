@@ -1470,7 +1470,7 @@
   $('#wallMode').addEventListener('click', e => { const b = e.target.closest('[data-mode],[data-angle],[data-curve],[data-done]'); if (!b) return; if (b.dataset.done) { endDraw(); render(); return; } if (b.dataset.curve) wallCurve = !wallCurve; else if (b.dataset.angle) wallAngle = !wallAngle; else wallMode = b.dataset.mode; endDraw(); setTool('wall'); });
 
   // ------------------------------------------------------------------ fixtures: placing and moving
-  const SIZE_KEYS = ['box', 'upper', 'range', 'tub', 'ftub', 'stairs', 'shower', 'front', 'shelf', 'pumps', 'sink2', 'steps', 'deck'];
+  const SIZE_KEYS = ['box', 'upper', 'range', 'tub', 'ftub', 'stairs', 'porch', 'shower', 'front', 'shelf', 'pumps', 'sink2', 'steps', 'deck'];
   let fxItem = 'base', fxFace = 's';
   const catOf = id => FX.CATALOG.find(c => c.id === id);
   const hasFront = c => !['tub', 'shelf', 'heater', 'ftub'].includes(c.make().k);
@@ -1789,6 +1789,19 @@
         ${floorMode(F) === 'photo' ? '<div class="actions"><button class="btn" data-act="floorphoto">Choose another photo\u2026</button></div>' : ''}
         <div class="pair">${field('Name', 'fl_name', F.name)}${field('Colour (plain)', 'fl_color', F.color, { type: 'color' })}</div>
         <p class="note">Wood floors are drawn the way the cabinet veneers are. A photo should show one plank, or a close-up of the grain, with the grain running up the picture.</p>
+        <h3 style="font-size:14px">Roof and siding</h3>
+        ${(() => {
+          const rf = S.keep.roof, sd = S.keep.siding;
+          let h2 = field('Roof', 'rf_type', rf ? rf.type : 'none', { select: [['none', 'No roof (open from above)'], ['gable', 'Gable'], ['hip', 'Hip'], ['shed', 'Shed (one slope)'], ['flat', 'Flat']] });
+          if (rf && rf.type !== 'flat') h2 += `<div class="pair">${field('Pitch (in 12)', 'rf_pitch', rf.pitch ?? 6, { type: 'number' })}${field('Overhang', 'rf_over', rf.overhang ?? 1.25, { len: 1 })}</div>`;
+          if (rf && rf.type === 'flat') h2 += field('Overhang', 'rf_over', rf.overhang ?? 1.25, { len: 1 });
+          if (rf && rf.type === 'gable') h2 += field('Ridge runs', 'rf_ridge', rf.ridge || 'auto', { select: [['auto', 'Along the longer side'], ['x', 'East to west'], ['y', 'North to south']] });
+          if (rf && rf.type === 'shed') h2 += field('Rises toward', 'rf_rise', rf.rise || 'n', { select: [['n', 'The north'], ['s', 'The south'], ['e', 'The east'], ['w', 'The west']] });
+          if (rf) h2 += '<p class="note">One roof over the whole outline of the top floor, shown from outside in the Paint Studio. Gable ends take the colour of the siding under them.</p>';
+          h2 += field('Siding', 'sd_profile', sd ? sd.profile : 'plain', { select: [['plain', 'Plain'], ['lap', 'Lap boards'], ['board', 'Board and batten'], ['shingle', 'Shingles'], ['stucco', 'Stucco']] });
+          if (sd && (sd.profile === 'lap' || sd.profile === 'shingle' || sd.profile === 'board')) h2 += field('Exposure (visible height or width)', 'sd_exp', sd.exposure ?? (sd.profile === 'board' ? 1 : 0.5), { len: 1 });
+          return h2;
+        })()}
         <h3 style="font-size:14px">Floor plan notes</h3>
         ${(S.keep.plan && S.keep.plan.notes || []).map((c, i) => `<div class="notecard"><div class="pair">${field('Title', 'nt_title_' + i, c.title)}<label class="field">Style<select data-f="nt_ord_${i}"><option value=""${c.ordered ? '' : ' selected'}>Bullets</option><option value="1"${c.ordered ? ' selected' : ''}>Numbered</option></select></label></div>
           <label class="field">One line per item<textarea data-f="nt_items_${i}" rows="4">${esc((c.items || []).join('\n'))}</textarea></label><div class="actions"><button class="btn danger" data-act="delnote" data-i="${i}">Delete this note</button></div></div>`).join('')}
@@ -1903,6 +1916,13 @@
       if (f === 'st_face') { st.yaw = YAW[v]; return; }
     }
     if (sel && sel.kind === 'void' && /^vd_[0-3]$/.test(f)) { const vd = curVoids().find(q => q.uid === sel.uid); if (!vd || v == null) return false; const nr = vd.r.slice(); nr[+f[3]] = r4(v); if (nr[2] - nr[0] < 0.5 || nr[3] - nr[1] < 0.5) return false; vd.r = nr; return; }
+    if (f === 'rf_type') { if (v === 'none') delete S.keep.roof; else S.keep.roof = { ...(S.keep.roof || {}), type: v, pitch: (S.keep.roof && S.keep.roof.pitch) ?? (v === 'flat' ? 0 : 6), overhang: (S.keep.roof && S.keep.roof.overhang) ?? 1.25 }; return; }
+    if (f === 'rf_pitch') { const n = +v; if (!(n >= 0 && n <= 24) || !S.keep.roof) return false; S.keep.roof.pitch = n; return; }
+    if (f === 'rf_over') { if (v == null || v < 0 || v > 6 || !S.keep.roof) return false; S.keep.roof.overhang = r4(v); return; }
+    if (f === 'rf_ridge') { if (v === 'auto') delete S.keep.roof.ridge; else S.keep.roof.ridge = v; return; }
+    if (f === 'rf_rise') { S.keep.roof.rise = v; return; }
+    if (f === 'sd_profile') { if (v === 'plain') delete S.keep.siding; else S.keep.siding = { profile: v, ...(S.keep.siding && S.keep.siding.exposure ? { exposure: S.keep.siding.exposure } : {}) }; return; }
+    if (f === 'sd_exp') { if (v == null || v < 0.1 || v > 3 || !S.keep.siding) return false; S.keep.siding.exposure = r4(v); return; }
     if (/^nt_/.test(f)) {
       const m = /^nt_(title|ord|items)_(\d+)$/.exec(f), c = m && S.keep.plan && S.keep.plan.notes[+m[2]]; if (!c) return false;
       if (m[1] === 'title') c.title = v; else if (m[1] === 'ord') { if (v) c.ordered = true; else delete c.ordered; } else c.items = v.split('\n').map(x => x.trim()).filter(Boolean);

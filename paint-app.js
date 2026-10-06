@@ -25,7 +25,7 @@
   // the house's own items (cabinet runs, special doors) plus the whole-house groups every house has
   const ITEMS = H.items.map(it => [it.key, it.name || it.key, it.room || 'house', it.kind === 'door' ? 'door' : 'cabinet']).concat([
     ['trim', 'Trim & baseboards', 'house', 'trim'], ['doors', 'Interior doors', 'house', 'door'], ['extdoors', 'Exterior doors', 'house', 'door'], ['exttrim', 'Exterior trim', 'house', 'trim']
-  ]);
+  ]).concat(H.roof ? [['roof', 'Roof', 'house', 'roof']] : []);
   ITEMS.forEach(([k, l, room, kind]) => { TARGETS[k] = { key: k, room, kind, area: 0, label: l,
     full: (room === 'house' ? 'Whole house' : R.byId[room].name) + ' \u00b7 ' + l }; });
   // individual cabinet doors and drawers (built by house3d.js); each falls back to its cabinet run's colour
@@ -41,7 +41,7 @@
   const DIR_ORDER = { North: 0, Northeast: 0.5, East: 1, Southeast: 1.5, South: 2, Southwest: 2.5, West: 3, Northwest: 3.5, 'Wall end': 4 };
   const roomWalls = id => Object.values(TARGETS).filter(t => t.room === id && (t.kind === 'wall' || t.kind === 'end'))
     .sort((a, b) => (DIR_ORDER[a.s.dir] - DIR_ORDER[b.s.dir]) || a.key.localeCompare(b.key, 'en', { numeric: true }));
-  const defaultSheen = t => ({ ceiling: 'flat', trim: 'semigloss', door: 'semigloss', cabinet: 'satin', cabdoor: 'satin', siding: 'satin' }[t.kind] || 'eggshell');
+  const defaultSheen = t => ({ ceiling: 'flat', trim: 'semigloss', door: 'semigloss', cabinet: 'satin', cabdoor: 'satin', siding: 'satin', roof: 'flat' }[t.kind] || 'eggshell');
   const SHEEN_LABEL = { flat: 'Flat', eggshell: 'Eggshell', satin: 'Satin', semigloss: 'Semi-gloss' };
   const BOOKS = C.books;                                      // colour books: the House Painter palette, plus any extra ones (paint-colors-extra.js)
   const BRAND_LABEL = new Proxy({ wood: 'Wood', custom: 'Custom', ...Object.fromEntries(BOOKS.map(b => [b.id, b.label])) }, { get: (t, k) => (k in t ? t[k] : String(k)) });   // a scheme made with a book that isn't loaded still reads sensibly
@@ -282,7 +282,7 @@
   function enterWalk(roomId) {
     tween = null; walk.on = true; walk.keys.clear(); controls.enabled = false;
     view = { kind: 'walk', room: roomId || null };
-    B.ceilings.visible = true; fill.intensity = 0;
+    B.ceilings.visible = true; if (B.roof) B.roof.visible = false; fill.intensity = 0;
     camera.fov = insideFov; camera.updateProjectionMatrix();
     let { x, y, yaw } = H.start;                              // just inside the front door, facing into the house
     walk.level = 0; walk.z = 0; walk.stair = null;
@@ -325,18 +325,18 @@
 
   const hfov = () => 2 * Math.atan(Math.tan(camera.fov * Math.PI / 360) * camera.aspect);   // horizontal field of view, radians
   function dollhouse() {
-    exitWalk(); view = { kind: 'doll' }; B.ceilings.visible = false; fill.intensity = 0; camera.fov = 40; camera.updateProjectionMatrix(); setOrbit(true);
+    exitWalk(); view = { kind: 'doll' }; B.ceilings.visible = false; if (B.roof) B.roof.visible = false; fill.intensity = 0; camera.fov = 40; camera.updateProjectionMatrix(); setOrbit(true);
     const dir = new T.Vector3(22, 44, 40).normalize(), tall = MULTI ? TOPZ * 1.5 : 0, dist = Math.max(63 * K, SPAN * 0.55 / Math.tan(hfov() / 2), SPAN * 0.5 / Math.tan(camera.fov * Math.PI / 360), tall / Math.tan(camera.fov * Math.PI / 360));
     const mid = C3.clone(); if (MULTI) mid.y = TOPZ * 0.33;
     flyTo(mid.clone().addScaledVector(dir, dist), mid); pressView('vDoll'); hud();
   }
   function topDown() {
-    exitWalk(); view = { kind: 'top' }; B.ceilings.visible = false; fill.intensity = 0; camera.fov = 40; camera.updateProjectionMatrix(); setOrbit(true);
+    exitWalk(); view = { kind: 'top' }; B.ceilings.visible = false; if (B.roof) B.roof.visible = false; fill.intensity = 0; camera.fov = 40; camera.updateProjectionMatrix(); setOrbit(true);
     const h = Math.max(82 * K, H.W * 0.55 / Math.tan(hfov() / 2), H.D * 0.55 / Math.tan(camera.fov * Math.PI / 360));
     flyTo(new T.Vector3(C3.x, h, C3.z + 0.5), C3.clone()); pressView('vTop'); hud();
   }
   function outside() {
-    exitWalk(); view = { kind: 'out' }; B.ceilings.visible = false; fill.intensity = 0; camera.fov = 40; camera.updateProjectionMatrix(); setOrbit(true);
+    exitWalk(); view = { kind: 'out' }; B.ceilings.visible = false; if (B.roof) B.roof.visible = true; fill.intensity = 0; camera.fov = 40; camera.updateProjectionMatrix(); setOrbit(true);
     flyTo(new T.Vector3(C3.x - 26 * K, 9 + (MULTI ? TOPZ * 0.8 : 0), C3.z + 52 * K * (MULTI ? 1 + TOPZ / 60 : 1)), new T.Vector3(C3.x, 3 + (MULTI ? TOPZ * 0.3 : 0), C3.z)); pressView('vOut'); hud();
   }
   function roomView(id, wallKey) {
@@ -370,7 +370,7 @@
     if (MULTI && (t.s.level || 0) > shownTo) showLevels(t.s.level);
     const ext = t.kind === 'siding', v = ext ? B.surfaceView(t.s) : clearView(t, B.surfaceView(t.s));
     view = { kind: ext ? 'out' : 'wall', room: t.room, key };
-    B.ceilings.visible = !ext;
+    B.ceilings.visible = !ext; if (B.roof) B.roof.visible = ext;
     camera.fov = ext ? 45 : insideFov; camera.updateProjectionMatrix(); setOrbit(false);
     controls.minDistance = 0.5; controls.maxDistance = ext ? 80 : v.dist + 4;
     if (!ext) { fill.position.copy(v.eye).setY(6.5); fill.intensity = 0.35; } else fill.intensity = 0;
@@ -533,7 +533,7 @@
           ${walls.map(rowHTML).join('')}${rowHTML(TARGETS['C:' + id])}${items.map(itemHTML).join('')}
         </div></details>`;
     }).join('');
-    $('#houseList').innerHTML = ['trim', 'doors', 'extdoors', 'exttrim'].map(k => rowHTML(TARGETS[k])).join('') +
+    $('#houseList').innerHTML = ['trim', 'doors', 'extdoors', 'exttrim'].concat(H.roof ? ['roof'] : []).map(k => rowHTML(TARGETS[k])).join('') +
       Object.values(TARGETS).filter(t => t.kind === 'siding').map(rowHTML).join('');
   }
   document.querySelector('.rooms').addEventListener('click', e => {

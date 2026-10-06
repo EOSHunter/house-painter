@@ -21,7 +21,7 @@ function build(H, R, opts = {}) {
   const std = (hex, rough = 0.6, metal = 0, extra = {}) => new T.MeshStandardMaterial(Object.assign({ color: lin(hex), roughness: rough, metalness: metal }, extra));
 
   // ---------------------------------------------------------------- paintable materials (one per key)
-  const DEFAULTS = { wall: '#F1EFEA', ceiling: '#F5F4F0', trim: '#F6F6F3', exttrim: '#F4F4F0', doors: '#F3F3EF', extdoors: '#F3F3EF', siding: '#E9E8E2' };
+  const DEFAULTS = { wall: '#F1EFEA', ceiling: '#F5F4F0', trim: '#F6F6F3', exttrim: '#F4F4F0', doors: '#F3F3EF', extdoors: '#F3F3EF', siding: '#E9E8E2', roof: '#5E5A57' };
   const ITEM = {};                                           // the house's paintable items (cabinet runs, special doors)
   for (const it of H.items) { ITEM[it.key] = it; DEFAULTS[it.key] = it.default || (it.kind === 'door' ? '#F3F3EF' : '#F1F0EC'); }
   const mats = opts.mats || {};                              // shared between floors, so one paint colour covers them all
@@ -33,20 +33,36 @@ function build(H, R, opts = {}) {
     if (/^EXT\d*-/.test(key)) return DEFAULTS.siding;
     return DEFAULTS.wall;
   }
+  // the relief of the siding: lap boards, board and batten, shingles or stucco, drawn once on a canvas that is a few feet across (box UVs are in feet)
+  const sidingTex = {};
+  function sidingTexture() {
+    const sd = H.siding; if (!sd || sd.profile === 'plain') return null;
+    const k = sd.profile + sd.exposure; if (sidingTex[k]) return sidingTex[k];
+    const PX = 64, size = sd.profile === 'shingle' ? 3 : 4, c = document.createElement('canvas'); c.width = c.height = size * PX;
+    const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+    const e = sd.exposure * PX;
+    if (sd.profile === 'lap') for (let y = 0; y < c.height; y += e) { g.fillStyle = 'rgba(60,50,40,0.30)'; g.fillRect(0, y, c.width, 3); g.fillStyle = 'rgba(60,50,40,0.12)'; g.fillRect(0, y + 3, c.width, 4); }
+    else if (sd.profile === 'board') for (let x = 0; x < c.width; x += e) { g.fillStyle = 'rgba(60,50,40,0.28)'; g.fillRect(x, 0, 3, c.height); g.fillStyle = 'rgba(60,50,40,0.10)'; g.fillRect(x + 3, 0, 3, c.height); }
+    else if (sd.profile === 'shingle') { let seed = 11; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647), w = 0.5 * PX; for (let r = 0, y = 0; y < c.height; r++, y += e) for (let x = -(r % 2) * w / 2 - rnd() * 6; x < c.width; x += w) { g.fillStyle = `rgba(60,50,40,${0.04 + rnd() * 0.12})`; g.fillRect(x, y, w, e); g.fillStyle = 'rgba(60,50,40,0.30)'; g.fillRect(x, y, 2, e); g.fillRect(x, y + e - 3, w, 3); } }
+    else { let seed = 5; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647); for (let i = 0; i < 9000; i++) { g.fillStyle = `rgba(60,50,40,${rnd() * 0.10})`; g.fillRect(rnd() * c.width, rnd() * c.height, 2 + rnd() * 3, 2 + rnd() * 3); } }
+    const t = new T.CanvasTexture(c); t.wrapS = t.wrapT = T.RepeatWrapping; t.repeat.set(1 / size, 1 / size); t.anisotropy = 8; t.encoding = T.sRGBEncoding;
+    return (sidingTex[k] = t);
+  }
   function material(key) {
     if (!mats[key]) {
       const sheen = key.startsWith('C:') ? 'flat' : (/^(trim|exttrim|doors|extdoors)$/.test(key) || ITEM[key]?.kind === 'door' ? 'semigloss' : (ITEM[key] || partGroup(key) ? 'satin' : 'eggshell'));
       const m = std(defaultHex(key), SHEEN[sheen]);
       m.userData.key = key;
+      if (/^EXT\d*-/.test(key)) { const t = sidingTexture(); if (t) { m.map = t; m.bumpMap = t; m.bumpScale = 1.2; m.userData.baseMap = t; } }     // the siding profile shows through the paint
       mats[key] = m;
     }
     return mats[key];
   }
   function setPaint(key, hex, sheen, woodId) {
     const m = material(key);
-    const tex = woodId && WOODS[woodId] ? woodTexture(woodId) : null;
+    const wood = woodId && WOODS[woodId] ? woodTexture(woodId) : null, tex = wood || m.userData.baseMap || null;
     if (m.map !== tex) { m.map = tex; m.needsUpdate = true; }
-    m.color.copy(tex ? new T.Color(0xffffff) : lin(hex || defaultHex(key)));     // wood: the texture carries the colour
+    m.color.copy(wood ? new T.Color(0xffffff) : lin(hex || defaultHex(key)));     // wood: the texture carries the colour; siding: the paint tints its relief
     m.roughness = SHEEN[sheen] ?? m.roughness;
   }
 
@@ -128,6 +144,7 @@ function build(H, R, opts = {}) {
   // ---------------------------------------------------------------- helpers
   const root = new T.Group(), ceilings = new T.Group(), pickables = [];
   root.add(ceilings);
+  const roofGroup = new T.Group(); roofGroup.visible = false; root.add(roofGroup);          // roof and gable ends: shown from outside
   function box(x0, y0, z0, x1, y1, z1, mat, parent = root) {
     if (x1 < x0) [x0, x1] = [x1, x0]; if (y1 < y0) [y0, y1] = [y1, y0]; if (z1 < z0) [z0, z1] = [z1, z0];
     if (x1 - x0 < 1e-4 || y1 - y0 < 1e-4 || z1 - z0 < 1e-4) return null;
@@ -593,6 +610,19 @@ function build(H, R, opts = {}) {
         yb(0.12, 0.2, bx1 - 0.35, bx1 - 0.3, 3.0, 4.2, M.black);
         break;
       }
+      case 'porch': {                                                   // a deck with posts and a sloping roof; its back is against the house
+        const F = FX.frame(f), zE = f.eave ?? 7.4, zA = f.attach ?? Math.max(zE + 0.9, CEIL - 0.7), so = 0.5, of = 0.6;
+        lbox(F, 0, 0, -0.9, F.P, F.Q, -0.02, M.deck);
+        const nPost = Math.max(2, f.posts ?? Math.ceil(F.Q / 7) + 1), trimM = material('exttrim');
+        for (let i = 0; i < nPost; i++) { const q = 0.1 + (F.Q - 0.5) * i / (nPost - 1); pick(lbox(F, F.P - 0.5, q, -0.02, F.P - 0.1, q + 0.4, zE - 0.4, trimM), 'exttrim'); }
+        pick(lbox(F, F.P - 0.5, 0, zE - 0.4, F.P - 0.1, F.Q, zE, trimM), 'exttrim');
+        if (f.roof !== false) {
+          const zAtP = p => zA + (zE - zA) * p / (F.P - 0.3), pt = (p, q) => { const [x, y] = F.pt(p, q); return [x, y, zAtP(p) + 0.2]; };
+          const m = slabFromPoly([pt(0, -so), pt(0, F.Q + so), pt(F.P - 0.3 + of, F.Q + so), pt(F.P - 0.3 + of, -so)], [0, 0, -0.25], [material('roof'), trimM, trimM]);
+          m.userData.keys = ['roof', 'exttrim', 'exttrim']; roofGroup.add(m); pickables.push(m);
+        }
+        break;
+      }
       case 'stairs': {                                                  // a straight flight: solid steps, each rising from the floor, the top one level with the floor above
         const F = FX.frame(f), rise = f.rise ?? (CEIL + 0.9), n = Math.max(2, Math.round(rise / 0.6)), rh = rise / n, tr = F.P / n;
         for (let i = 0; i < n; i++) lbox(F, tr * i, 0, 0, tr * (i + 1), F.Q, rh * (i + 1), M.stair);
@@ -670,6 +700,30 @@ function build(H, R, opts = {}) {
     else if (fl.texture) loadFloorTexture(fl.texture, onReady);
   }
 
+  // ---------------------------------------------------------------- roof
+  // A polygon with thickness: its top face, its underside (dropped by `off`, a plan vector in feet) and its edges, as three material groups.
+  function slabFromPoly(pts, off, mats3) {
+    const P3 = q => [q[0], q[2], q[1]], top = pts.map(P3), bot = pts.map(q => P3([q[0] + off[0], q[1] + off[1], q[2] + off[2]]));
+    const pos = [], uv = [], n = pts.length, groups = [];
+    const tri = (a, b, c, g0) => { pos.push(...a, ...b, ...c); uv.push(a[0], a[2], b[0], b[2], c[0], c[2]); };
+    let start = 0;
+    for (let i = 1; i < n - 1; i++) tri(top[0], top[i], top[i + 1]); groups.push([start, pos.length / 3 - start, 0]); start = pos.length / 3;
+    for (let i = 1; i < n - 1; i++) tri(bot[0], bot[i + 1], bot[i]); groups.push([start, pos.length / 3 - start, 1]); start = pos.length / 3;
+    for (let i = 0; i < n; i++) { const j = (i + 1) % n; tri(top[i], bot[i], bot[j]); tri(top[i], bot[j], top[j]); } groups.push([start, pos.length / 3 - start, 2]);
+    const g = new T.BufferGeometry(); g.setAttribute('position', new T.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new T.Float32BufferAttribute(uv, 2));
+    g.computeVertexNormals(); groups.forEach(([s, c, m]) => g.addGroup(s, c, m));
+    const m = new T.Mesh(g, mats3); m.castShadow = m.receiveShadow = true; return m;
+  }
+  if (H.roof && !opts.upper) {
+    const rf = H.roof, roofMat = material('roof'), trim = material('exttrim');
+    for (const pl of rf.planes) { const m = slabFromPoly(pl, [0, 0, -rf.thick], [roofMat, trim, trim]); m.userData.keys = ['roof', 'exttrim', 'exttrim']; roofGroup.add(m); pickables.push(m); }
+    const E = H.E;
+    for (const gb of rf.gables) {                                           // the wall under a roof end, in the colour of the siding it sits on
+      const off = { N: [0, E, 0], S: [0, -E, 0], E: [-E, 0, 0], W: [E, 0, 0] }[gb.side], skin = gb.key ? material(gb.key) : M.cut;
+      const m = slabFromPoly(gb.pts, off, [skin, M.cut, M.cut]); m.userData.keys = [gb.key, null, null]; roofGroup.add(m); pickables.push(m);
+    }
+  }
+
   // ---------------------------------------------------------------- picking + camera helpers
   function keyAt(hit) {
     const ud = hit.object.userData;
@@ -690,7 +744,7 @@ function build(H, R, opts = {}) {
   }
 
   return {
-    root, ceilings, pickables, material, setPaint, defaultHex, keyAt, roomInfo, surfaceView, loadFloorTexture, loadFloor, SHEEN, cabParts, WOODS, woodSwatch,
+    root, ceilings, roof: roofGroup, pickables, material, setPaint, defaultHex, keyAt, roomInfo, surfaceView, loadFloorTexture, loadFloor, SHEEN, cabParts, WOODS, woodSwatch,
     center: new T.Vector3(H.W / 2, 0, H.D / 2), elevation: opts.elevation || 0
   };
 }

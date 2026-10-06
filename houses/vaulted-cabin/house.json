@@ -3,7 +3,7 @@
  "version": 1,
  "id": "vaulted-cabin",
  "name": "Vaulted Cabin",
- "subtitle": "Example with sloped ceilings · a vault, a shed ceiling and a tall room",
+ "subtitle": "Example with sloped ceilings, a roof and a porch · a vault, a shed ceiling and a tall room",
  "units": "ft",
  "W": 36,
  "D": 24,
@@ -374,6 +374,14 @@
    "y": 20.5,
    "w": 4,
    "h": 3
+  },
+  {
+   "k": "porch",
+   "front": "s",
+   "x": 6,
+   "y": 24,
+   "w": 7,
+   "h": 5.5
   }
  ],
  "plan": {
@@ -414,5 +422,15 @@
     ]
    }
   ]
+ },
+ "roof": {
+  "type": "gable",
+  "pitch": 7,
+  "overhang": 1.5,
+  "ridge": "x"
+ },
+ "siding": {
+  "profile": "lap",
+  "exposure": 0.5
  }
 }
