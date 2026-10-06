@@ -35,6 +35,19 @@
     if ([f.x, f.y, f.w, f.h].every(v => typeof v === 'number')) return [f.x, f.y, f.x + f.w, f.y + f.h];
     return null;
   }
+  // A rectangular fixture may also be turned about its centre by `rot` degrees (clockwise on the plan), to follow an angled wall.
+  // footprint() stays the rectangle before the turn; outline() and bounds() are what it really covers.
+  const ROTATABLE = new Set(['box', 'upper', 'range', 'front', 'shelf', 'pumps', 'sink2', 'stairs', 'porch', 'tub', 'shower', 'splash', 'deck', 'steps']);
+  const rotatable = f => ROTATABLE.has(f.k) && [f.x, f.y, f.w, f.h].every(v => typeof v === 'number');
+  function outline(f) {
+    const r = footprint(f); if (!r) return null;
+    const a = (f.rot || 0) * Math.PI / 180, c = Math.cos(a), s = Math.sin(a), cx = (r[0] + r[2]) / 2, cy = (r[1] + r[3]) / 2;
+    return [[r[0], r[1]], [r[2], r[1]], [r[2], r[3]], [r[0], r[3]]].map(([x, y]) => [cx + (x - cx) * c - (y - cy) * s, cy + (x - cx) * s + (y - cy) * c]);
+  }
+  function bounds(f) {
+    const o = outline(f); if (!o || !f.rot) return footprint(f);
+    const xs = o.map(q => q[0]), ys = o.map(q => q[1]); return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+  }
   // move / resize a fixture so its footprint is rect (the editor's only way of changing geometry)
   function place(f, [x0, y0, x1, y1]) {
     const r4 = v => Math.round(v * 1e4) / 1e4;
@@ -162,5 +175,5 @@
   const EDITABLE = new Set(['box', 'upper', 'range', 'toilet', 'tub', 'ftub', 'stairs', 'porch', 'shower', 'front', 'heater', 'shelf', 'pumps', 'sink2', 'oval', 'splash', 'barn', 'steps', 'deck']);
   const editable = f => EDITABLE.has(f.k) && f.st !== 'removed' && !!footprint(f);
 
-  return { DEFAULT_FRONT, CATALOG, facing, footprint, place, turn, spin, resize, high, layer, width, depth, frame, cabinetLayout, create, describe, editable };
+  return { DEFAULT_FRONT, CATALOG, facing, footprint, outline, bounds, rotatable, place, turn, spin, resize, high, layer, width, depth, frame, cabinetLayout, create, describe, editable };
 });

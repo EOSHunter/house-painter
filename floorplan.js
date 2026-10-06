@@ -255,7 +255,7 @@
       H.tints.forEach(r=>{ o+=`<rect class="f-${r.k}" x="${X(r.x0)}" y="${Y(r.y0)}" width="${(r.x1-r.x0)*S}" height="${(r.y1-r.y0)*S}"/>`; });
     }
     // fixtures (outside stuff first so walls sit on top)
-    H.fixtures.forEach(f=>{ if(!vis(f.st)) return; o+=`<g class="${stc(f.st)}-fx">${fxSVG(f)}</g>`; });
+    H.fixtures.forEach(f=>{ if(!vis(f.st)) return; const rt=f.rot&&typeof f.x==='number'&&typeof f.w==='number' ? ` transform="rotate(${f.rot} ${X(f.x+f.w/2)} ${Y(f.y+f.h/2)})"` : ''; o+=`<g class="${stc(f.st)}-fx"${rt}>${fxSVG(f)}</g>`; });
     // walls
     H.walls.forEach(w=>{ if(!vis(w.status)) return; o+=wallSVG(w); });
     H.slants.forEach(sl=>{ if(!vis(sl.status)) return; o+=slantSVG(sl); });

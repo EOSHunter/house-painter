@@ -279,7 +279,16 @@ def floor_material():
     return m
 
 # ----------------------------------------------------------------------------- geometry builder
-def P(x, y, z): return Vector((x * FT, -y * FT, (z + ZOFF) * FT))
+ROT = None                                                  # (cx, cy, radians): the fixture being built is turned about its centre
+def set_rot(f):
+    global ROT
+    if f and f.get('rot') and all(isinstance(f.get(k), (int, float)) for k in ('x', 'y', 'w', 'h')):
+        ROT = (f['x'] + f['w'] / 2, f['y'] + f['h'] / 2, math.radians(f['rot']))
+    else: ROT = None
+def P(x, y, z):
+    if ROT:
+        cx, cy, a = ROT; dx, dy = x - cx, y - cy; c, s = math.cos(a), math.sin(a); x, y = cx + dx * c - dy * s, cy + dx * s + dy * c
+    return Vector((x * FT, -y * FT, (z + ZOFF) * FT))
 
 class Obj:
     """One Blender object: a bmesh with per-face materials and UVs in feet."""
@@ -656,6 +665,7 @@ def basin(target, x, y, rx, ry, z):
 def build_fixtures():
     fx, ap = obj('Fixtures', 'Fixtures'), obj('Appliances', 'Appliances')
     for f in H['fixtures']:
+        set_rot(f)
         if f.get('st') == 'removed': continue
         k = f['k']
         x0, y0 = f.get('x', 0), f.get('y', 0); x1, y1 = x0 + f.get('w', 0), y0 + f.get('h', 0)

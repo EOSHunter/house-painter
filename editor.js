@@ -536,7 +536,7 @@
   function fxSVG(f, k, on) {
     const r = FX.footprint(f); if (!r) return '';
     const fc = FX.facing(f), hi = FX.high(f), thin = f.k === 'splash';
-    let h = `<g class="fxs${hi ? ' hi' : ''}${on ? ' on' : ''}${thin ? ' thin' : ''}" data-kind="fixture" data-uid="${f.uid}">${fxShape(r, f, k)}${fc && !thin ? fxFront(r, fc) : ''}`;
+    let h = `<g class="fxs${hi ? ' hi' : ''}${on ? ' on' : ''}${thin ? ' thin' : ''}" data-kind="fixture" data-uid="${f.uid}"${f.rot ? ` transform="rotate(${f.rot} ${N((r[0] + r[2]) / 2)} ${N((r[1] + r[3]) / 2)})"` : ''}>${fxShape(r, f, k)}${fc && !thin ? fxFront(r, fc) : ''}`;
     const w = r[2] - r[0], d = r[3] - r[1];
     if (!thin && Math.min(w, d) / k > 22 && w / k > 44) h += `<text class="fxlabel" x="${N((r[0] + r[2]) / 2)}" y="${N((r[1] + r[3]) / 2 + 3 * k)}" font-size="${N(9 * k)}">${esc(FX.describe(f))}</text>`;
     return h + '</g>';
@@ -621,7 +621,7 @@
       } else if (sel.kind === 'start' && S.keep.start) {
         const st = S.keep.start, d = startDir(st.yaw || 0);
         h += handle(st.x + d[0] * 26 * k, st.y + d[1] * 26 * k, k, 'data-what="start" data-end="yaw"');
-      } else if (sel.kind === 'fixture' && it && SIZE_KEYS.includes(it.k)) {
+      } else if (sel.kind === 'fixture' && it && SIZE_KEYS.includes(it.k) && !it.rot) {
         const r = FX.footprint(it), mx = (r[0] + r[2]) / 2, my = (r[1] + r[3]) / 2;
         h += handle(r[0], my, k, `data-uid="${it.uid}" data-what="fxedge" data-end="w"`) + handle(r[2], my, k, `data-uid="${it.uid}" data-what="fxedge" data-end="e"`)
           + handle(mx, r[1], k, `data-uid="${it.uid}" data-what="fxedge" data-end="n"`) + handle(mx, r[3], k, `data-uid="${it.uid}" data-what="fxedge" data-end="s"`);
@@ -666,7 +666,8 @@
       h += `<rect class="ghost${g.bad ? ' bad' : ''}" x="${N(q[0])}" y="${N(q[1])}" width="${N(q[2])}" height="${N(q[3])}" stroke-width="1.2"/>`;
       h += hz ? dimText((g.a + g.b) / 2, r.y0 - 10 * k, fmt(g.b - g.a), k) : dimText(r.x0 - 10 * k, (g.a + g.b) / 2, fmt(g.b - g.a), k, true);
     } else if (g && g.kind === 'fixture') {
-      h += fxShape(g.rect, g.f, k, 'ghostfx' + (g.bad ? ' bad' : '')) + (g.front ? fxFront(g.rect, g.front).replace('class="front"', 'class="front ghostfx"') : '');
+      const gr = g.f.rot ? `<g transform="rotate(${g.f.rot} ${N((g.rect[0] + g.rect[2]) / 2)} ${N((g.rect[1] + g.rect[3]) / 2)})">` : '<g>';
+      h += gr + fxShape(g.rect, g.f, k, 'ghostfx' + (g.bad ? ' bad' : '')) + (g.front ? fxFront(g.rect, g.front).replace('class="front"', 'class="front ghostfx"') : '') + '</g>';
       const w = g.rect[2] - g.rect[0], d = g.rect[3] - g.rect[1];
       h += dimText((g.rect[0] + g.rect[2]) / 2, g.rect[1] - 8 * k, fmt(FX.width(g.f)) + ' \u00d7 ' + fmt(FX.depth(g.f)), k);
       void w; void d;
@@ -1503,12 +1504,29 @@
     : front === 'e' ? [face, ac - W / 2, face + D, ac + W / 2] : [face - D, ac - W / 2, face, ac + W / 2];
   const rectsHit = (a, b) => Math.min(a[2], b[2]) - Math.max(a[0], b[0]) > 0.02 && Math.min(a[3], b[3]) - Math.max(a[1], b[1]) > 0.02;
   const fxOverlap = (f, skip) => { const r = FX.footprint(f); return fxs().some(g => g.uid !== skip && FX.editable(g) && FX.layer(g) === FX.layer(f) && rectsHit(r, FX.footprint(g))); };
+  // the angled wall face nearest the cursor, for putting a fixture square to it: where its back goes, which way it faces, and the turn
+  function angledFace(p, reach) {
+    let best = null;
+    for (const w of live()) {
+      if (!isL(w) || isArc(w)) continue;
+      const [t, o] = toLocal(w, p); if (t < -0.3 || t > w.b + 0.3) continue;
+      const side = o >= 0 ? 1 : -1, dist = Math.abs(Math.abs(o) - w.t / 2);
+      if (dist > reach || (best && dist >= best.dist)) continue;
+      const n = lineN(w), nx = side * n[0], ny = side * n[1];
+      best = { w, t, side, dist, n: [nx, ny], rot: Math.atan2(-nx, ny) * 180 / Math.PI };
+    }
+    return best;
+  }
   function fixtureGhost(p, e) {
     const cat = catOf(fxItem); if (!cat) return null;
     const [W, D] = cat.size, free = !!(e && e.altKey), face = hasFront(cat);
-    const wf = !cat.free && !free ? wallFace(p, 2.4) : null;
-    let front, rect;
-    if (wf) {
+    let wf = !cat.free && !free ? wallFace(p, 2.4) : null;
+    const af = !cat.free && !free && FX.rotatable(FX.create(cat.id, 's', [0, 0, W, D])) ? angledFace(p, 2.4) : null;
+    let front, rect, rot = 0;
+    if (af && (!wf || af.dist < wf.dist)) {                                  // square to an angled wall: its back on the face, turned to match
+      const t = Math.max(0, Math.min(af.w.b, Math.round(af.t / GRID) * GRID)), base = fromLocal(af.w, t, af.side * af.w.t / 2), cx = base[0] + af.n[0] * D / 2, cy = base[1] + af.n[1] * D / 2;
+      front = 's'; rect = [cx - W / 2, cy - D / 2, cx + W / 2, cy + D / 2]; rot = af.rot;
+    } else if (wf) {
       const axis = wf.w.axis === 'h' ? 'x' : 'y', ac = along(wf.w.axis, p);
       const start = snapSpan(ac - W / 2, W, fxEdges(axis), free);
       front = wf.front;
@@ -1520,6 +1538,7 @@
       rect = [x0, y0, x0 + w, y0 + h];
     }
     const f = FX.create(cat.id, front, rect), r = FX.footprint(f);
+    if (rot) f.rot = r4(rot);
     return { kind: 'fixture', f, rect: r, front: face ? front : null, bad: fxOverlap(f), cat };
   }
   // the paint group a new cabinet joins: the house's existing group of that kind in the same room, else a new one
@@ -1684,6 +1703,7 @@
       title = 'Fixture';
       h += `<h3>${esc(FX.describe(fx))}</h3><p class="sub">${rm ? 'In ' + esc(rm.name) : 'Outside any room'}</p>`;
       if (d) h += field('Front faces', 'fx_face', d, { select: [['n', 'North (up)'], ['e', 'East (right)'], ['s', 'South (down)'], ['w', 'West (left)']] });
+      if (FX.rotatable(fx)) h += field('Turned (degrees, clockwise)', 'fx_rot', fx.rot || 0, { type: 'number' }) + (fx.rot ? '<p class="note">Turned about its centre, to sit square to an angled wall. Drag it to move it; turn it back to 0 to resize with the handles.</p>' : '');
       if (sized) h += `<div class="pair">${field(d ? 'Width (across the front)' : 'Width', 'fx_w', FX.width(fx), { len: 1 })}${field('Depth', 'fx_d', FX.depth(fx), { len: 1 })}</div>`;
       if (fx.k === 'upper') h += `<div class="pair">${field('Bottom at', 'fx_z0', fx.z0, { len: 1 })}${field('Top at', 'fx_z1', fx.z1, { len: 1 })}</div>`;
       if (fx.k === 'box' && fx.paint) {
@@ -1939,6 +1959,7 @@
     }
     if (sel && sel.kind === 'fixture' && it) {
       const g = it, r = FX.footprint(g);
+      if (f === 'fx_rot') { const n = +v; if (!isFinite(n) || !FX.rotatable(g)) return false; const d = ((n % 360) + 360) % 360; if (d) g.rot = r4(d); else delete g.rot; return; }
       if (f === 'fx_face') { FX.turn(g, v); return; }
       if (f === 'fx_w' || f === 'fx_d') {
         if (!(v >= 0.25)) return false;

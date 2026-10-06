@@ -119,8 +119,8 @@ Walls at any angle: a cut corner, a bay window, a diagonal partition. The exampl
 - [x] **Paint Studio, floor plan and walkthrough:** angled walls with their trim, windows and doors, painted and clicked like any other; the walkthrough does not walk through them.
 - [x] **Blender:** the add-on and `build_house.py` build them with the same materials.
 - [x] **Plan editor:** an **Angled** switch (or `Shift`) draws walls that snap to 15°, to wall ends and to crossings; ends and whole walls can be dragged, their length and angle typed; doors and windows can be put in them; **Room** and **Find all rooms** outline spaces against them.
-- [ ] Fixtures (cabinets, appliances) stay square to the plan and cannot back onto an angled wall.
-- [ ] A free-standing angled wall inside one room (a peninsula) needs a room outline made to follow it.
+- [x] **Fixtures on angled walls:** a fixture can be turned about its centre (`rot`), and the plan editor turns it square to an angled wall when you put it against one. Cabinets and appliances follow the cut corner of the example house.
+- [x] A free-standing angled wall inside one room works: both of its faces belong to the room.
 - [x] **Curved walls** (arcs): built as short straight walls closed up at the joints; one paint surface per face of a curve; windows and doors in them; drawn in the plan editor (click both ends, then bend). The example is `houses/round-cottage/`. Ellipses and splines are not supported.
 - [ ] A curve that bends into another curve with no corner (an S-shape) is two curves today.
 
@@ -156,5 +156,5 @@ Walls at any angle: a cut corner, a bay window, a diagonal partition. The exampl
 
 ## Known limits today
 
-- Walls are straight. They can run at any angle, but the tracer only finds horizontal and vertical ones, and fixtures stay square to the plan. Ceilings are flat, at one height for the whole house, and there is one storey.
+- Walls are straight or circular arcs. They can run at any angle. Ceilings are flat, at one height for the whole house, and there is one storey.
 - Saved colours are tied to surface IDs (such as `BR1-N`). If walls change in a way that renames surfaces, the colours on the renamed walls are lost.

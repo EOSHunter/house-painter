@@ -96,3 +96,18 @@ test('the newer catalogue entries are named, sized and kept apart by layer', () 
   assert.deepEqual(F.footprint(t), [0, 0, 5.5, 2.8]);
   F.resize(t, 6, 3); assert.deepEqual(F.footprint(t), [0, 0, 6, 3]);
 });
+
+test('a rectangular fixture can be turned about its centre, to sit square to an angled wall', () => {
+  const f = F.create('base', 's', [0, 0, 4, 2]);
+  assert.equal(F.rotatable(f), true);
+  assert.deepEqual(F.bounds(f), [0, 0, 4, 2], 'not turned: its footprint');
+  f.rot = 90;
+  const o = F.outline(f), c = [2, 1];
+  for (const q of o) assert.ok(Math.abs(Math.hypot(q[0] - c[0], q[1] - c[1]) - Math.hypot(2, 1)) < 1e-9, 'corners stay the same distance from the centre');
+  const b = F.bounds(f);
+  close(b, [1, -1, 3, 3], 'a quarter turn swaps width and depth about the centre');
+  assert.deepEqual(F.footprint(f), [0, 0, 4, 2], 'footprint is the rectangle before the turn, so moving and resizing work as before');
+  f.rot = 45;
+  const d = F.bounds(f); assert.ok(Math.abs((d[2] - d[0]) - (4 + 2) / Math.SQRT2) < 1e-9);
+  assert.equal(F.rotatable(F.create('toilet', 'w', [0, 0, 1.8, 1.2])), false, 'a toilet is turned with its direction, not a free angle');
+});

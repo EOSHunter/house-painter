@@ -82,7 +82,7 @@ A wall that is not horizontal or vertical is written as a centre line and a thic
 - A room that touches a curve is written as an outline (`polys`) whose corners follow it: put a point on the curve for every joint, or let the plan editor do it.
 - Limits: curves are circle arcs (no ellipses or splines), and the room outline you write for a curve is only as round as the corners you give it.
 
-- Limits: fixtures (cabinets, appliances) stay square to the plan and cannot sit along an angled wall, though they can stand beside one; an angled wall inside one room (a peninsula) needs the room split by an outline that follows it; walls are straight (no curves).
+- A fixture can be turned to sit square to an angled wall: give it `"rot"`, degrees clockwise about its centre (`"x", "y", "w", "h"` are the rectangle before the turn). Boxes, wall cabinets, ranges, front-loaders, shelves and the like can be turned; toilets, basins, round tubs and heaters cannot. The plan editor does this for you when you place one against an angled wall.
 
 **Openings:**
 

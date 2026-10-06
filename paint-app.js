@@ -212,7 +212,7 @@
     }
     for (const f of Hk.fixtures) {
       if (f.st === 'removed') continue;
-      if (['box', 'range', 'front', 'pumps', 'tub', 'ftub', 'shower', 'heater', 'toilet'].includes(f.k)) { const r = FXH.footprint(f); if (r) OBST.push(r); }
+      if (['box', 'range', 'front', 'pumps', 'tub', 'ftub', 'shower', 'heater', 'toilet'].includes(f.k)) { const r = FXH.bounds(f); if (r) OBST.push(r); }
     }
     return { OBST, SLANTS: Hk.slants.filter(S => S.status !== 'removed') };
   });

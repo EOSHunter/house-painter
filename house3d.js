@@ -510,6 +510,7 @@ function build(H, R, opts = {}) {
 
   for (const f of H.fixtures) {
     if (f.st === 'removed') continue;
+    const nBefore = root.children.length;
     const x0 = f.x, y0 = f.y, x1 = f.x + f.w, y1 = f.y + f.h;
     switch (f.k) {
       case 'box': {
@@ -637,6 +638,12 @@ function build(H, R, opts = {}) {
       case 'deck':
         box(x0, y0 + 0.9, -2.0, x1, y1, -0.25, M.deck); box(x0, y0, -2.0, x1, y0 + 0.9, -1.15, M.deck);
         break;
+    }
+    if (f.rot && FX.rotatable(f)) {                                         // turned about its centre (to follow an angled wall): everything just built goes into one turned group
+      const r = FX.footprint(f), cx = (r[0] + r[2]) / 2, cy = (r[1] + r[3]) / 2, grp = new T.Group();
+      grp.position.set(cx, 0, cy); grp.rotation.y = -f.rot * Math.PI / 180;
+      root.children.slice(nBefore).forEach(m => { m.position.x -= cx; m.position.z -= cy; grp.add(m); });
+      root.add(grp);
     }
   }
 
