@@ -198,13 +198,22 @@ def paint_mat(key):
 def floor_material():
     fl = H['floor']
     m = bpy.data.materials.new('Floor_' + re.sub(r'\W+', '_', fl.get('name') or 'Plank')); m.use_nodes = True
-    if not fl.get('texture') or not os.path.exists(os.path.join(HERE, fl['texture'])):   # no plank photo: plain colour
+    img = None
+    tex_ref = fl.get('texture') or ''
+    if fl.get('wood') in WOODS: img = wood_image(fl['wood'])               # a wood species, drawn like the cabinet veneers
+    elif tex_ref.startswith('data:'):                                      # a photo embedded in the house file
+        import base64, tempfile
+        raw = base64.b64decode(tex_ref.split(',', 1)[1]); fd, tmp = tempfile.mkstemp(suffix='.jpg' if 'jpeg' in tex_ref[:30] else '.png'); os.write(fd, raw); os.close(fd)
+        img = bpy.data.images.load(tmp); img.pack()
+    elif tex_ref and os.path.exists(os.path.join(HERE, tex_ref)):
+        img = bpy.data.images.load(os.path.join(HERE, tex_ref)); img.pack()
+    if img is None:                                                        # no plank image: plain colour
         b = m.node_tree.nodes['Principled BSDF']; b.inputs['Base Color'].default_value = lin(fl.get('color') or '#B09672')
         b.inputs['Roughness'].default_value = 0.42; return m
+    photo = not fl.get('wood')
     nt = m.node_tree; nt.nodes.clear(); N = nt.nodes.new
     out = N('ShaderNodeOutputMaterial'); bsdf = N('ShaderNodeBsdfPrincipled'); nt.links.new(bsdf.outputs['BSDF'], out.inputs['Surface'])
     pw, pl = fl['plankW'] * FT, fl['plankL'] * FT
-    img = bpy.data.images.load(os.path.join(HERE, fl['texture'])); img.pack()
     ratio = img.size[1] / img.size[0]
     geo = N('ShaderNodeNewGeometry'); sep = N('ShaderNodeSeparateXYZ'); nt.links.new(geo.outputs['Position'], sep.inputs['Vector'])
     comb = N('ShaderNodeCombineXYZ'); nt.links.new(sep.outputs['X'], comb.inputs['X']); nt.links.new(sep.outputs['Y'], comb.inputs['Y'])
@@ -222,7 +231,7 @@ def floor_material():
     nt.links.new(bw.outputs['Val'], v2.inputs[0]); nt.links.new(v1.outputs['Value'], v2.inputs[2])
     uvc = N('ShaderNodeCombineXYZ'); nt.links.new(u.outputs['Value'], uvc.inputs['X']); nt.links.new(v2.outputs['Value'], uvc.inputs['Y'])
     tex = N('ShaderNodeTexImage'); tex.image = img; tex.extension = 'REPEAT'; nt.links.new(uvc.outputs['Vector'], tex.inputs['Vector'])
-    hs = N('ShaderNodeHueSaturation'); hs.inputs['Value'].default_value = 1.28; nt.links.new(tex.outputs['Color'], hs.inputs['Color'])
+    hs = N('ShaderNodeHueSaturation'); hs.inputs['Value'].default_value = 1.28 if photo else 1.0; nt.links.new(tex.outputs['Color'], hs.inputs['Color'])
     mix = N('ShaderNodeMix'); mix.data_type = 'RGBA'; mix.blend_type = 'MULTIPLY'; mix.inputs[0].default_value = 1.0
     nt.links.new(hs.outputs['Color'], mix.inputs[6]); nt.links.new(grooves.outputs['Color'], mix.inputs[7])
     nt.links.new(mix.outputs[2], bsdf.inputs['Base Color']); bsdf.inputs['Roughness'].default_value = 0.42
@@ -400,32 +409,56 @@ def build_door(w, horiz, o):
         k = hh + dr * (L - 0.28) + pp * (sgn * (t2 + 0.05))
         hw.box(k.x - 0.045, k.y - 0.045, 2.95, k.x + 0.045, k.y + 0.045, 3.05, M['brass'])
 
-# ----------------------------------------------------------------------------- cabinets, fixtures (same numbering as house3d.js)
+# ----------------------------------------------------------------------------- cabinets, fixtures (same frames and numbering as house3d.js)
+# Fixtures are built in their own frame (fixtures.js): p = depth from the back to the front, q = across the front.
+DEFAULT_FRONT = {'app': 'e', 'range': 'e', 'front': 'e', 'shower': 'n', 'sink2': 's', 'barn': 's'}
+def facing(f):
+    if f['k'] == 'toilet': return f.get('dir', 'w')
+    return f.get('front') or DEFAULT_FRONT.get('app' if f['k'] == 'box' and f.get('c') == 'app' else f['k'])
+
+class Frame:
+    def __init__(self, f):
+        x0, y0, x1, y1 = f['x'], f['y'], f['x'] + f['w'], f['y'] + f['h']
+        self.d = d = facing(f) or 'e'
+        self.swap = d in ('n', 's')
+        self.P, self.Q = (y1 - y0, x1 - x0) if self.swap else (x1 - x0, y1 - y0)
+        self.pt = lambda p, q: (x0 + p, y0 + q) if d == 'e' else (x1 - p, y1 - q) if d == 'w' else (x1 - q, y0 + p) if d == 's' else (x0 + q, y1 - p)
+    def box(self, target, p0, q0, z0, p1, q1, z1, mat):
+        a, b = self.pt(p0, q0), self.pt(p1, q1)
+        target.box(min(a[0], b[0]), min(a[1], b[1]), z0, max(a[0], b[0]), max(a[1], b[1]), z1, mat)
+    def ellipse(self, target, p, q, rp, rq, z0, z1, mat):
+        x, y = self.pt(p, q)
+        target.ellipse(x, y, rq if self.swap else rp, rp if self.swap else rq, z0, z1, mat)
+
 PART_N = {}
 DOOR_PROUD, GAP = 0.045, 0.022
-def cabinet_front(f, z0, z1, drawer):
-    fr = f.get('front')
-    if not fr or not f.get('paint'): return
-    along = fr in ('s', 'n')
-    a0, a1 = (f['x'], f['x'] + f['w']) if along else (f['y'], f['y'] + f['h'])
-    face = f['y'] + f['h'] if fr == 's' else f['y'] if fr == 'n' else f['x'] + f['w'] if fr == 'e' else f['x']
-    out = 1 if fr in ('s', 'e') else -1
-    length = a1 - a0; n = max(1, math.floor(length / 1.5 + 0.5)); dw = length / n
+def cabinet_front(f, z0, z1, counter):
+    """style: 'door-drawer' (a drawer over each door), 'doors', or 'drawers' (a stack of three)."""
+    if not f.get('front') or not f.get('paint'): return
+    F = Frame(f)
+    n = max(1, f.get('doors') or math.floor(F.Q / 1.5 + 0.5)); dw = F.Q / n
+    style = f.get('style') or ('door-drawer' if counter else 'doors')
     cab, hw = obj('Cabinetry', 'Cabinet_Fronts'), obj('Cabinetry', 'Cabinet_Hardware')
-    def slab(b0, b1, zz0, zz1, o0, o1, mat, target):
-        if along: target.box(b0, face + out * o0, zz0, b1, face + out * o1, zz1, mat)
-        else: target.box(face + out * o0, b0, zz0, face + out * o1, b1, zz1, mat)
-    kick = 0.35 if drawer else 0; split = z1 - 0.55 if drawer else z1
+    def slab(q0, q1, zz0, zz1, o0, o1, mat, target): F.box(target, F.P + o0, q0, zz0, F.P + o1, q1, zz1, mat)
+    kick = 0 if style == 'doors' else 0.35; split = z1 - 0.55 if style == 'door-drawer' else z1
     def next_key(kind):
         c = PART_N.setdefault(f['paint'], {'door': 0, 'drawer': 0}); c[kind] += 1; return f"{f['paint']}:{kind}{c[kind]}"
-    if drawer: slab(a0, a1, 0, kick, 0, 0.004, M['reveal'], hw)
-    for i in range(n):
-        b0, b1 = a0 + i * dw + GAP, a0 + (i + 1) * dw - GAP
-        slab(b0, b1, (kick if drawer else z0) + GAP, split - GAP, 0, DOOR_PROUD, paint_mat(next_key('door')), cab)
-        hx = b0 + 0.14 if i % 2 else b1 - 0.14
-        hz = split - 0.75 if drawer else ((z0 + z1) / 2 if z1 - z0 > 4 else z0 + 0.35)
+    if kick: slab(0, F.Q, 0, kick, 0, 0.004, M['reveal'], hw)
+    rev = F.d in ('s', 'w')                                   # numbered west to east / north to south, as on the page
+    for j in range(n):
+        i = n - 1 - j if rev else j
+        b0, b1 = i * dw + GAP, (i + 1) * dw - GAP
+        if style == 'drawers':
+            h = z1 - kick; cuts = (kick, kick + h * 0.38, kick + h * 0.76, z1)
+            for k in (2, 1, 0):
+                slab(b0, b1, cuts[k] + GAP, cuts[k + 1] - GAP, 0, DOOR_PROUD, paint_mat(next_key('drawer')), cab)
+                zc = cuts[k + 1] - 0.28; slab((b0 + b1) / 2 - 0.25, (b0 + b1) / 2 + 0.25, zc - 0.025, zc + 0.025, DOOR_PROUD, DOOR_PROUD + 0.06, M['black'], hw)
+            continue
+        slab(b0, b1, (kick or z0) + GAP, split - GAP, 0, DOOR_PROUD, paint_mat(next_key('door')), cab)
+        hx = b0 + 0.14 if (j % 2 == 1) != rev else b1 - 0.14
+        hz = split - 0.75 if style == 'door-drawer' else ((z0 + z1) / 2 if z1 - z0 > 4 else z0 + 0.35)
         slab(hx - 0.02, hx + 0.02, hz - 0.22, hz + 0.22, DOOR_PROUD, DOOR_PROUD + 0.06, M['black'], hw)
-        if drawer:
+        if style == 'door-drawer':
             slab(b0, b1, split + GAP, z1 - GAP, 0, DOOR_PROUD, paint_mat(next_key('drawer')), cab)
             slab((b0 + b1) / 2 - 0.25, (b0 + b1) / 2 + 0.25, z1 - 0.3, z1 - 0.25, DOOR_PROUD, DOOR_PROUD + 0.06, M['black'], hw)
 
@@ -438,6 +471,15 @@ def counter_top(f, z):
     if all_sides or fr == 'n': y0 -= o
     if all_sides or fr == 's': y1 += o
     obj('Cabinetry', 'Countertops').box(x0, y0, z, x1, y1, z + 0.125, M['counter'])
+
+def sink_in(F, target, z, p0, p1, q0, q1):
+    half = (q1 - q0) / 2
+    for i in range(2): F.box(target, p0, q0 + i * half + 0.07, z, p1, q0 + (i + 1) * half - 0.07, z + 0.006, M['steel'])
+    qm = (q0 + q1) / 2
+    F.ellipse(target, p0 - 0.12, qm, 0.05, 0.05, z, z + 0.6, M['chrome']); F.box(target, p0 - 0.12, qm - 0.03, z + 0.55, p0 + 0.45, qm + 0.03, z + 0.62, M['chrome'])
+
+def basin(target, x, y, rx, ry, z):
+    target.ellipse(x, y, rx, ry, z, z + 0.012, M['porc']); target.ellipse(x, y, rx * 0.78, ry * 0.78, z + 0.004, z + 0.016, M['reveal'])
 
 def build_fixtures():
     fx, ap = obj('Fixtures', 'Fixtures'), obj('Appliances', 'Appliances')
@@ -453,9 +495,17 @@ def build_fixtures():
                 obj('Cabinetry', 'Cabinet_Boxes').box(x0, y0, 0, x1, y1, zt, paint_mat(f['paint']))
                 cabinet_front(f, 0, zt, bool(counter))
                 if counter: counter_top(f, zt)
-            elif f.get('c') == 'app':
-                ap.box(x0, y0, 0, x1, y1, 5.9, M['appwhite']); ap.box(x1, (y0 + y1) / 2 - 0.01, 0.4, x1 + 0.01, (y0 + y1) / 2 + 0.01, 5.8, M['black'])
-                for yy in ((y0 + y1) / 2 - 0.2, (y0 + y1) / 2 + 0.2): ap.box(x1, yy - 0.025, 2.4, x1 + 0.07, yy + 0.025, 4.6, M['steel'])
+                if f.get('front') and (f.get('sink') or f.get('basin')):
+                    F, z = Frame(f), zt + 0.125
+                    if f.get('sink'):
+                        w, d = min(2.4, F.Q - 0.3), min(1.4, F.P - 0.5); sink_in(F, fx, z, 0.3, 0.3 + d, (F.Q - w) / 2, (F.Q + w) / 2)
+                    else:
+                        cx, cy = F.pt(F.P / 2 + 0.05, F.Q / 2); rq, rp = min(0.78, F.Q / 2 - 0.2), min(0.55, F.P / 2 - 0.2)
+                        basin(fx, cx, cy, rq if F.swap else rp, rp if F.swap else rq, z)
+            elif f.get('c') == 'app':                          # refrigerator
+                F = Frame(f)
+                F.box(ap, 0, 0, 0, F.P, F.Q, 5.9, M['appwhite']); F.box(ap, F.P, F.Q / 2 - 0.01, 0.4, F.P + 0.01, F.Q / 2 + 0.01, 5.8, M['black'])
+                for q in (F.Q / 2 - 0.2, F.Q / 2 + 0.2): F.box(ap, F.P, q - 0.025, 2.4, F.P + 0.07, q + 0.025, 4.6, M['steel'])
             elif f.get('c') == 'counter':
                 obj('Cabinetry', 'Countertops').box(x0, y0, 2.5, x1, y1, 2.625, M['counter'])
         elif k == 'upper':
@@ -463,21 +513,20 @@ def build_fixtures():
         elif k == 'splash':
             obj('Cabinetry', 'Backsplash').box(x0, y0, f['z0'], x1, y1, f['z1'], M['tile'])
         elif k == 'oval':
-            z = 2.925; fx.ellipse(f['cx'], f['cy'], f['rx'], f['ry'], z, z + 0.012, M['porc']); fx.ellipse(f['cx'], f['cy'], f['rx'] * 0.78, f['ry'] * 0.78, z + 0.004, z + 0.016, M['reveal'])
+            basin(fx, f['cx'], f['cy'], f['rx'], f['ry'], 2.925)
         elif k == 'sink2':
-            z = 3.125
-            for i in range(2):
-                sx = x0 + i * f['w'] / 2 + 0.07; fx.box(sx, y0, z, sx + f['w'] / 2 - 0.14, y1, z + 0.006, M['steel'])
-            cx = x0 + f['w'] / 2; fx.ellipse(cx, y0 - 0.12, 0.05, 0.05, z, z + 0.6, M['chrome']); fx.box(cx - 0.03, y0 - 0.12, z + 0.55, cx + 0.03, y0 + 0.45, z + 0.62, M['chrome'])
-        elif k == 'range':
-            ap.box(x0, y0, 0, x1, y1, 3.0, M['steel']); ap.box(x0 + 0.05, y0 + 0.05, 3.0, x1 - 0.05, y1 - 0.05, 3.025, M['black'])
-            ap.box(x1, y0 + 0.3, 1.0, x1 + 0.01, y1 - 0.3, 2.4, M['black']); ap.box(x1, y0 + 0.2, 2.5, x1 + 0.12, y1 - 0.2, 2.56, M['steel'])
-            ap.box(x0, y0, 4.9, x0 + 1.4, y1, 6.3, M['appwhite']); ap.box(x0 + 1.4, y0 + 0.2, 5.0, x0 + 1.41, y1 - 0.9, 6.2, M['black'])
+            F = Frame(f); sink_in(F, fx, 3.125, 0, F.P, 0, F.Q)
+        elif k == 'range':                                     # range with a microwave above, controls on the front
+            F = Frame(f)
+            F.box(ap, 0, 0, 0, F.P, F.Q, 3.0, M['steel']); F.box(ap, 0.05, 0.05, 3.0, F.P - 0.05, F.Q - 0.05, 3.025, M['black'])
+            F.box(ap, F.P, 0.3, 1.0, F.P + 0.01, F.Q - 0.3, 2.4, M['black']); F.box(ap, F.P, 0.2, 2.5, F.P + 0.12, F.Q - 0.2, 2.56, M['steel'])
+            F.box(ap, 0, 0, 4.9, 1.4, F.Q, 6.3, M['appwhite']); F.box(ap, 1.4, 0.2, 5.0, 1.41, F.Q - 0.9, 6.2, M['black'])
         elif k == 'heater': fx.ellipse(f['cx'], f['cy'], f['r'] * 0.85, f['r'] * 0.85, 0, 4.4, M['heater'])
         elif k == 'pumps': fx.box(x0, y0, 0, x1, y1, 2.0, M['pump'])
-        elif k == 'front':
-            ap.box(x0, y0, 0, x1, y1, 3.0, M['appwhite']); ap.box(x0 + 0.02, y0 + 0.1, 3.0, x0 + 0.4, y1 - 0.1, 3.4, M['steel'])
-            ap.box(x1, (y0 + y1) / 2 - 0.55, 1.1, x1 + 0.012, (y0 + y1) / 2 + 0.55, 2.3, M['black'])
+        elif k == 'front':                                     # front-loading washer / dryer
+            F = Frame(f)
+            F.box(ap, 0, 0, 0, F.P, F.Q, 3.0, M['appwhite']); F.box(ap, 0.02, 0.1, 3.0, 0.4, F.Q - 0.1, 3.4, M['steel'])
+            F.box(ap, F.P, F.Q / 2 - 0.55, 1.1, F.P + 0.012, F.Q / 2 + 0.55, 2.3, M['black'])
         elif k == 'shelf':
             z = 5.9 if f.get('label') else 5.0
             fx.box(x0, y0, z, x1, y1, z + 0.04, M['wire']); fx.box(x0 + f['w'] / 2 - 0.03, y0, z - 0.45, x0 + f['w'] / 2 + 0.03, y1, z - 0.39, M['black'])
@@ -491,17 +540,20 @@ def build_fixtures():
             t = 0.28
             for a, b2, c2, d2 in ((x0, y0, x1, y0 + t), (x0, y1 - t, x1, y1), (x0, y0 + t, x0 + t, y1 - t), (x1 - t, y0 + t, x1, y1 - t)): fx.box(a, b2, 0, c2, d2, 1.5, M['porc'])
             fx.box(x0 + t, y0 + t, 0, x1 - t, y1 - t, 0.35, M['porc'])
-        elif k == 'shower':
-            fx.box(x0, y0, 0, x1, y1, 0.2, M['porc']); fx.ellipse((x0 + x1) / 2, (y0 + y1) / 2, 0.12, 0.12, 0.2, 0.205, M['black'])
-            obj('Windows', 'Window_Glass').box(x0, y0 - 0.02, 0.2, x1, y0, 6.5, M['glass']); fx.box(x0, y0 - 0.03, 6.4, x1, y0 + 0.01, 6.5, M['chrome'])
-        elif k == 'barn':
-            bx0, bx1, by = f['x1'] - 0.15, f['x2'] + 0.15, f['y'] + T / 2 + 0.14; dm = paint_mat('barn'); dd = obj('Doors', 'Barn_Door')
-            dd.box(bx0, by, 0.12, bx1, by + 0.1, 7.1, dm)
-            for zz in (1.0, 6.0): dd.box(bx0, by + 0.1, zz, bx1, by + 0.12, zz + 0.45, dm)
-            hw = obj('Doors', 'Door_Hardware')
-            hw.box(bx0 - 0.1, by - 0.02, 7.3, bx0 + 2 * (bx1 - bx0) + 0.1, by + 0.05, 7.36, M['black'])
-            for hx in (bx0 + 0.3, bx1 - 0.3): hw.box(hx - 0.03, by + 0.02, 7.0, hx + 0.03, by + 0.06, 7.34, M['black'])
-            hw.box(bx1 - 0.35, by + 0.12, 3.0, bx1 - 0.3, by + 0.2, 4.2, M['black'])
+        elif k == 'shower':                                    # the glass door is on the front
+            F = Frame(f)
+            F.box(fx, 0, 0, 0, F.P, F.Q, 0.2, M['porc']); F.ellipse(fx, F.P / 2, F.Q / 2, 0.12, 0.12, 0.2, 0.205, M['black'])
+            F.box(obj('Windows', 'Window_Glass'), F.P, 0, 0.2, F.P + 0.02, F.Q, 6.5, M['glass']); F.box(fx, F.P - 0.01, 0, 6.4, F.P + 0.03, F.Q, 6.5, M['chrome'])
+        elif k == 'barn':                                      # slides along a horizontal wall, on its front side
+            s = -1 if facing(f) == 'n' else 1; o = T / 2 + 0.14
+            Y = lambda d0, d1: (f['y'] + d0, f['y'] + d1) if s > 0 else (f['y'] - d1, f['y'] - d0)
+            bx0, bx1 = f['x1'] - 0.15, f['x2'] + 0.15; dm = paint_mat(f.get('paint') or 'barn'); dd, hw = obj('Doors', 'Barn_Door'), obj('Doors', 'Door_Hardware')
+            def yb(target, d0, d1, a, b, z0, z1, mat): ya, yb2 = Y(o + d0, o + d1); target.box(a, ya, z0, b, yb2, z1, mat)
+            yb(dd, 0, 0.1, bx0, bx1, 0.12, 7.1, dm)
+            for zz in (1.0, 6.0): yb(dd, 0.1, 0.12, bx0, bx1, zz, zz + 0.45, dm)
+            yb(hw, -0.02, 0.05, bx0 - 0.1, bx0 + 2 * (bx1 - bx0) + 0.1, 7.3, 7.36, M['black'])
+            for hx in (bx0 + 0.3, bx1 - 0.3): yb(hw, 0.02, 0.06, hx - 0.03, hx + 0.03, 7.0, 7.34, M['black'])
+            yb(hw, 0.12, 0.2, bx1 - 0.35, bx1 - 0.3, 3.0, 4.2, M['black'])
         elif k == 'steps':
             t1, t2 = y0 + f['h'] * 0.45, y0 + f['h'] * 0.72; st = obj('Exterior', 'Steps')
             st.box(x0, y0, GROUND_Z, x1, t1, -0.25, M['deck']); st.box(x0, t1, GROUND_Z, x1, t2, -1.0, M['deck']); st.box(x0, t2, GROUND_Z, x1, y1, -1.7, M['deck'])

@@ -49,7 +49,7 @@
   let tool = 'select', wallMode = 'ext', sel = null, drag = null, draw = null, ghost = null, lenBuf = '', lastP = [0, 0], spaceDown = false;
   let view = { x: -6, y: -6, w: 72 }, underURL = null, stepCur = 0, welcomeOff = false;
 
-  const byUid = u => S.walls.find(w => w.uid === u) || S.rooms.find(r => r.uid === u) || S.splits.find(s => s.uid === u);
+  const byUid = u => S.walls.find(w => w.uid === u) || S.rooms.find(r => r.uid === u) || S.splits.find(s => s.uid === u) || (S.keep.fixtures || []).find(f => f.uid === u);
   const findOpening = u => { for (const w of S.walls) { const o = w.openings.find(x => x.uid === u); if (o) return { w, o }; } return null; };
   const rectOf = w => w.axis === 'h' ? { x0: w.a, x1: w.b, y0: w.c - w.t / 2, y1: w.c + w.t / 2 } : { x0: w.c - w.t / 2, x1: w.c + w.t / 2, y0: w.a, y1: w.b };
   const ends = w => w.axis === 'h' ? [[w.a, w.c], [w.b, w.c]] : [[w.c, w.a], [w.c, w.b]];
@@ -75,6 +75,7 @@
     s.underlay = ed.underlay ? { ...ed.underlay } : null;
     const known = new Set(['format', 'version', 'id', 'name', 'subtitle', 'units', 'W', 'D', 'wallThickness', 'heights', 'floor', 'walls', 'rooms', 'editor']);
     s.keep = Object.fromEntries(Object.entries(src).filter(([k]) => !known.has(k)).map(([k, v]) => [k, JSON.parse(JSON.stringify(v))]));
+    (s.keep.fixtures || []).forEach(f => { if (window.HouseFixtures.editable(f)) f.uid = uid(); });   // editor-only identity, stripped when saving
     return s;
   }
 
@@ -109,6 +110,7 @@
     const W = Math.max(...walls.map(w => w.x1)), D = Math.max(...walls.map(w => w.y1));
     const rooms = S.rooms.map(r => ({ id: r.id, name: r.name, ...(r.short ? { short: r.short } : {}), rects: r.rects.map(q => [r4(q[0] + dx), r4(q[1] + dy), r4(q[2] + dx), r4(q[3] + dy)]), ...r.extra }));
     const keep = shiftDeep(S.keep, dx, dy);
+    if (keep.fixtures) keep.fixtures = keep.fixtures.map(({ uid: _u, ...rest }) => rest);
     const ids = new Set(rooms.map(r => r.id));
     if (keep.items) keep.items = keep.items.map(it => (!it.room || it.room === 'house' || ids.has(it.room) ? it : { ...it, room: 'house' }));
     if (keep.roomOrder) keep.roomOrder = keep.roomOrder.filter(id => ids.has(id));
@@ -264,14 +266,10 @@
       h += `<text class="roomlabel sub" x="${N(cx)}" y="${N(cy + fs * 1.15)}" font-size="${N(fs * 0.85)}" stroke-width="${N(3 * k)}">${esc(r.id)}</text>`;
     });
     $('#lRooms').innerHTML = h;
-    // fixtures (shown for context; editing them comes later)
+    // fixtures: wall cabinets and shelves are dashed outlines underneath, everything at counter or floor level sits on top
     h = '';
-    for (const f of S.keep.fixtures || []) {
-      if (f.st === 'removed') continue;
-      if (f.w != null && f.h != null && f.x != null) h += `<rect class="fx" x="${N(f.x)}" y="${N(f.y)}" width="${N(f.w)}" height="${N(f.h)}" stroke-width="1"/>`;
-      else if (f.cx != null && (f.r || f.rx)) h += `<ellipse class="fx" cx="${N(f.cx)}" cy="${N(f.cy)}" rx="${N(f.r || f.rx)}" ry="${N(f.r || f.ry)}" stroke-width="1"/>`;
-      else if (f.k === 'toilet') h += `<circle class="fx" cx="${N(f.cx)}" cy="${N(f.cy)}" r="0.7" stroke-width="1"/>`;
-    }
+    const all = (S.keep.fixtures || []).filter(f => FX.editable(f));
+    for (const f of all.filter(g => FX.high(g)).concat(all.filter(g => !FX.high(g)))) h += fxSVG(f, k, sel && sel.uid === f.uid);
     $('#lFix').innerHTML = h;
     // walls + openings
     h = ''; let ho = '';
@@ -295,6 +293,28 @@
         <line class="splitline" x1="${N(p[0])}" y1="${N(p[1])}" x2="${N(q[0])}" y2="${N(q[1])}" stroke-width="1.5"/></g>`; }).join('');
     renderSel(); renderGhost();
     svg.setAttribute('class', 't-' + tool + (drag && drag.type === 'pan' ? ' panning' : '') + (S.underlay && underURL ? ' traced' : ''));
+  }
+  // ------------------------------------------------------------------ fixtures: plan symbols
+  const FX = window.HouseFixtures;
+  const fxs = () => (S.keep.fixtures ||= []);
+  const fxBy = u => fxs().find(f => f.uid === u);
+  const CW = { n: 'e', e: 's', s: 'w', w: 'n' };
+  function fxShape(r, f, k, extra) {
+    const rr = `x="${N(r[0])}" y="${N(r[1])}" width="${N(r[2] - r[0])}" height="${N(r[3] - r[1])}"`;
+    if (f && (f.k === 'heater' || f.k === 'oval')) return `<ellipse class="body ${extra || ''}" cx="${N((r[0] + r[2]) / 2)}" cy="${N((r[1] + r[3]) / 2)}" rx="${N((r[2] - r[0]) / 2)}" ry="${N((r[3] - r[1]) / 2)}"/>`;
+    return `<rect class="body ${extra || ''}" ${rr} rx="${N(2 * k)}"/>`;
+  }
+  function fxFront(r, d) {                                                  // a heavy line along the front edge
+    const L = { e: [r[2], r[1], r[2], r[3]], w: [r[0], r[1], r[0], r[3]], s: [r[0], r[3], r[2], r[3]], n: [r[0], r[1], r[2], r[1]] }[d];
+    return L ? `<line class="front" x1="${N(L[0])}" y1="${N(L[1])}" x2="${N(L[2])}" y2="${N(L[3])}"/>` : '';
+  }
+  function fxSVG(f, k, on) {
+    const r = FX.footprint(f); if (!r) return '';
+    const fc = FX.facing(f), hi = FX.high(f), thin = f.k === 'splash';
+    let h = `<g class="fxs${hi ? ' hi' : ''}${on ? ' on' : ''}${thin ? ' thin' : ''}" data-kind="fixture" data-uid="${f.uid}">${fxShape(r, f, k)}${fc && !thin ? fxFront(r, fc) : ''}`;
+    const w = r[2] - r[0], d = r[3] - r[1];
+    if (!thin && Math.min(w, d) / k > 22 && w / k > 44) h += `<text class="fxlabel" x="${N((r[0] + r[2]) / 2)}" y="${N((r[1] + r[3]) / 2 + 3 * k)}" font-size="${N(9 * k)}">${esc(FX.describe(f))}</text>`;
+    return h + '</g>';
   }
   function openingSVG(w, o, k) {
     const r = rectOf(w), hz = w.axis === 'h', th = hz ? r.y1 - r.y0 : r.x1 - r.x0, pad = 4 * k;
@@ -371,6 +391,11 @@
       const q = hz ? [g.a, r.y0 - pad, g.b - g.a, r.y1 - r.y0 + 2 * pad] : [r.x0 - pad, g.a, r.x1 - r.x0 + 2 * pad, g.b - g.a];
       h += `<rect class="ghost${g.bad ? ' bad' : ''}" x="${N(q[0])}" y="${N(q[1])}" width="${N(q[2])}" height="${N(q[3])}" stroke-width="1.2"/>`;
       h += hz ? dimText((g.a + g.b) / 2, r.y0 - 10 * k, fmt(g.b - g.a), k) : dimText(r.x0 - 10 * k, (g.a + g.b) / 2, fmt(g.b - g.a), k, true);
+    } else if (g && g.kind === 'fixture') {
+      h += fxShape(g.rect, g.f, k, 'ghostfx' + (g.bad ? ' bad' : '')) + (g.front ? fxFront(g.rect, g.front).replace('class="front"', 'class="front ghostfx"') : '');
+      const w = g.rect[2] - g.rect[0], d = g.rect[3] - g.rect[1];
+      h += dimText((g.rect[0] + g.rect[2]) / 2, g.rect[1] - 8 * k, fmt(FX.width(g.f)) + ' \u00d7 ' + fmt(FX.depth(g.f)), k);
+      void w; void d;
     } else if (g && g.kind === 'scale') {
       for (const p of g.pts) h += `<circle class="scalept" cx="${N(p[0])}" cy="${N(p[1])}" r="${N(4 * k)}"/>`;
       if (g.pts.length && g.cur) h += `<line class="guide" x1="${N(g.pts[0][0])}" y1="${N(g.pts[0][1])}" x2="${N(g.cur[0])}" y2="${N(g.cur[1])}" stroke-width="1.5"/>`;
@@ -387,6 +412,7 @@
     cased: 'Click on a wall for a doorway with no door.',
     room: 'Click inside a closed space to make it a room. Doorways count as closed.',
     split: 'Draw a line across an open space to split it into rooms (kitchen | dining). Then use Room on each side.',
+    fixture: 'Pick something from the list on the right, then click where it goes. Against a wall it backs onto the wall on its own. <kbd>T</kbd> turns it when it is free-standing. <kbd>Esc</kbd> stops.',
     scale: 'Click two points a known distance apart on the blueprint.',
     move: 'Drag the blueprint to line it up. Press <kbd>Esc</kbd> when it\'s in place.'
   };
@@ -582,6 +608,7 @@
     if (tool === 'select') return selectDown(e, p);
     if (tool === 'wall' || tool === 'split') return drawClick(p, e);
     if (tool === 'door' || tool === 'window' || tool === 'cased') return openingClick(p);
+    if (tool === 'fixture') return fixtureClick(p, e);
     if (tool === 'room') return roomClick(p);
     if (tool === 'scale') return scaleClick(snapPoint(p, true).p);
     if (tool === 'move' && S.underlay) { drag = { type: 'under', start: p, ox: S.underlay.ox, oy: S.underlay.oy, before: snap() }; svg.setPointerCapture(e.pointerId); }
@@ -599,6 +626,9 @@
     } else if (kind === 'opening') {
       const { w, o } = findOpening(u); sel = { kind: 'opening', uid: u };
       drag = { type: 'opening', uid: u, start: along(w.axis, p), a0: o.a, b0: o.b, before };
+    } else if (kind === 'fixture') {
+      const g = fxBy(u); sel = { kind: 'fixture', uid: u };
+      drag = { type: 'fixture', uid: u, start: p, rect0: FX.footprint(g), before };
     } else if (kind === 'room' || kind === 'split') {
       sel = { kind, uid: u };
       drag = { type: 'pan-later', sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y };
@@ -615,6 +645,7 @@
       else { const sp = snapPoint(p, e.altKey); ghost = { kind: 'point', snap: sp.kind ? sp.p : null }; }
       renderGhost();
     } else if (tool === 'door' || tool === 'window' || tool === 'cased') { ghost = openingGhost(p); renderGhost(); }
+    else if (tool === 'fixture') { ghost = fixtureGhost(p, e); renderGhost(); }
     else if (tool === 'scale' && ghost) { ghost.cur = p; renderGhost(); }
   });
   function dragMove(e, p) {
@@ -643,6 +674,12 @@
       else { const lim = Math.min(w.b, ...others.filter(x => x.a >= o.b - 1e-6).map(x => x.a)); o.b = r4(Math.min(lim, Math.max(v, o.a + 1))); }
       render(); renderSide(); return;
     }
+    if (d.type === 'fixture') {
+      const g = fxBy(d.uid), dx = p[0] - d.start[0], dy = p[1] - d.start[1], r0 = d.rect0;
+      const w = r0[2] - r0[0], h = r0[3] - r0[1], free = e.altKey;
+      const x0 = snapSpan(r0[0] + dx, w, fxEdges('x', d.uid), free), y0 = snapSpan(r0[1] + dy, h, fxEdges('y', d.uid), free);
+      FX.place(g, [x0, y0, x0 + w, y0 + h]); render(); renderSide(); return;
+    }
     if (d.type === 'opening') {
       const { w, o } = findOpening(d.uid), wd = d.b0 - d.a0;
       let a = snapC(d.a0 + along(w.axis, p) - d.start, [], e.altKey);
@@ -668,7 +705,7 @@
   $('#zFit').onclick = fit;
 
   // ------------------------------------------------------------------ keyboard
-  const KEYTOOL = { v: 'select', w: 'wall', d: 'door', n: 'window', o: 'cased', r: 'room', l: 'split' };
+  const KEYTOOL = { v: 'select', w: 'wall', d: 'door', n: 'window', o: 'cased', r: 'room', l: 'split', f: 'fixture' };
   document.addEventListener('keydown', e => {
     const typing = /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName) || !$('#dialog').hidden;
     if ((e.ctrlKey || e.metaKey) && !typing) {
@@ -690,7 +727,11 @@
       return;
     }
     if ((e.key === 'Delete' || e.key === 'Backspace') && sel) { e.preventDefault(); deleteSel(); return; }
-    if (e.key === 'f') { fit(); return; }
+    if (e.key === 'h') { fit(); return; }
+    if (e.key.toLowerCase() === 't') {
+      if (tool === 'fixture') { fxFace = CW[fxFace]; ghost = fixtureGhost(lastP, {}); renderGhost(); renderSide(); return; }
+      if (sel && sel.kind === 'fixture') { turnSelected(); return; }
+    }
     if (e.key === '+' || e.key === '=') { zoomAt(1 / 1.3, view.x + view.w / 2, view.y + vh() / 2); return; }
     if (e.key === '-') { zoomAt(1.3, view.x + view.w / 2, view.y + vh() / 2); return; }
     const t = KEYTOOL[e.key.toLowerCase()]; if (t && !e.altKey) setTool(t);
@@ -699,12 +740,97 @@
   $$('[data-tool]').forEach(b => b.onclick = () => setTool(b.dataset.tool));
   $('#wallMode').addEventListener('click', e => { const b = e.target.closest('[data-mode]'); if (!b) return; wallMode = b.dataset.mode; endDraw(); setTool('wall'); });
 
+  // ------------------------------------------------------------------ fixtures: placing and moving
+  const SIZE_KEYS = ['box', 'upper', 'range', 'tub', 'shower', 'front', 'shelf', 'pumps', 'sink2', 'steps', 'deck'];
+  let fxItem = 'base', fxFace = 's';
+  const catOf = id => FX.CATALOG.find(c => c.id === id);
+  const hasFront = c => !['tub', 'shelf', 'heater'].includes(c.make().k);
+  // the wall face nearest the cursor, if one is close: { w, side, face, front }
+  function wallFace(p, reach) {
+    let best = null;
+    for (const w of live()) {
+      const t = along(w.axis, p); if (t < w.a - 0.3 || t > w.b + 0.3) continue;
+      const a = across(w.axis, p) - w.c, side = a >= 0 ? 1 : -1, dist = Math.abs(Math.abs(a) - w.t / 2);
+      if (dist > reach || (best && dist >= best.dist)) continue;
+      best = { w, side, dist, face: w.c + side * w.t / 2, front: w.axis === 'h' ? (side > 0 ? 's' : 'n') : (side > 0 ? 'e' : 'w') };
+    }
+    return best;
+  }
+  // edge coordinates worth snapping to: other fixtures, and every wall's faces and ends
+  function fxEdges(axis, skip) {
+    const out = [];
+    for (const g of fxs()) { if (g.uid === skip || !FX.editable(g)) continue; const r = FX.footprint(g); out.push(...(axis === 'x' ? [r[0], r[2]] : [r[1], r[3]])); }
+    for (const w of live()) { const r = rectOf(w); out.push(...(axis === 'x' ? [r.x0, r.x1] : [r.y0, r.y1])); }
+    return out;
+  }
+  function snapSpan(start, len, cands, free) {                           // snap either end of a span to a candidate, else the 1" grid
+    if (free) return start;
+    const tol = SNAP_PX * pxFt(); let best = start, bd = tol, hit = false;
+    for (const c of cands) for (const s of [c, c - len]) { const d = Math.abs(s - start); if (d < bd) { bd = d; best = s; hit = true; } }
+    return hit ? best : Math.round(start / GRID) * GRID;
+  }
+  const rectFor = (front, face, ac, W, D) => front === 's' ? [ac - W / 2, face, ac + W / 2, face + D] : front === 'n' ? [ac - W / 2, face - D, ac + W / 2, face]
+    : front === 'e' ? [face, ac - W / 2, face + D, ac + W / 2] : [face - D, ac - W / 2, face, ac + W / 2];
+  const rectsHit = (a, b) => Math.min(a[2], b[2]) - Math.max(a[0], b[0]) > 0.02 && Math.min(a[3], b[3]) - Math.max(a[1], b[1]) > 0.02;
+  const fxOverlap = (f, skip) => { const r = FX.footprint(f); return fxs().some(g => g.uid !== skip && FX.editable(g) && FX.high(g) === FX.high(f) && rectsHit(r, FX.footprint(g))); };
+  function fixtureGhost(p, e) {
+    const cat = catOf(fxItem); if (!cat) return null;
+    const [W, D] = cat.size, free = !!(e && e.altKey), face = hasFront(cat);
+    const wf = !cat.free && !free ? wallFace(p, 2.4) : null;
+    let front, rect;
+    if (wf) {
+      const axis = wf.w.axis === 'h' ? 'x' : 'y', ac = along(wf.w.axis, p);
+      const start = snapSpan(ac - W / 2, W, fxEdges(axis), free);
+      front = wf.front;
+      rect = rectFor(front, wf.face, start + W / 2, W, D);
+    } else {
+      front = fxFace;
+      const [w, h] = front === 'n' || front === 's' ? [W, D] : [D, W];
+      const x0 = snapSpan(p[0] - w / 2, w, fxEdges('x'), free), y0 = snapSpan(p[1] - h / 2, h, fxEdges('y'), free);
+      rect = [x0, y0, x0 + w, y0 + h];
+    }
+    const f = FX.create(cat.id, front, rect), r = FX.footprint(f);
+    return { kind: 'fixture', f, rect: r, front: face ? front : null, bad: fxOverlap(f), cat };
+  }
+  // the paint group a new cabinet joins: the house's existing group of that kind in the same room, else a new one
+  const RESERVED_KEYS = new Set(['trim', 'doors', 'extdoors', 'exttrim', 'wall', 'ceiling', 'siding', 'house']);
+  function uniqueKey(base) { const taken = new Set((S.keep.items || []).map(i => i.key)); let k = base, i = 2; while (taken.has(k) || RESERVED_KEYS.has(k)) k = base + '_' + i++; return k; }
+  function roomIdAt(r) { const rm = roomAt((r[0] + r[2]) / 2, (r[1] + r[3]) / 2); return rm ? rm.id : 'house'; }
+  function attachItem(f, cat) {
+    const items = (S.keep.items ||= []), room = roomIdAt(FX.footprint(f)), [key, name, def] = cat.item;
+    let it = items.find(i => i.name === name && (i.room || 'house') === room && i.kind === 'cabinet');
+    if (!it) { it = { key: uniqueKey(key), name, room, kind: 'cabinet', default: def }; items.push(it); }
+    f.paint = it.key;
+  }
+  function fixtureClick(p, e) {
+    const g = fixtureGhost(p, e); if (!g) return;
+    if (g.bad) { toast('That overlaps another fixture. Move it, or turn it with T.'); return; }
+    checkpoint();
+    const f = g.f; f.uid = uid();
+    if (g.cat.item) attachItem(f, g.cat);
+    fxs().push(f); sel = { kind: 'fixture', uid: f.uid }; changed();
+  }
+  function turnSelected() {
+    const f = fxBy(sel.uid); if (!f) return;
+    checkpoint(); FX.spin(f); changed();
+  }
+  function duplicateSelected() {
+    const f = fxBy(sel.uid); if (!f) return;
+    checkpoint();
+    const c = JSON.parse(JSON.stringify(f)); c.uid = uid();
+    const r = FX.footprint(f), d = FX.facing(f), w = r[2] - r[0], h = r[3] - r[1];
+    const [ox, oy] = d && (d === 'n' || d === 's') ? [w, 0] : d ? [0, h] : [0.5, 0.5];
+    FX.place(c, [r[0] + ox, r[1] + oy, r[2] + ox, r[3] + oy]);
+    fxs().push(c); sel = { kind: 'fixture', uid: c.uid }; changed();
+  }
+
   function deleteSel() {
     if (!sel) return;
     checkpoint();
     if (sel.kind === 'wall') S.walls = S.walls.filter(w => w.uid !== sel.uid);
     if (sel.kind === 'room') S.rooms = S.rooms.filter(r => r.uid !== sel.uid);
     if (sel.kind === 'split') S.splits = S.splits.filter(s => s.uid !== sel.uid);
+    if (sel.kind === 'fixture') S.keep.fixtures = fxs().filter(f => f.uid !== sel.uid);
     if (sel.kind === 'opening') { const f = findOpening(sel.uid); if (f) f.w.openings = f.w.openings.filter(o => o !== f.o); }
     sel = null; changed();
   }
@@ -717,6 +843,7 @@
     { t: 'Inside walls', hint: 'Draw each inside wall along its centre line. Ends snap to the walls they meet.', done: () => S.walls.some(w => !w.ext), go: () => { wallMode = 'int'; setTool('wall'); } },
     { t: 'Doors & windows', hint: 'Pick Door, Window or Opening and click on a wall. Drag the ends to size it; flip the swing in the panel on the right.', done: () => S.walls.some(w => w.openings.length), go: () => setTool('door') },
     { t: 'Rooms', hint: 'Click inside each space and name it. Split open-plan spaces first with the Split tool.', done: () => S.rooms.length > 0, go: () => setTool('room') },
+    { t: 'Fixtures', hint: 'Optional: cabinets, appliances and bath fixtures. They back onto the wall you click near, and every door and drawer can be painted on its own.', done: () => fxs().some(f => FX.editable(f)), go: () => setTool('fixture') },
     { t: 'Heights', hint: 'Ceiling, door and window heights for the whole house. Single doors and windows can override them.', done: () => S.rooms.length > 0, go: () => { sel = null; render(); renderSide(); $('#insp [data-f="ceiling"]')?.focus(); } },
     { t: 'Paint it', hint: 'Open the house in the Paint Studio, or save house.json to keep it.', done: () => false, go: () => openInStudio() }
   ];
@@ -739,6 +866,10 @@
     // rooms
     $('#roomList').innerHTML = S.rooms.length ? S.rooms.map((r, i) => `<button class="roomrow${sel && sel.uid === r.uid ? ' on' : ''}" data-room="${r.uid}" style="--c:hsl(${roomHue(i)} 60% 55%)"><i></i><span>${esc(r.name)}</span><small>${esc(r.short || r.id)}</small></button>`).join('')
       : '<p class="empty">No rooms yet. Use the Room tool and click inside each space.</p>';
+    const fl = fxs().filter(f => FX.editable(f));
+    $('#fxList').innerHTML = fl.length ? fl.map(f => { const r = FX.footprint(f), rm = roomAt((r[0] + r[2]) / 2, (r[1] + r[3]) / 2);
+      return `<button class="roomrow${sel && sel.uid === f.uid ? ' on' : ''}" data-fx="${f.uid}"><i style="background:var(--muted)"></i><span>${esc(FX.describe(f))}</span><small>${esc(rm ? rm.name : '')}</small></button>`; }).join('')
+      : '<p class="empty">Nothing placed yet. Use the Fixture tool to add cabinets, appliances and bath fixtures.</p>';
     const prev = lsGet(BACKUP);
     if (prev) { let nm = ''; try { nm = JSON.parse(prev).meta.name; } catch { } $('#restoreBox').hidden = false; $('#restoreBox').innerHTML = `Your previous drawing (${esc(nm || 'unnamed')}) is backed up. <button class="linkish" id="restorePrev">Restore it</button>`; }
     else $('#restoreBox').hidden = true;
@@ -749,6 +880,7 @@
     renderInspector(); renderStatus();
   }
   $('#steps').addEventListener('click', e => { const b = e.target.closest('[data-step]'); if (b) STEPS[+b.dataset.step].go(); });
+  $('#fxList').addEventListener('click', e => { const b = e.target.closest('[data-fx]'); if (b) { setTool('select'); sel = { kind: 'fixture', uid: b.dataset.fx }; render(); renderSide(); } });
   $('#roomList').addEventListener('click', e => { const b = e.target.closest('[data-room]'); if (b) { sel = { kind: 'room', uid: b.dataset.room }; render(); renderSide(); } });
   $('#restoreBox').addEventListener('click', e => {
     if (e.target.id !== 'restorePrev') return;
@@ -779,6 +911,40 @@
   function renderInspector() {
     const box = $('#insp'), it = sel && byUid(sel.uid), op = sel && sel.kind === 'opening' && findOpening(sel.uid);
     let h = '', title = 'House';
+    if (tool === 'fixture') {
+      title = 'Fixtures';
+      const groups = [...new Set(FX.CATALOG.map(c => c.group))];
+      h += groups.map(g => `<div class="lib"><h4>${g}</h4><div class="libgrid">${FX.CATALOG.filter(c => c.group === g).map(c =>
+        `<button data-lib="${c.id}" aria-pressed="${c.id === fxItem}">${esc(c.name)}<small>${fmt(c.size[0])} \u00d7 ${fmt(c.size[1])}</small></button>`).join('')}</div></div>`).join('');
+      h += `<div class="field">Faces, when it isn't against a wall<div class="seg" role="group" aria-label="Facing">${['n', 'e', 's', 'w'].map(d =>
+        `<button data-face="${d}" aria-pressed="${d === fxFace}">${{ n: 'North', e: 'East', s: 'South', w: 'West' }[d]}</button>`).join('')}</div></div>
+        <p class="note">Next to a wall, a fixture backs onto it and faces into the room. Switch to Select to change one you have placed.</p>`;
+      $('#inspTitle').textContent = title; box.innerHTML = h; return;
+    }
+    const fx = sel && sel.kind === 'fixture' && fxBy(sel.uid);
+    if (fx) {
+      const d = FX.facing(fx), sized = SIZE_KEYS.includes(fx.k), cab = (fx.k === 'box' && fx.paint) || fx.k === 'upper';
+      const rm = roomAt(...(() => { const r = FX.footprint(fx); return [(r[0] + r[2]) / 2, (r[1] + r[3]) / 2]; })());
+      title = 'Fixture';
+      h += `<h3>${esc(FX.describe(fx))}</h3><p class="sub">${rm ? 'In ' + esc(rm.name) : 'Outside any room'}</p>`;
+      if (d) h += field('Front faces', 'fx_face', d, { select: [['n', 'North (up)'], ['e', 'East (right)'], ['s', 'South (down)'], ['w', 'West (left)']] });
+      if (sized) h += `<div class="pair">${field(d ? 'Width (across the front)' : 'Width', 'fx_w', FX.width(fx), { len: 1 })}${field('Depth', 'fx_d', FX.depth(fx), { len: 1 })}</div>`;
+      if (fx.k === 'upper') h += `<div class="pair">${field('Bottom at', 'fx_z0', fx.z0, { len: 1 })}${field('Top at', 'fx_z1', fx.z1, { len: 1 })}</div>`;
+      if (fx.k === 'box' && fx.paint) {
+        h += field('Height', 'fx_z1', fx.z1 ?? (fx.c === 'cabW' ? 2.8 : 3), { len: 1 });
+        h += field('Counter', 'fx_counter', fx.counter === 'all' ? 'all' : fx.counter === false ? 'none' : 'auto', { select: [['auto', 'On top (when 4\' or lower)'], ['none', 'No counter'], ['all', 'Overhangs on every side']] });
+        h += field('Set into the counter', 'fx_sink', fx.sink ? 'sink' : fx.basin ? 'basin' : '', { select: [['', 'Nothing'], ['sink', 'Double kitchen sink'], ['basin', 'Bath basin']] });
+      }
+      if (cab) {
+        h += `<div class="pair">${field('Fronts', 'fx_style', fx.style || '', { select: [['', 'Automatic'], ['door-drawer', 'Drawer over each door'], ['doors', 'Doors only'], ['drawers', 'Stack of drawers']] })}
+          ${field('How many', 'fx_doors', fx.doors || '', { select: [['', 'By width']].concat([1, 2, 3, 4, 5, 6].map(n => [n, String(n)])) })}</div>`;
+        h += field('Paint group', 'fx_group', fx.paint, { select: (S.keep.items || []).filter(i => i.kind === 'cabinet').map(i => [i.key, i.name + (i.room && i.room !== 'house' ? ' \u00b7 ' + ((S.rooms.find(r => r.id === i.room) || {}).name || i.room) : '')]) });
+        h += `<div class="actions"><button class="btn" data-act="newgroup">New paint group\u2026</button></div><p class="note">Fixtures in the same group are painted together in the Paint Studio, and each door can still be painted on its own.</p>`;
+      }
+      if (fx.k === 'front') h += field('Label', 'fx_label', fx.label || '', { ph: 'WASHER' });
+      h += `<div class="actions"><button class="btn" data-act="turn">Turn <kbd style="font:11px var(--f-mono)">T</kbd></button><button class="btn" data-act="dup">Duplicate</button><button class="btn danger" data-act="delete">Delete</button></div>`;
+      $('#inspTitle').textContent = title; box.innerHTML = h; return;
+    }
     if (sel && sel.kind === 'wall' && it) {
       const w = it; title = (w.ext ? 'Outside' : 'Inside') + ' wall';
       const dir = w.axis === 'h' ? ['Left end x', 'Right end x', 'Centre line y'] : ['Top end y', 'Bottom end y', 'Centre line x'];
@@ -826,8 +992,10 @@
         <h3 style="font-size:14px">New walls</h3>
         <div class="pair">${field('Outside thickness', 'exterior', T.exterior, { len: 1 })}${field('Inside thickness', 'interior', T.interior, { len: 1 })}</div>
         <h3 style="font-size:14px">Floor</h3>
-        <div class="pair">${field('Name', 'fl_name', F.name)}${field('Colour', 'fl_color', F.color, { type: 'color' })}</div>
-        ${field('Plank photo', 'fl_tex', F.texture || '', { select: [['', 'None (plain colour)'], ['textures/desert_sand_plank.png', 'Desert Sand LVP']].concat(F.texture && F.texture !== 'textures/desert_sand_plank.png' ? [[F.texture, F.texture]] : []) })}`;
+        ${field('Flooring', 'fl_mode', floorMode(F), { select: FLOOR_OPTIONS.concat(floorMode(F) === 'photo' ? [['photo', 'My own photo']] : [['photo', 'My own photo\u2026']]) })}
+        ${floorMode(F) === 'photo' ? '<div class="actions"><button class="btn" data-act="floorphoto">Choose another photo\u2026</button></div>' : ''}
+        <div class="pair">${field('Name', 'fl_name', F.name)}${field('Colour (plain)', 'fl_color', F.color, { type: 'color' })}</div>
+        <p class="note">Wood floors are drawn the way the cabinet veneers are. A photo should show one plank, or a close-up of the grain, with the grain running up the picture.</p>`;
     }
     $('#inspTitle').textContent = title;
     box.innerHTML = h;
@@ -845,10 +1013,51 @@
   $('#insp').addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === 'Escape') && e.target.matches('input')) { e.preventDefault(); e.target.blur(); } });
   $('#insp').addEventListener('click', e => {
     const pick = e.target.closest('[data-pick]'); if (pick) { sel = { kind: 'opening', uid: pick.dataset.pick }; render(); renderSide(); return; }
+    const lib = e.target.closest('[data-lib]'); if (lib) { fxItem = lib.dataset.lib; ghost = fixtureGhost(lastP, {}); renderGhost(); renderSide(); return; }
+    const face = e.target.closest('[data-face]'); if (face) { fxFace = face.dataset.face; ghost = fixtureGhost(lastP, {}); renderGhost(); renderSide(); return; }
     const a = e.target.closest('[data-act]')?.dataset.act;
+    if (a === 'floorphoto') $('#floorFile').click();
+    if (a === 'turn') turnSelected();
+    if (a === 'dup') duplicateSelected();
+    if (a === 'newgroup') newGroup();
     if (a === 'delete') deleteSel();
     if (a === 'wall') { const f = findOpening(sel.uid); if (f) { sel = { kind: 'wall', uid: f.w.uid }; render(); renderSide(); } }
   });
+  // flooring: plain colour, the bundled Desert Sand photo, a wood species drawn like the cabinet veneers, or your own photo
+  const FLOOR_WOODS = { whiteoak: ['White oak', '#CDAA7C', '#8C6A45'], redoak: ['Red oak', '#C48D63', '#86513A'], walnut: ['Walnut', '#8C5D3E', '#3A2215'], teak: ['Teak', '#B57E49', '#6A4220'],
+    cherry: ['Cherry', '#A8603F', '#6A3322'], maple: ['Maple', '#E2C99E', '#BE9C70'], rosewood: ['Rosewood', '#743A26', '#29120B'], ebonized: ['Ebonized oak', '#3E3630', '#191513'] };
+  const FLOOR_OPTIONS = [['plain', 'Plain colour'], ['tex:textures/desert_sand_plank.png', 'Desert Sand LVP (photo)']].concat(Object.entries(FLOOR_WOODS).map(([id, w]) => ['wood:' + id, w[0] + ' planks']));
+  const floorAvg = w => '#' + [1, 3, 5].map(i => Math.round(parseInt(w[1].slice(i, i + 2), 16) * 0.62 + parseInt(w[2].slice(i, i + 2), 16) * 0.38).toString(16).padStart(2, '0')).join('').toUpperCase();
+  const floorMode = F => F.wood ? 'wood:' + F.wood : F.texture ? (/^data:/.test(F.texture) ? 'photo' : 'tex:' + F.texture) : 'plain';
+  $('#floorFile').addEventListener('change', async e => {
+    const file = e.target.files[0]; e.target.value = ''; if (!file) return;
+    try {
+      const url = URL.createObjectURL(file);
+      const img = await new Promise((ok, bad) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => bad(new Error('That image could not be read.')); i.src = url; });
+      // portrait, at most 1200px on the long side, as a JPEG small enough to live inside the house file
+      const rot = img.width > img.height, scale = Math.min(1, 1200 / Math.max(img.width, img.height));
+      const w = Math.round((rot ? img.height : img.width) * scale), h = Math.round((rot ? img.width : img.height) * scale);
+      const c = document.createElement('canvas'); c.width = w; c.height = h; const ctx = c.getContext('2d');
+      if (rot) { ctx.translate(w, 0); ctx.rotate(Math.PI / 2); ctx.drawImage(img, 0, 0, h, w); } else ctx.drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      checkpoint(); delete S.floor.wood; S.floor.texture = c.toDataURL('image/jpeg', 0.85); S.floor.name = 'My floor';
+      changed(); toast('Floor photo set (' + Math.round(S.floor.texture.length / 1024) + ' KB, stored inside the house file).');
+    } catch (err) { toast(err.message || 'Could not use that photo.'); }
+  });
+  function moveItems(from, to) { (S.keep.items || []).forEach(i => { if (i.room === from) i.room = to; }); }
+  function newGroup() {
+    const g = fxBy(sel.uid); if (!g) return;
+    dialog(`<form class="box"><h3>New paint group</h3><p class="note">Fixtures in a group share a colour, like \u201cKitchen uppers\u201d. This one starts with the fixture you have selected.</p>
+      <label class="field">Name<input id="dlgLen" autocomplete="off" placeholder="e.g. Pantry cabinets"></label>
+      <div class="row-btns"><button type="button" class="btn" id="dlgCancel">Cancel</button><button class="btn primary">Create</button></div></form>`, true);
+    $('#dlgLen').focus();
+    $('#dialog form').onsubmit = e => {
+      e.preventDefault(); const name = $('#dlgLen').value.trim(); if (!name) return;
+      closeDialog(); checkpoint();
+      const it = { key: uniqueKey(slug(name)), name, room: roomIdAt(FX.footprint(g)), kind: 'cabinet', default: ((S.keep.items || []).find(i => i.key === g.paint) || {}).default || '#E8E4DA' };
+      (S.keep.items ||= []).push(it); g.paint = it.key; changed();
+    };
+  }
   function applyField(f, v) {
     const it = sel && byUid(sel.uid), op = sel && sel.kind === 'opening' && findOpening(sel.uid);
     if (sel && sel.kind === 'wall' && it) {
@@ -871,12 +1080,28 @@
       if (f === 'from') { if (v == null) return false; const a = w.a + v, b = a + (o.b - o.a); if (a < w.a - 1e-6 || b > w.b + 1e-6 || w.openings.some(x => x !== o && x.a < b - 1e-6 && x.b > a + 1e-6)) return false; o.a = r4(a); o.b = r4(b); return; }
       if (f === 'height' || f === 'sill' || f === 'head') { if (v == null) delete o[f]; else if (v < 0 || v > S.heights.ceiling) return false; else o[f] = r4(v); return; }
     }
+    if (sel && sel.kind === 'fixture' && it) {
+      const g = it, r = FX.footprint(g);
+      if (f === 'fx_face') { FX.turn(g, v); return; }
+      if (f === 'fx_w' || f === 'fx_d') {
+        if (!(v >= 0.25)) return false;
+        FX.resize(g, f === 'fx_w' ? v : FX.width(g), f === 'fx_d' ? v : FX.depth(g)); return;
+      }
+      if (f === 'fx_z0' || f === 'fx_z1') { if (v == null || v <= 0 || v > S.heights.ceiling) return false; g[f.slice(3)] = r4(v); return; }
+      if (f === 'fx_counter') { if (v === 'auto') delete g.counter; else g.counter = v === 'all' ? 'all' : false; return; }
+      if (f === 'fx_sink') { delete g.sink; delete g.basin; if (v) g[v] = true; return; }
+      if (f === 'fx_style') { if (v) g.style = v; else delete g.style; return; }
+      if (f === 'fx_doors') { if (v) g.doors = +v; else delete g.doors; return; }
+      if (f === 'fx_group') { g.paint = v; return; }
+      if (f === 'fx_label') { if (v.trim()) g.label = v.trim().toUpperCase(); else delete g.label; return; }
+      void r;
+    }
     if (sel && sel.kind === 'room' && it) {
       if (f === 'name') { if (!v.trim()) return false; it.name = v.trim();
-        if (it.fresh) { const others = S.rooms.filter(r => r !== it); it.id = uniqueId(slug(it.name), new Set(others.map(r => r.id))); it.short = shortFor(it.name, new Set(others.map(r => r.short))); }
+        if (it.fresh) { const others = S.rooms.filter(r => r !== it), was = it.id; it.id = uniqueId(slug(it.name), new Set(others.map(r => r.id))); it.short = shortFor(it.name, new Set(others.map(r => r.short))); moveItems(was, it.id); }
         return; }
       if (f === 'short') { const s = v.trim().toUpperCase().replace(/[^A-Z0-9]/g, ''); if (S.rooms.some(r => r !== it && r.short === s)) return false; it.short = s; delete it.fresh; return; }
-      if (f === 'id') { const s = slug(v); if (S.rooms.some(r => r !== it && r.id === s) || s === 'exterior' || s === 'house') return false; it.id = s; delete it.fresh; return; }
+      if (f === 'id') { const s = slug(v); if (S.rooms.some(r => r !== it && r.id === s) || s === 'exterior' || s === 'house') return false; moveItems(it.id, s); it.id = s; delete it.fresh; return; }
     }
     if (f === 'h_name') { if (!v.trim()) return false; const wasAuto = S.meta.id === slug(S.meta.name).replace(/_/g, '-') || S.meta.id === 'my-house'; S.meta.name = v.trim(); if (wasAuto) S.meta.id = slug(v).replace(/_/g, '-'); return; }
     if (f === 'h_id') { const s = slug(v).replace(/_/g, '-'); if (!s) return false; S.meta.id = s; return; }
@@ -885,7 +1110,15 @@
     if (f === 'exterior' || f === 'interior') { if (!(v > 0)) return false; S.wallThickness[f] = r4(v); return; }
     if (f === 'fl_name') { S.floor.name = v; return; }
     if (f === 'fl_color') { S.floor.color = v.toUpperCase(); return; }
-    if (f === 'fl_tex') { if (v) S.floor.texture = v; else delete S.floor.texture; return; }
+    if (f === 'fl_mode') {
+      const F = S.floor;
+      if (v === 'photo') { setTimeout(() => $('#floorFile').click(), 0); return; }
+      delete F.texture; delete F.wood;
+      if (v.startsWith('wood:')) { const id = v.slice(5), w = FLOOR_WOODS[id]; F.wood = id; F.name = w[0] + ' plank'; F.color = floorAvg(w); }
+      else if (v.startsWith('tex:')) { F.texture = v.slice(4); F.name = 'Desert Sand'; F.color = '#B09672'; }
+      else if (v === 'plain') { F.name = F.name || 'Plain floor'; }
+      return;
+    }
   }
 
   // status bar: counts, problems, cursor
@@ -900,7 +1133,7 @@
   function renderStatus() {
     const ops = S.walls.reduce((t, w) => t + w.openings.length, 0), pr = problems();
     const pl = (n, one, many) => n + ' ' + (n === 1 ? one : many);
-    $('#status').innerHTML = `<span>${pl(S.walls.length, 'wall', 'walls')} \u00b7 ${pl(ops, 'door or window', 'doors & windows')} \u00b7 ${pl(S.rooms.length, 'room', 'rooms')}</span>
+    $('#status').innerHTML = `<span>${pl(S.walls.length, 'wall', 'walls')} \u00b7 ${pl(ops, 'door or window', 'doors & windows')} \u00b7 ${pl(S.rooms.length, 'room', 'rooms')} \u00b7 ${pl(fxs().filter(f => FX.editable(f)).length, 'fixture', 'fixtures')}</span>
       ${pr.length ? `<button class="problems" id="probBtn">${pr.length} to fix before painting</button>` : '<span class="okay">Ready to paint</span>'}
       <span class="spacer"></span><span>Snap: walls & 1" grid (hold Alt to turn off)</span><span id="cursor"></span>`;
     $('#probBtn')?.addEventListener('click', () => dialog(`<div class="box"><h3>Before it can be painted</h3><ul>${pr.map(p => `<li>${esc(p)}</li>`).join('')}</ul><div class="row-btns"><button class="btn primary" id="dlgCancel">OK</button></div></div>`, true));
@@ -1050,7 +1283,7 @@
     if (P3.B) { P3.scene.remove(P3.B.root); P3.B.root.traverse(o => { o.geometry && o.geometry.dispose(); }); }
     const B = window.House3DBuild(built.HOUSE, built.ROOMS);
     B.ceilings.visible = false; P3.scene.add(B.root); P3.B = B;
-    if (built.HOUSE.floor.texture) B.loadFloorTexture(built.HOUSE.floor.texture, () => { });
+    B.loadFloor(() => { });
     msg.hidden = !!S.rooms.length; msg.textContent = 'Walls only: add rooms to see paintable surfaces and ceilings.';
     P3.span = Math.max(built.HOUSE.W, built.HOUSE.D);
     if (refit || !P3.fitted) { P3.fitted = true; fit3d(); }

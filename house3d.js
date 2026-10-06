@@ -302,28 +302,37 @@ function build(H, R) {
   // ---------------------------------------------------------------- fixtures
   // Every door and drawer front is its own panel with its own paint key ("kbase:door3", "island:drawer2").
   // A panel without its own colour shows the cabinet run's colour (the app resolves that).
+  // Fixtures are built in their own frame (fixtures.js): p = depth from the back to the front, q = across the front.
+  const FX = window.HouseFixtures;
   const cabParts = [], partN = {};
   const DOOR_PROUD = 0.045, GAP = 0.022;
-  function cabinetFront(f, z0, z1, drawer) {
-    const fr = f.front; if (!fr || !f.paint) return;
-    const along = fr === 's' || fr === 'n';
-    const a0 = along ? f.x : f.y, a1 = along ? f.x + f.w : f.y + f.h;
-    const face = fr === 's' ? f.y + f.h : fr === 'n' ? f.y : fr === 'e' ? f.x + f.w : f.x;
-    const out = fr === 's' || fr === 'e' ? 1 : -1, len = a1 - a0, n = Math.max(1, Math.round(len / 1.5)), dw = len / n;
-    const slab = (b0, b1, zz0, zz1, o0, o1, m) => along
-      ? box(b0, face + out * o0, zz0, b1, face + out * o1, zz1, m) : box(face + out * o0, b0, zz0, face + out * o1, b1, zz1, m);
-    const kick = drawer ? 0.35 : 0, split = drawer ? z1 - 0.55 : z1;     // base cabinets: toe kick + a drawer row on top
+  const lbox = (F, p0, q0, z0, p1, q1, z1, m) => { const r = F.box(p0, q0, p1, q1); return box(r[0], r[1], z0, r[2], r[3], z1, m); };
+  const lcyl = (F, p, q, rp, rq, z0, z1, m) => { const [x, y] = F.pt(p, q); return F.swap ? cylinder(x, y, rq, rp, z0, z1, m) : cylinder(x, y, rp, rq, z0, z1, m); };
+  // style: 'door-drawer' (base cabinets: a drawer over each door), 'doors', or 'drawers' (a stack of three)
+  function cabinetFront(f, z0, z1, counter) {
+    if (!f.front || !f.paint) return;
+    const F = FX.frame(f), { n, style } = FX.cabinetLayout(f, counter), dw = F.Q / n;
+    const slab = (q0, q1, zz0, zz1, o0, o1, m) => lbox(F, F.P + o0, q0, zz0, F.P + o1, q1, zz1, m);
+    const kick = style === 'doors' ? 0 : 0.35, split = style === 'door-drawer' ? z1 - 0.55 : z1;
     const nextKey = kind => { const c = (partN[f.paint] ||= { door: 0, drawer: 0 }); c[kind]++;
       const key = `${f.paint}:${kind}${c[kind]}`; cabParts.push({ key, group: f.paint, kind, n: c[kind] }); return key; };
-    if (drawer) slab(a0, a1, 0, kick, 0, 0.004, M.reveal);              // toe-kick shadow
-    for (let i = 0; i < n; i++) {
-      const b0 = a0 + i * dw + GAP, b1 = a0 + (i + 1) * dw - GAP;
+    const pull = (b0, b1, z) => slab((b0 + b1) / 2 - 0.25, (b0 + b1) / 2 + 0.25, z - 0.025, z + 0.025, DOOR_PROUD, DOOR_PROUD + 0.06, M.black);
+    if (kick) slab(0, F.Q, 0, kick, 0, 0.004, M.reveal);                 // toe-kick shadow
+    // doors are numbered west to east / north to south whichever way the run faces, so saved colours stay on their doors
+    const rev = F.d === 's' || F.d === 'w';
+    for (let j = 0; j < n; j++) {
+      const i = rev ? n - 1 - j : j, b0 = i * dw + GAP, b1 = (i + 1) * dw - GAP;
+      if (style === 'drawers') {                                        // shallow top drawer, two deep ones under it
+        const h = z1 - kick, cuts = [kick, kick + h * 0.38, kick + h * 0.76, z1];
+        for (let j = 2; j >= 0; j--) { const rk = nextKey('drawer'); pick(slab(b0, b1, cuts[j] + GAP, cuts[j + 1] - GAP, 0, DOOR_PROUD, material(rk)), rk); pull(b0, b1, cuts[j + 1] - 0.28); }
+        continue;
+      }
       const dk = nextKey('door');
-      pick(slab(b0, b1, (drawer ? kick : z0) + GAP, split - GAP, 0, DOOR_PROUD, material(dk)), dk);
-      const hx = i % 2 ? b0 + 0.14 : b1 - 0.14;
-      const hz = drawer ? split - 0.75 : (z1 - z0 > 4 ? (z0 + z1) / 2 : z0 + 0.35);
+      pick(slab(b0, b1, (kick || z0) + GAP, split - GAP, 0, DOOR_PROUD, material(dk)), dk);
+      const lowEnd = j % 2 === 1, hx = lowEnd !== rev ? b0 + 0.14 : b1 - 0.14;   // handles alternate, as they always have
+      const hz = style === 'door-drawer' ? split - 0.75 : (z1 - z0 > 4 ? (z0 + z1) / 2 : z0 + 0.35);
       slab(hx - 0.02, hx + 0.02, hz - 0.22, hz + 0.22, DOOR_PROUD, DOOR_PROUD + 0.06, M.black);
-      if (drawer) {
+      if (style === 'door-drawer') {
         const rk = nextKey('drawer');
         pick(slab(b0, b1, split + GAP, z1 - GAP, 0, DOOR_PROUD, material(rk)), rk);
         slab((b0 + b1) / 2 - 0.25, (b0 + b1) / 2 + 0.25, z1 - 0.3, z1 - 0.25, DOOR_PROUD, DOOR_PROUD + 0.06, M.black);
@@ -338,6 +347,18 @@ function build(H, R) {
     if (all || f.front === 'n') y0 -= o; if (all || f.front === 's') y1 += o;
     box(x0, y0, z, x1, y1, z + 0.125, M.counter);
   }
+  // a double sink set into the counter, faucet at the back
+  function sinkIn(F, z, p0, p1, q0, q1) {
+    const half = (q1 - q0) / 2;
+    for (let i = 0; i < 2; i++) lbox(F, p0, q0 + i * half + 0.07, z, p1, q0 + (i + 1) * half - 0.07, z + 0.006, M.steel);
+    const qm = (q0 + q1) / 2;
+    lcyl(F, p0 - 0.12, qm, 0.05, 0.05, z, z + 0.6, M.chrome);
+    lbox(F, p0 - 0.12, qm - 0.03, z + 0.55, p0 + 0.45, qm + 0.03, z + 0.62, M.chrome);
+  }
+  function basin(x, y, rx, ry, z) {
+    cylinder(x, y, rx, ry, z, z + 0.012, M.porc);
+    cylinder(x, y, rx * 0.78, ry * 0.78, z + 0.004, z + 0.016, M.reveal);
+  }
 
   for (const f of H.fixtures) {
     if (f.st === 'removed') continue;
@@ -350,10 +371,16 @@ function build(H, R) {
           pick(box(x0, y0, 0, x1, y1, zt, m), f.paint);
           cabinetFront(f, 0, zt, !!counter);
           if (counter) counterTop(f, zt);
-        } else if (f.c === 'app') {
-          box(x0, y0, 0, x1, y1, 5.9, M.appWhite);
-          box(x1, (y0 + y1) / 2 - 0.01, 0.4, x1 + 0.01, (y0 + y1) / 2 + 0.01, 5.8, M.black);
-          for (const yy of [(y0 + y1) / 2 - 0.2, (y0 + y1) / 2 + 0.2]) box(x1, yy - 0.025, 2.4, x1 + 0.07, yy + 0.025, 4.6, M.steel);
+          if (f.front && (f.sink || f.basin)) {
+            const F = FX.frame(f), z = zt + 0.125;
+            if (f.sink) { const w = Math.min(2.4, F.Q - 0.3), d = Math.min(1.4, F.P - 0.5); sinkIn(F, z, 0.3, 0.3 + d, (F.Q - w) / 2, (F.Q + w) / 2); }
+            else { const [cx, cy] = F.pt(F.P / 2 + 0.05, F.Q / 2), rq = Math.min(0.78, F.Q / 2 - 0.2), rp = Math.min(0.55, F.P / 2 - 0.2); F.swap ? basin(cx, cy, rq, rp, z) : basin(cx, cy, rp, rq, z); }
+          }
+        } else if (f.c === 'app') {                                    // refrigerator
+          const F = FX.frame(f);
+          lbox(F, 0, 0, 0, F.P, F.Q, 5.9, M.appWhite);
+          lbox(F, F.P, F.Q / 2 - 0.01, 0.4, F.P + 0.01, F.Q / 2 + 0.01, 5.8, M.black);
+          for (const q of [F.Q / 2 - 0.2, F.Q / 2 + 0.2]) lbox(F, F.P, q - 0.025, 2.4, F.P + 0.07, q + 0.025, 4.6, M.steel);
         } else if (f.c === 'counter') {
           box(x0, y0, 2.5, x1, y1, 2.625, M.counter);
         }
@@ -361,31 +388,23 @@ function build(H, R) {
       }
       case 'upper': pick(box(x0, y0, f.z0, x1, y1, f.z1, material(f.paint)), f.paint); cabinetFront(f, f.z0, f.z1, false); break;
       case 'splash': box(x0, y0, f.z0, x1, y1, f.z1, M.tile); break;
-      case 'oval': {
-        const z = 2.8 + 0.125;
-        cylinder(f.cx, f.cy, f.rx, f.ry, z, z + 0.012, M.porc);
-        cylinder(f.cx, f.cy, f.rx * 0.78, f.ry * 0.78, z + 0.004, z + 0.016, M.reveal);
+      case 'oval': basin(f.cx, f.cy, f.rx, f.ry, 2.8 + 0.125); break;
+      case 'sink2': { const F = FX.frame(f); sinkIn(F, 3.125, 0, F.P, 0, F.Q); break; }
+      case 'range': {                                                   // range with a microwave above, controls on the front
+        const F = FX.frame(f);
+        lbox(F, 0, 0, 0, F.P, F.Q, 3.0, M.steel); lbox(F, 0.05, 0.05, 3.0, F.P - 0.05, F.Q - 0.05, 3.025, M.black);
+        lbox(F, F.P, 0.3, 1.0, F.P + 0.01, F.Q - 0.3, 2.4, M.black); lbox(F, F.P, 0.2, 2.5, F.P + 0.12, F.Q - 0.2, 2.56, M.steel);
+        lbox(F, 0, 0, 4.9, 1.4, F.Q, 6.3, M.appWhite); lbox(F, 1.4, 0.2, 5.0, 1.41, F.Q - 0.9, 6.2, M.black);
         break;
       }
-      case 'sink2': {
-        const z = 3.125;
-        for (let i = 0; i < 2; i++) { const sx = x0 + i * f.w / 2 + 0.07; box(sx, y0, z, sx + f.w / 2 - 0.14, y1, z + 0.006, M.steel); }
-        const cx = x0 + f.w / 2;
-        cylinder(cx, y0 - 0.12, 0.05, 0.05, z, z + 0.6, M.chrome);
-        box(cx - 0.03, y0 - 0.12, z + 0.55, cx + 0.03, y0 + 0.45, z + 0.62, M.chrome);
-        break;
-      }
-      case 'range':
-        box(x0, y0, 0, x1, y1, 3.0, M.steel); box(x0 + 0.05, y0 + 0.05, 3.0, x1 - 0.05, y1 - 0.05, 3.025, M.black);
-        box(x1, y0 + 0.3, 1.0, x1 + 0.01, y1 - 0.3, 2.4, M.black); box(x1, y0 + 0.2, 2.5, x1 + 0.12, y1 - 0.2, 2.56, M.steel);
-        box(x0, y0, 4.9, x0 + 1.4, y1, 6.3, M.appWhite); box(x0 + 1.4, y0 + 0.2, 5.0, x0 + 1.41, y1 - 0.9, 6.2, M.black);
-        break;
       case 'heater': cylinder(f.cx, f.cy, f.r * 0.85, f.r * 0.85, 0, 4.4, M.heater); break;
       case 'pumps': box(x0, y0, 0, x1, y1, 2.0, M.pump); break;
-      case 'front':
-        box(x0, y0, 0, x1, y1, 3.0, M.appWhite); box(x0 + 0.02, y0 + 0.1, 3.0, x0 + 0.4, y1 - 0.1, 3.4, M.steel);
-        cylinder(x1 + 0.01, (y0 + y1) / 2, 0.02, 0.55, 1.15, 2.25, M.black);
+      case 'front': {                                                   // front-loading washer / dryer
+        const F = FX.frame(f);
+        lbox(F, 0, 0, 0, F.P, F.Q, 3.0, M.appWhite); lbox(F, 0.02, 0.1, 3.0, 0.4, F.Q - 0.1, 3.4, M.steel);
+        lcyl(F, F.P + 0.01, F.Q / 2, 0.02, 0.55, 1.15, 2.25, M.black);
         break;
+      }
       case 'shelf': {
         const z = f.label ? 5.9 : 5.0;
         box(x0, y0, z, x1, y1, z + 0.04, M.wire);
@@ -408,20 +427,23 @@ function build(H, R) {
         box(x0 + t, y0 + t, 0, x1 - t, y1 - t, 0.35, M.porc);
         break;
       }
-      case 'shower': {
-        box(x0, y0, 0, x1, y1, 0.2, M.porc);
-        cylinder((x0 + x1) / 2, (y0 + y1) / 2, 0.12, 0.12, 0.2, 0.206, M.black);
-        const gl = box(x0, y0 - 0.02, 0.2, x1, y0, 6.5, M.glass); if (gl) gl.castShadow = false;
-        box(x0, y0 - 0.03, 6.4, x1, y0 + 0.01, 6.5, M.chrome);
+      case 'shower': {                                                  // the glass door is on the front
+        const F = FX.frame(f);
+        lbox(F, 0, 0, 0, F.P, F.Q, 0.2, M.porc);
+        lcyl(F, F.P / 2, F.Q / 2, 0.12, 0.12, 0.2, 0.206, M.black);
+        const gl = lbox(F, F.P, 0, 0.2, F.P + 0.02, F.Q, 6.5, M.glass); if (gl) gl.castShadow = false;
+        lbox(F, F.P - 0.01, 0, 6.4, F.P + 0.03, F.Q, 6.5, M.chrome);
         break;
       }
-      case 'barn': {
-        const bx0 = f.x1 - 0.15, bx1 = f.x2 + 0.15, by = f.y + T_HALF + 0.14, m = material('barn');
-        pick(box(bx0, by, 0.12, bx1, by + 0.1, 7.1, m), 'barn');
-        for (const zz of [1.0, 6.0]) pick(box(bx0, by + 0.1, zz, bx1, by + 0.12, zz + 0.45, m), 'barn');
-        box(bx0 - 0.1, by - 0.02, 7.3, bx0 + 2 * (bx1 - bx0) + 0.1, by + 0.05, 7.36, M.black);
-        for (const hx of [bx0 + 0.3, bx1 - 0.3]) box(hx - 0.03, by + 0.02, 7.0, hx + 0.03, by + 0.06, 7.34, M.black);
-        box(bx1 - 0.35, by + 0.12, 3.0, bx1 - 0.3, by + 0.2, 4.2, M.black);
+      case 'barn': {                                                    // slides along a horizontal wall, on its front side
+        const s = FX.facing(f) === 'n' ? -1 : 1, Y = (d0, d1) => s > 0 ? [f.y + d0, f.y + d1] : [f.y - d1, f.y - d0];
+        const bx0 = f.x1 - 0.15, bx1 = f.x2 + 0.15, key = f.paint || 'barn', m = material(key), o = T_HALF + 0.14;
+        const yb = (d0, d1, a, b, z0, z1, mm) => { const [ya, yb2] = Y(o + d0, o + d1); return box(a, ya, z0, b, yb2, z1, mm); };
+        pick(yb(0, 0.1, bx0, bx1, 0.12, 7.1, m), key);
+        for (const zz of [1.0, 6.0]) pick(yb(0.1, 0.12, bx0, bx1, zz, zz + 0.45, m), key);
+        yb(-0.02, 0.05, bx0 - 0.1, bx0 + 2 * (bx1 - bx0) + 0.1, 7.3, 7.36, M.black);
+        for (const hx of [bx0 + 0.3, bx1 - 0.3]) yb(0.02, 0.06, hx - 0.03, hx + 0.03, 7.0, 7.34, M.black);
+        yb(0.12, 0.2, bx1 - 0.35, bx1 - 0.3, 3.0, 4.2, M.black);
         break;
       }
       case 'steps': {
@@ -444,9 +466,9 @@ function build(H, R) {
   ground.receiveShadow = true; root.add(ground);
 
   // plank texture: drawn once from a photo crop of one plank (floor.texture), then tiled in world feet
-  function loadFloorTexture(url, onReady) {
-    const img = new Image();
-    img.onload = () => {
+  // img: a photo of one plank (grain running up the image), or a canvas drawn with the same orientation
+  function floorFromImage(img, onReady) {
+    {
       const PX = 256, plankW = H.floor.plankW, plankL = H.floor.plankL, rows = 14;
       const cw = Math.round(2 * plankL * PX), rh = Math.round(plankW * PX), ch = rh * rows;
       const rot = document.createElement('canvas'); rot.width = img.height; rot.height = img.width;
@@ -479,8 +501,14 @@ function build(H, R) {
       tex.anisotropy = 8;
       M.floor.map = tex; M.floor.color.set(0xffffff); M.floor.needsUpdate = true;
       onReady && onReady();
-    };
-    img.src = url;
+    }
+  }
+  function loadFloorTexture(url, onReady) { const img = new Image(); img.onload = () => floorFromImage(img, onReady); img.src = url; }
+  // the house's own floor: a wood species (drawn like the cabinet veneers), a photo (path or data URL), or nothing (plain colour)
+  function loadFloor(onReady) {
+    const fl = H.floor;
+    if (fl.wood && WOODS[fl.wood]) { const cache = (window.__woodFloorCanvas ||= {}); floorFromImage(cache[fl.wood] ||= woodCanvas(WOODS[fl.wood], 384, 768), onReady); }
+    else if (fl.texture) loadFloorTexture(fl.texture, onReady);
   }
 
   // ---------------------------------------------------------------- picking + camera helpers
@@ -503,7 +531,7 @@ function build(H, R) {
   }
 
   return {
-    root, ceilings, pickables, material, setPaint, defaultHex, keyAt, roomInfo, surfaceView, loadFloorTexture, SHEEN, cabParts, WOODS, woodSwatch,
+    root, ceilings, pickables, material, setPaint, defaultHex, keyAt, roomInfo, surfaceView, loadFloorTexture, loadFloor, SHEEN, cabParts, WOODS, woodSwatch,
     center: new T.Vector3(H.W / 2, 0, H.D / 2)
   };
 }

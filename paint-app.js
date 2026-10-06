@@ -156,7 +156,7 @@
     if (!sized) { sized = true; if (view.kind === 'doll') dollhouse(); else if (view.kind === 'top') topDown(); }   // fit to the real shape once known
   }).observe(stage);
   let sized = false;
-  if (H.floor.texture) B.loadFloorTexture(H.floor.texture, requestRender);
+  B.loadFloor(requestRender);
 
   // ------------------------------------------------------------------ views
   const C3 = B.center;
@@ -189,9 +189,7 @@
   }
   for (const f of H.fixtures) {
     if (f.st === 'removed') continue;
-    if (['box', 'range', 'front', 'pumps', 'tub', 'shower'].includes(f.k)) OBST.push([f.x, f.y, f.x + f.w, f.y + f.h]);
-    if (f.k === 'heater') OBST.push([f.cx - f.r, f.cy - f.r, f.cx + f.r, f.cy + f.r]);
-    if (f.k === 'toilet') OBST.push([f.cx - 0.9, f.cy - 0.6, f.cx + 0.95, f.cy + 0.6]);
+    if (['box', 'range', 'front', 'pumps', 'tub', 'shower', 'heater', 'toilet'].includes(f.k)) { const r = window.HouseFixtures.footprint(f); if (r) OBST.push(r); }
   }
   const blocked = (x, y) => OBST.some(([x0, y0, x1, y1]) => x > x0 - RADIUS && x < x1 + RADIUS && y > y0 - RADIUS && y < y1 + RADIUS);
   function walkCam() { camera.position.set(walk.x, EYE, walk.y); camera.rotation.set(walk.pitch, walk.yaw, 0, 'YXZ'); }
@@ -860,7 +858,11 @@
   // The scheme travels in the link itself (#scheme=...). A house opened from a file travels with it.
   async function shareLink() {
     const payload = { v: 1, name: curName, a: A };
-    if (SRC.kind === 'local') payload.house = SRC.src;
+    if (SRC.kind === 'local') {
+      payload.house = JSON.parse(JSON.stringify(SRC.src));
+      const fl = payload.house.floor;                         // a floor photo would make the link enormous: the link carries a plain floor instead
+      if (fl && /^data:/.test(fl.texture || '')) { delete fl.texture; toast('The link leaves out your floor photo to stay short.'); }
+    }
     const u = new URL(location.href);
     if (SRC.kind === 'local') u.searchParams.delete('house');
     u.hash = 'scheme=' + await PaintStore.pack(payload);

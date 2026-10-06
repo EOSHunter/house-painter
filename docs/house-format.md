@@ -26,7 +26,7 @@ Copy [`houses/starter-cottage/house.json`](../houses/starter-cottage/house.json)
 | `W`, `D` | yes | Overall width (x) and depth (y), outside to outside. |
 | `wallThickness` | | `{ "exterior": 0.5, "interior": 0.33 }`. Used for the default floor and a few fixtures. |
 | `heights` | | `{ "ceiling": 8, "door": 6.667, "windowHead": 6.667, "windowSill": 3 }`. The values shown are the defaults. Any door or window can override them. |
-| `floor` | | `{ "name", "spec", "color", "plankW", "plankL", "dir", "texture" }`. `texture` is an optional photo of a single plank, as a path from the project root. Without it the floor uses `color`. |
+| `floor` | | `{ "name", "spec", "color", "plankW", "plankL", "dir", "texture", "wood" }`. Pick one look: `wood` is a species (`whiteoak`, `redoak`, `walnut`, `teak`, `cherry`, `maple`, `rosewood`, `ebonized`), drawn like the cabinet veneers. `texture` is a photo of a single plank, with the grain running up the picture, either as a path from the project root or as a `data:` URL. Without either the floor is plain `color`. |
 | `floorRects` | | Floor area as `[x0, y0, x1, y1]` rectangles. Defaults to the inside of the exterior walls. |
 | `walls` | yes | See [Walls](#walls). |
 | `rooms` | yes | See [Rooms](#rooms). |
@@ -93,25 +93,27 @@ Paintable things that aren't walls, such as cabinet runs and special doors:
 
 Each fixture has `k` (its kind) plus a position: `x, y, w, h` for a box, or `cx, cy` for round things.
 
+**Facing.** `front` (`n`, `e`, `s` or `w`) is the side a fixture's doors, controls or glass point to, and the back is the opposite side, usually against a wall. For a toilet it is `dir`, the way the bowl points. When `front` is left out the fixture keeps the direction older files assumed: east for the fridge, range and washer/dryer, north for the shower, south for the sink, and south for the barn door. `w` is the width across the front and `h` the depth for `n`/`s`; for `e`/`w` it is the other way round, because `w` and `h` are always along x and y.
+
 | `k` | Notes |
 |---|---|
-| `box` with `paint` | A cabinet. `c`: `cabB` or `cabW` (its plan colour); `front`: `n`/`s`/`e`/`w`; `z1`: height (default 3, or 2.8 for `cabW`). `counter`: `false` for tall units, `"all"` to overhang every side (islands). The default is a counter when `z1` ≤ 4. |
-| `upper` | A wall cabinet with `paint`, `front`, and `z0`/`z1` (its bottom and top heights). |
+| `box` with `paint` | A cabinet. `c`: `cabB` or `cabW` (its plan colour); `front`; `z1`: height (default 3, or 2.8 for `cabW`). `counter`: `false` for tall units, `"all"` to overhang every side (islands). The default is a counter when `z1` ≤ 4. `style`: `"door-drawer"` (a drawer over each door, the default under a counter), `"doors"` (the default for tall units) or `"drawers"` (a stack of three). `doors`: how many fronts (default one per 1.5 ft). `sink: true` sets a double kitchen sink into the counter and `basin: true` a bath basin. |
+| `upper` | A wall cabinet with `paint`, `front`, `z0`/`z1` (its bottom and top heights), and optional `style` and `doors`. |
 | `box` with `c: "app"` | A refrigerator (`label: "FRIDGE"`). |
 | `box` with `c: "counter"` | A bare counter (desk). |
 | `splash` | A backsplash tile panel with `z0`/`z1`. |
-| `sink2`, `oval` | A double kitchen sink, and an oval vanity basin. |
+| `sink2`, `oval` | A double kitchen sink (`front` is the side you stand on, the faucet is at the back), and an oval vanity basin. |
 | `range` | A range with a microwave above it. |
-| `toilet` | `cx`, `cy`, `dir` (`n`/`s`/`e`/`w`: the direction the bowl points). |
-| `tub`, `shower` | A tub; a shower pan with a glass door on its north side. |
-| `front` | A front-loading washer or dryer, with a `label`. |
-| `heater`, `pumps`, `shelf`, `barn` | A water heater (`cx`, `cy`, `r`), pumps, a wire shelf, and a sliding barn door (`x1`, `x2`, `y`; paint item `barn`). |
+| `toilet` | `cx`, `cy`, `dir` (`n`/`s`/`e`/`w`: the direction the bowl points). The footprint runs 0.95 ft behind the centre, 0.85 ft ahead of it, and 0.6 ft to each side. |
+| `tub`, `shower` | A tub; a shower pan with its glass door on the `front` side. |
+| `front` | A front-loading washer or dryer, with a `label`; the door and controls are on the `front` side. |
+| `heater`, `pumps`, `shelf`, `barn` | A water heater (`cx`, `cy`, `r`), pumps, a wire shelf, and a sliding barn door (`x1`, `x2`, `y`; `front`: `s` slides on the south side of its wall, `n` on the north; paint item `barn`, or `paint`). |
 | `steps`, `deck` | Outside steps. |
 | `label`, `dash`, `arch`, `fireplace`, `gtub`, `skylight` | Drawn on the plan only. |
 
 Fixtures with `st: "removed"` appear only in the floor plan's Before and Changes views.
 
-Several fixtures still assume a particular wall: the range, fridge and washer/dryer controls face east, and the shower glass is on its north side. Giving every fixture a facing direction is on the [roadmap](../ROADMAP.md).
+The plan editor places all of these from its fixture library (`F`). The shared geometry, which turns a fixture to face any direction, is in [`fixtures.js`](../fixtures.js).
 
 ## Checking a file
 

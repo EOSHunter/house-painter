@@ -60,12 +60,20 @@ Still to do:
 - [ ] Touch: panning and zooming work, but drawing needs a mouse or pen for now.
 - [ ] Editing the floor plan's labels, dimensions and notes (`plan`), and the walkthrough start point.
 
-## Phase 3: fixtures
+## Phase 3: fixtures ✅
 
-- [ ] A fixture library in the editor: base cabinet runs, uppers, tall units, islands, vanities, toilets, tubs, showers, a range, a fridge, a washer and dryer.
-- [ ] A facing direction for every fixture. Today the range, fridge and washer controls face east, and the shower glass faces north.
-- [ ] Cabinet runs that split into doors and drawers by width, with optional overrides.
-- [ ] A floor material picker: bundled plank photos, a colour, or the user's own photo.
+- [x] A fixture library in the editor (`F`): base, sink-base, drawer and tall cabinets, uppers, an island, a fridge, a range with microwave, a vanity with basin, a linen cabinet, a toilet, a tub, a shower, a washer, a dryer, a water heater and a wire shelf.
+- [x] Placing is wall-aware: a fixture backs onto the wall nearest the cursor and faces into the room. It snaps to wall corners and to the edges of other fixtures. Free-standing ones turn with `T`. Overlaps are refused, except wall cabinets and shelves, which sit above floor-level fixtures.
+- [x] Every fixture can face any way. The fridge, range, washer, dryer, shower, sink and barn door used to face a fixed direction. They are now built in their own frame (`fixtures.js`), in the browser and in Blender. Files that don't say which way they face look exactly as before: all 959 meshes of the example house are identical.
+- [x] Select, drag, turn, resize, duplicate and delete fixtures. The inspector also sets the cabinet height, counter, fronts (drawer over each door, doors only, or a stack of drawers), how many fronts, a sink or basin set into the counter, and the paint group. A fixture list on the left finds any of them.
+- [x] Paint groups: a new cabinet joins the house's existing group of that kind in the same room, or starts a new one. **New paint group…** makes your own. Every door and drawer can still be painted on its own.
+- [x] Floors: plain colour, the bundled Desert Sand photo, eight wood species (drawn like the cabinet veneers, in the browser and in Blender), or your own photo. A photo is turned upright, shrunk and stored inside the house file.
+- [x] The walkthrough's collision boxes follow each fixture's real footprint.
+
+Still to do:
+- [ ] Resizing by dragging handles (today it is in the inspector).
+- [ ] Sinks, a range and a fridge that are separate fixtures, so a kitchen can be built from a plain run plus an appliance of any size.
+- [ ] More fixtures: dishwasher, corner cabinets, a pantry with shelves, a double vanity, a freestanding tub.
 
 ## Phase 4: release
 
@@ -92,5 +100,4 @@ Still to do:
 ## Known limits today
 
 - Walls must be horizontal or vertical. Ceilings are flat, at one height for the whole house, and there is one storey.
-- Fixtures face fixed directions (see Phase 3).
 - Saved colours are tied to surface IDs (such as `BR1-N`). If walls change in a way that renames surfaces, the colours on the renamed walls are lost.

@@ -96,7 +96,7 @@
   .planwrap { position: relative; min-height: 0; min-width: 0; }
   #plan { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; user-select: none; }
   #plan.t-select { cursor: default; } #plan.t-pan, #plan.panning { cursor: grabbing; }
-  #plan.t-wall, #plan.t-split, #plan.t-scale, #plan.t-room, #plan.t-door, #plan.t-window, #plan.t-cased { cursor: crosshair; }
+  #plan.t-wall, #plan.t-split, #plan.t-scale, #plan.t-room, #plan.t-door, #plan.t-window, #plan.t-cased, #plan.t-fixture { cursor: crosshair; }
   #plan.t-move { cursor: move; }
   .p3 { position: relative; min-height: 0; border-left: 1px solid var(--line); background: var(--stage); }
   .p3 canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
@@ -140,8 +140,26 @@
   .snapmark { fill: none; stroke: var(--snap); pointer-events: none; }
   .guide { stroke: var(--snap); stroke-dasharray: 2 3; pointer-events: none; }
   .scalept { fill: var(--snap); pointer-events: none; }
+  /* fixtures */
+  .fxs .body { fill: var(--raised); fill-opacity: .9; stroke: var(--muted); stroke-width: 1; }
+  .fxs .front { stroke: var(--wall-ext); stroke-width: 3; stroke-linecap: round; pointer-events: none; }
+  .fxs.hi .body { fill: none; stroke-dasharray: 4 3; pointer-events: stroke; }
+  .fxs.thin .body { fill: var(--muted); stroke: none; }
+  .fxs.on .body { stroke: var(--select); stroke-width: 2; stroke-dasharray: none; }
+  .fxs:hover .body { stroke: var(--select); }
+  .fxlabel { fill: var(--muted); text-anchor: middle; font-family: var(--f-body); font-weight: 500; pointer-events: none; }
+  .ghostfx { fill: var(--select-soft); stroke: var(--select); stroke-dasharray: 4 3; pointer-events: none; }
+  .ghostfx.bad { fill: rgba(214, 69, 61, .14); stroke: var(--removed); }
+  .front.ghostfx { fill: none; stroke: var(--select); stroke-dasharray: none; stroke-width: 3; }
+  .lib { display: grid; gap: 4px; } .lib h4 { margin: 4px 0 0; font: 600 11px var(--f-mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+  .libgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+  .libgrid button { display: grid; gap: 1px; text-align: left; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--r); background: var(--raised); font-size: 12px; line-height: 1.25; }
+  .libgrid button small { font: 11px var(--f-mono); color: var(--muted); }
+  .libgrid button[aria-pressed="true"] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+  .libgrid button[aria-pressed="true"] small { color: inherit; opacity: .75; }
+  .insp .seg { width: 100%; } .insp .seg button { flex: 1; }
   /* outlines keep the same on-screen width and dash at any zoom */
-  #plan .ghost, #plan .splitline, #plan .sel-outline, #plan .handle, #plan .snapmark, #plan .guide, #plan .fx, #plan .opening *, #plan .wall rect.body, #plan .nse { vector-effect: non-scaling-stroke; }
+  #plan .ghost, #plan .splitline, #plan .sel-outline, #plan .handle, #plan .snapmark, #plan .guide, #plan .fx, #plan .opening *, #plan .wall rect.body, #plan .nse, #plan .fxs .body, #plan .fxs .front { vector-effect: non-scaling-stroke; }
 
   /* inspector */
   .insp { padding: 0 16px; display: grid; gap: 12px; }
@@ -193,6 +211,7 @@
       <button data-tool="cased" aria-pressed="false" title="Place a doorway without a door (O)">Opening<kbd>O</kbd></button>
       <button data-tool="room" aria-pressed="false" title="Click inside a space to make it a room (R)">Room<kbd>R</kbd></button>
       <button data-tool="split" aria-pressed="false" title="Split an open-plan space into rooms (L)">Split<kbd>L</kbd></button>
+      <button data-tool="fixture" aria-pressed="false" title="Place cabinets, appliances and bath fixtures (F)">Fixture<kbd>F</kbd></button>
     </div>
     <div class="seg" id="wallMode" role="group" aria-label="Wall type" hidden>
       <button data-mode="ext" aria-pressed="true">Outside wall</button><button data-mode="int" aria-pressed="false">Inside wall</button>
@@ -216,8 +235,11 @@
     <h2>Blueprint</h2>
     <div class="under" id="underBox"></div>
     <input type="file" id="underFile" accept="image/*,application/pdf" hidden>
+    <input type="file" id="floorFile" accept="image/*" hidden>
     <h2>Rooms</h2>
     <div class="roomlist" id="roomList"></div>
+    <h2>Fixtures</h2>
+    <div class="roomlist" id="fxList"></div>
     <p class="empty" id="restoreBox" hidden></p>
   </aside>
 
@@ -233,7 +255,7 @@
         <rect id="gridB" x="-1000" y="-1000" width="2000" height="2000" fill="url(#gridMajor)" pointer-events="none"/>
         <g id="lRooms"></g><g id="lFix"></g><g id="lWalls"></g><g id="lOpen"></g><g id="lSplits"></g><g id="lSel"></g><g id="lGhost"></g>
       </svg>
-      <div class="zoom"><button id="zIn" aria-label="Zoom in">+</button><button id="zOut" aria-label="Zoom out">−</button><button id="zFit" aria-label="Fit to drawing" title="Fit (F)">⤢</button></div>
+      <div class="zoom"><button id="zIn" aria-label="Zoom in">+</button><button id="zOut" aria-label="Zoom out">−</button><button id="zFit" aria-label="Fit to drawing" title="Fit (H)">⤢</button></div>
       <div class="hint" id="hint" hidden></div>
       <div class="toast" id="toast" role="status" hidden></div>
       <div class="welcome" id="welcome" hidden>
@@ -264,6 +286,7 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script src="house-core.js"></script>
+<script src="fixtures.js"></script>
 <script src="storage.js"></script>
 <script src="house3d.js"></script>
 <script src="editor.js"></script>

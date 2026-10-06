@@ -39,7 +39,7 @@
     {"k":"splash","x":2,"y":0.5,"w":10,"h":0.02,"z0":3.125,"z1":3.55},
     {"k":"upper","x":2,"y":0.5,"w":2,"h":1,"z0":4.5,"z1":7.5,"paint":"uppers","front":"s"},
     {"k":"upper","x":8,"y":0.5,"w":4,"h":1,"z0":4.5,"z1":7.5,"paint":"uppers","front":"s"},
-    {"k":"box","c":"app","x":12.2,"y":0.5,"w":2.6,"h":2.6,"label":"FRIDGE","size":8},
+    {"k":"box","c":"app","x":12.2,"y":0.5,"w":2.6,"h":2.6,"label":"FRIDGE","size":8,"front":"s"},
     {"k":"box","c":"cabB","x":5.5,"y":5,"w":5,"h":2.5,"label":"ISLAND","size":9,"paint":"island","front":"s","z1":3,"counter":"all"},
     {"k":"box","c":"cabW","x":33.4,"y":13.5,"w":1.95,"h":3.6,"paint":"vanity","front":"w","z1":2.8},
     {"k":"oval","cx":34.4,"cy":15.3,"rx":0.55,"ry":0.78},

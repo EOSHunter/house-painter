@@ -24,6 +24,7 @@ Every house is one JSON file. The example is a remodelled 1998 Fleetwood **Water
 | `paint.html` + `paint-app.js` + `house3d.js` | The 3D paint studio and walkthrough (Three.js r128). |
 | `storage.js` | Where schemes are kept: this browser, or the Claude artifact runtime's shared database. It also makes share links and saves files. |
 | `editor.html` + `editor.js` | The plan editor: trace a blueprint (image or PDF) into a house file, with a live 3D preview. |
+| `fixtures.js` | The fixture library and geometry shared by the editor, the paint studio and the walkthrough: every fixture can face any way. |
 | `floorplan.html` + `floorplan.js` | The 2D floor plan: after / before / changes views and the paint-surface map. |
 | `paint-colors.js` | Colour books: 1,526 Sherwin-Williams and 5,443 Behr colours (code, name, hex). |
 | `build_house.py` | Builds the Blender model, applies an exported scheme, and renders views. |
@@ -54,7 +55,8 @@ The easy way is the plan editor (`editor.html`):
 2. Set its scale: click both ends of a dimension you know and type its length.
 3. Click corner to corner around the outside walls, then draw the inside walls. You can type a length and press Enter for an exact wall.
 4. Click doors and windows onto walls, then click inside each space to make it a room and name it.
-5. Check the heights, then press **Paint it**.
+5. Optional: press `F` and place cabinets, appliances and bath fixtures. They back onto the nearest wall, `T` turns a free-standing one, and the inspector sets sizes, fronts and paint groups. Pick the flooring too: a wood, a colour or your own photo.
+6. Check the heights, then press **Paint it**.
 
 Everything stays in your browser until you save `house.json`. **Edit house** in the paint studio brings you back.
 
