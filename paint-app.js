@@ -192,7 +192,7 @@
   }
   for (const f of H.fixtures) {
     if (f.st === 'removed') continue;
-    if (['box', 'range', 'front', 'pumps', 'tub', 'shower', 'heater', 'toilet'].includes(f.k)) { const r = window.HouseFixtures.footprint(f); if (r) OBST.push(r); }
+    if (['box', 'range', 'front', 'pumps', 'tub', 'ftub', 'shower', 'heater', 'toilet'].includes(f.k)) { const r = window.HouseFixtures.footprint(f); if (r) OBST.push(r); }
   }
   // angled walls: you stay a body's width from the wall, except where there is a doorway (outside doors stay shut)
   const SLANTS = H.slants.filter(S => S.status !== 'removed');

@@ -30,7 +30,7 @@
       return [f.cx - half, f.cy - back, f.cx + half, f.cy + front];
     }
     if (f.k === 'heater') return [f.cx - f.r, f.cy - f.r, f.cx + f.r, f.cy + f.r];
-    if (f.k === 'oval') return [f.cx - f.rx, f.cy - f.ry, f.cx + f.rx, f.cy + f.ry];
+    if (f.k === 'oval' || f.k === 'ftub') return [f.cx - f.rx, f.cy - f.ry, f.cx + f.rx, f.cy + f.ry];
     if (f.k === 'barn') return [f.x1, f.y - 0.2, f.x2, f.y + 0.2];
     if ([f.x, f.y, f.w, f.h].every(v => typeof v === 'number')) return [f.x, f.y, f.x + f.w, f.y + f.h];
     return null;
@@ -43,7 +43,7 @@
       f.cx = r4(d === 'w' ? x0 + front : d === 'e' ? x0 + back : (x0 + x1) / 2);
       f.cy = r4(d === 'n' ? y0 + front : d === 's' ? y0 + back : (y0 + y1) / 2);
     } else if (f.k === 'heater') { f.cx = r4((x0 + x1) / 2); f.cy = r4((y0 + y1) / 2); f.r = r4(Math.min(x1 - x0, y1 - y0) / 2); }
-    else if (f.k === 'oval') { f.cx = r4((x0 + x1) / 2); f.cy = r4((y0 + y1) / 2); f.rx = r4((x1 - x0) / 2); f.ry = r4((y1 - y0) / 2); }
+    else if (f.k === 'oval' || f.k === 'ftub') { f.cx = r4((x0 + x1) / 2); f.cy = r4((y0 + y1) / 2); f.rx = r4((x1 - x0) / 2); f.ry = r4((y1 - y0) / 2); }
     else if (f.k === 'barn') { f.x1 = r4(x0); f.x2 = r4(x1); f.y = r4((y0 + y1) / 2); }
     else { f.x = r4(x0); f.y = r4(y0); f.w = r4(x1 - x0); f.h = r4(y1 - y0); }
     return f;
@@ -83,6 +83,8 @@
   }
   // fixtures at counter or floor level collide with each other; wall cabinets, shelves and tile sit above them
   const high = f => f.k === 'upper' || f.k === 'shelf' || f.k === 'splash';
+  // fixtures only collide within their own layer: floor and counter level, wall level, and things that sit on a counter (a drop-in sink)
+  const layer = f => (f.k === 'sink2' ? 2 : high(f) ? 1 : 0);
   const width = f => { const r = footprint(f), d = facing(f); return !r ? 0 : (d ? (along(d) ? r[2] - r[0] : r[3] - r[1]) : r[2] - r[0]); };
   const depth = f => { const r = footprint(f), d = facing(f); return !r ? 0 : (d ? (along(d) ? r[3] - r[1] : r[2] - r[0]) : r[3] - r[1]); };
 
@@ -112,12 +114,20 @@
     { id: 'upper', group: 'Kitchen', name: 'Upper cabinets', size: [3, 1], make: () => ({ k: 'upper', z0: 4.5, z1: 7 }), item: ['uppers', 'Upper cabinets', '#E8E4DA'] },
     { id: 'tall', group: 'Kitchen', name: 'Tall cabinet', size: [2, 2], make: () => ({ k: 'box', c: 'cabB', z1: 7, counter: false }), item: ['tall', 'Tall cabinet', '#E8E4DA'] },
     { id: 'island', group: 'Kitchen', name: 'Island', size: [5, 2.5], free: true, make: () => ({ k: 'box', c: 'cabB', z1: 3, counter: 'all', label: 'ISLAND' }), item: ['island', 'Island', '#3E5A4C'] },
+    { id: 'cornerbase', group: 'Kitchen', name: 'Corner base cabinet', size: [3, 3], make: () => ({ k: 'box', c: 'cabB', z1: 3, doors: 1, name: 'Corner base cabinet' }), item: ['base', 'Base cabinets', '#E8E4DA'] },
+    { id: 'cornerupper', group: 'Kitchen', name: 'Corner upper cabinet', size: [2, 2], make: () => ({ k: 'upper', z0: 4.5, z1: 7, doors: 1, name: 'Corner upper cabinet' }), item: ['uppers', 'Upper cabinets', '#E8E4DA'] },
+    { id: 'pantry', group: 'Kitchen', name: 'Pantry cabinet', size: [3, 2], make: () => ({ k: 'box', c: 'cabB', z1: 7.2, counter: false, doors: 2, name: 'Pantry cabinet' }), item: ['pantry', 'Pantry cabinet', '#E8E4DA'] },
+    { id: 'sink', group: 'Kitchen', name: 'Sink (on a counter)', size: [2.4, 1.4], free: true, make: () => ({ k: 'sink2' }) },
+    { id: 'dishwasher', group: 'Kitchen', name: 'Dishwasher', size: [2, 2.1], make: () => ({ k: 'box', c: 'app', label: 'DW', size: 8, z1: 2.9 }) },
     { id: 'fridge', group: 'Kitchen', name: 'Refrigerator', size: [3, 2.6], make: () => ({ k: 'box', c: 'app', label: 'FRIDGE', size: 8 }) },
     { id: 'range', group: 'Kitchen', name: 'Range + microwave', size: [2.5, 2.1], make: () => ({ k: 'range' }) },
+    { id: 'range2', group: 'Kitchen', name: 'Range (no microwave)', size: [2.5, 2.1], make: () => ({ k: 'range', micro: false }) },
     { id: 'vanity', group: 'Bath', name: 'Vanity with basin', size: [3, 1.75], make: () => ({ k: 'box', c: 'cabW', z1: 2.8, basin: true }), item: ['vanity', 'Vanity', '#F1F0EC'] },
+    { id: 'vanity2', group: 'Bath', name: 'Double vanity', size: [5, 1.75], make: () => ({ k: 'box', c: 'cabW', z1: 2.8, basin: 2, name: 'Double vanity' }), item: ['vanity', 'Vanity', '#F1F0EC'] },
     { id: 'linen', group: 'Bath', name: 'Linen cabinet', size: [1.75, 1.75], make: () => ({ k: 'box', c: 'cabW', z1: 6.5, counter: false }), item: ['vanity', 'Vanity', '#F1F0EC'] },
     { id: 'toilet', group: 'Bath', name: 'Toilet', size: [1.2, 1.8], make: () => ({ k: 'toilet' }) },
     { id: 'tub', group: 'Bath', name: 'Bathtub', size: [5, 2.5], make: () => ({ k: 'tub' }) },
+    { id: 'ftub', group: 'Bath', name: 'Freestanding tub', size: [5.5, 2.8], free: true, make: () => ({ k: 'ftub' }) },
     { id: 'shower', group: 'Bath', name: 'Shower', size: [3.5, 3], make: () => ({ k: 'shower' }) },
     { id: 'washer', group: 'Laundry', name: 'Washer', size: [2.3, 2.2], make: () => ({ k: 'front', label: 'WASHER' }) },
     { id: 'dryer', group: 'Laundry', name: 'Dryer', size: [2.3, 2.2], make: () => ({ k: 'front', label: 'DRYER' }) },
@@ -127,11 +137,12 @@
   // a catalogue entry turned into a fixture: back against the wall on the side opposite `front`
   function create(id, front, rect) {
     const c = CATALOG.find(x => x.id === id), f = c.make();
-    if (f.k === 'toilet') f.dir = front; else if (f.k !== 'heater' && f.k !== 'tub' && f.k !== 'shelf') f.front = front;
+    if (f.k === 'toilet') f.dir = front; else if (f.k !== 'heater' && f.k !== 'tub' && f.k !== 'shelf' && f.k !== 'ftub') f.front = front;
     return place(f, rect);
   }
   // what the editor calls a fixture in its lists and inspector
   function describe(f) {
+    if (f.name) return f.name;
     if (f.k === 'box' && f.paint) {
       if (f.counter === 'all') return 'Island';
       if (f.basin) return 'Vanity';
@@ -140,14 +151,14 @@
       if (f.counter === false || (f.z1 || 3) > 4.5) return 'Tall cabinet';
       return 'Base cabinets';
     }
-    if (f.k === 'box' && f.c === 'app') return 'Refrigerator';
+    if (f.k === 'box' && f.c === 'app') return f.label === 'DW' ? 'Dishwasher' : 'Refrigerator';
     if (f.k === 'box' && f.c === 'counter') return 'Counter';
-    return { upper: 'Upper cabinets', range: 'Range', toilet: 'Toilet', tub: 'Bathtub', shower: 'Shower', front: f.label ? f.label[0] + f.label.slice(1).toLowerCase() : 'Washer', heater: 'Water heater',
+    return { upper: 'Upper cabinets', range: f.micro === false ? 'Range' : 'Range + microwave', ftub: 'Freestanding tub', toilet: 'Toilet', tub: 'Bathtub', shower: 'Shower', front: f.label ? f.label[0] + f.label.slice(1).toLowerCase() : 'Washer', heater: 'Water heater',
       shelf: 'Wire shelf', pumps: 'Pumps', sink2: 'Sink', oval: 'Basin', splash: 'Backsplash', barn: 'Barn door', steps: 'Steps', deck: 'Back steps' }[f.k] || f.k;
   }
   // kinds the editor can select and move (the rest are plan drawings: labels, dashed lines, removed items)
-  const EDITABLE = new Set(['box', 'upper', 'range', 'toilet', 'tub', 'shower', 'front', 'heater', 'shelf', 'pumps', 'sink2', 'oval', 'splash', 'barn', 'steps', 'deck']);
+  const EDITABLE = new Set(['box', 'upper', 'range', 'toilet', 'tub', 'ftub', 'shower', 'front', 'heater', 'shelf', 'pumps', 'sink2', 'oval', 'splash', 'barn', 'steps', 'deck']);
   const editable = f => EDITABLE.has(f.k) && f.st !== 'removed' && !!footprint(f);
 
-  return { DEFAULT_FRONT, CATALOG, facing, footprint, place, turn, spin, resize, high, width, depth, frame, cabinetLayout, create, describe, editable };
+  return { DEFAULT_FRONT, CATALOG, facing, footprint, place, turn, spin, resize, high, layer, width, depth, frame, cabinetLayout, create, describe, editable };
 });

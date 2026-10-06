@@ -147,6 +147,8 @@
         if(f.label) r+=`<text class="rsub" font-size="${f.size||8}" x="${X(f.x+f.w/2)}" y="${Y(f.y+f.h/2)+3}" style="fill:${f.c==='cabB'?'#fff':'var(--ink)'};font-weight:600">${f.label}</text>`;
         return r; }
       case 'oval':   return `<ellipse class="fxfill" cx="${X(f.cx)}" cy="${Y(f.cy)}" rx="${f.rx*S}" ry="${f.ry*S}"/>`;
+      case 'ftub':   return `<ellipse class="fxfill" cx="${X(f.cx)}" cy="${Y(f.cy)}" rx="${f.rx*S}" ry="${f.ry*S}"/>`+
+                            `<ellipse class="fxt" cx="${X(f.cx)}" cy="${Y(f.cy)}" rx="${(f.rx-.25)*S}" ry="${(f.ry-.25)*S}"/>`;
       case 'toilet': return toiletSVG(f);
       case 'tub':    return `<rect class="fxfill" x="${X(f.x)}" y="${Y(f.y)}" width="${f.w*S}" height="${f.h*S}" rx="3"/>`+
                             `<rect class="fxt" x="${X(f.x+.2)}" y="${Y(f.y+.2)}" width="${(f.w-.4)*S}" height="${(f.h-.4)*S}" rx="${.55*S}"/>`;

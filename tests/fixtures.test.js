@@ -77,3 +77,22 @@ test('a toilet is a fixed size and turns about its own centre', () => {
   const r = F.footprint(t);
   close([r[2] - r[0], r[3] - r[1]], [1.2, 1.8]);
 });
+
+test('the newer catalogue entries are named, sized and kept apart by layer', () => {
+  const ids = F.CATALOG.map(c => c.id);
+  for (const id of ['cornerbase', 'cornerupper', 'pantry', 'sink', 'dishwasher', 'range2', 'vanity2', 'ftub']) assert.ok(ids.includes(id), id);
+  const name = id => F.describe(F.create(id, 's', [0, 0, 5, 3]));
+  assert.equal(name('dishwasher'), 'Dishwasher');
+  assert.equal(name('range2'), 'Range');
+  assert.equal(name('range'), 'Range + microwave');
+  assert.equal(name('pantry'), 'Pantry cabinet');
+  assert.equal(name('ftub'), 'Freestanding tub');
+  // a drop-in sink sits on a counter, so it does not collide with the base cabinet under it
+  assert.notEqual(F.layer(F.create('sink', 's', [0, 0, 2, 1])), F.layer(F.create('base', 's', [0, 0, 2, 1])));
+  assert.equal(F.layer(F.create('upper', 's', [0, 0, 2, 1])), 1);
+  // a freestanding tub is an oval with no front, and resizing changes its radii
+  const t = F.create('ftub', 'e', [0, 0, 5.5, 2.8]);
+  assert.equal(F.facing(t), null);
+  assert.deepEqual(F.footprint(t), [0, 0, 5.5, 2.8]);
+  F.resize(t, 6, 3); assert.deepEqual(F.footprint(t), [0, 0, 6, 3]);
+});

@@ -1257,10 +1257,10 @@
   $('#wallMode').addEventListener('click', e => { const b = e.target.closest('[data-mode],[data-angle],[data-done]'); if (!b) return; if (b.dataset.done) { endDraw(); render(); return; } if (b.dataset.angle) wallAngle = !wallAngle; else wallMode = b.dataset.mode; endDraw(); setTool('wall'); });
 
   // ------------------------------------------------------------------ fixtures: placing and moving
-  const SIZE_KEYS = ['box', 'upper', 'range', 'tub', 'shower', 'front', 'shelf', 'pumps', 'sink2', 'steps', 'deck'];
+  const SIZE_KEYS = ['box', 'upper', 'range', 'tub', 'ftub', 'shower', 'front', 'shelf', 'pumps', 'sink2', 'steps', 'deck'];
   let fxItem = 'base', fxFace = 's';
   const catOf = id => FX.CATALOG.find(c => c.id === id);
-  const hasFront = c => !['tub', 'shelf', 'heater'].includes(c.make().k);
+  const hasFront = c => !['tub', 'shelf', 'heater', 'ftub'].includes(c.make().k);
   // the wall face nearest the cursor, if one is close: { w, side, face, front }
   function wallFace(p, reach) {
     let best = null;
@@ -1289,7 +1289,7 @@
   const rectFor = (front, face, ac, W, D) => front === 's' ? [ac - W / 2, face, ac + W / 2, face + D] : front === 'n' ? [ac - W / 2, face - D, ac + W / 2, face]
     : front === 'e' ? [face, ac - W / 2, face + D, ac + W / 2] : [face - D, ac - W / 2, face, ac + W / 2];
   const rectsHit = (a, b) => Math.min(a[2], b[2]) - Math.max(a[0], b[0]) > 0.02 && Math.min(a[3], b[3]) - Math.max(a[1], b[1]) > 0.02;
-  const fxOverlap = (f, skip) => { const r = FX.footprint(f); return fxs().some(g => g.uid !== skip && FX.editable(g) && FX.high(g) === FX.high(f) && rectsHit(r, FX.footprint(g))); };
+  const fxOverlap = (f, skip) => { const r = FX.footprint(f); return fxs().some(g => g.uid !== skip && FX.editable(g) && FX.layer(g) === FX.layer(f) && rectsHit(r, FX.footprint(g))); };
   function fixtureGhost(p, e) {
     const cat = catOf(fxItem); if (!cat) return null;
     const [W, D] = cat.size, free = !!(e && e.altKey), face = hasFront(cat);

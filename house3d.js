@@ -453,13 +453,25 @@ function build(H, R) {
           if (f.front && (f.sink || f.basin)) {
             const F = FX.frame(f), z = zt + 0.125;
             if (f.sink) { const w = Math.min(2.4, F.Q - 0.3), d = Math.min(1.4, F.P - 0.5); sinkIn(F, z, 0.3, 0.3 + d, (F.Q - w) / 2, (F.Q + w) / 2); }
-            else { const [cx, cy] = F.pt(F.P / 2 + 0.05, F.Q / 2), rq = Math.min(0.78, F.Q / 2 - 0.2), rp = Math.min(0.55, F.P / 2 - 0.2); F.swap ? basin(cx, cy, rq, rp, z) : basin(cx, cy, rp, rq, z); }
+            else {
+              const two = f.basin === 2;                                       // a double vanity has a basin in each half
+              for (const qc of two ? [F.Q / 4, F.Q * 3 / 4] : [F.Q / 2]) {
+                const [cx, cy] = F.pt(F.P / 2 + 0.05, qc), rq = Math.min(0.78, (two ? F.Q / 4 : F.Q / 2) - 0.2), rp = Math.min(0.55, F.P / 2 - 0.2);
+                F.swap ? basin(cx, cy, rq, rp, z) : basin(cx, cy, rp, rq, z);
+              }
+            }
           }
         } else if (f.c === 'app') {                                    // refrigerator
           const F = FX.frame(f);
-          lbox(F, 0, 0, 0, F.P, F.Q, 5.9, M.appWhite);
-          lbox(F, F.P, F.Q / 2 - 0.01, 0.4, F.P + 0.01, F.Q / 2 + 0.01, 5.8, M.black);
-          for (const q of [F.Q / 2 - 0.2, F.Q / 2 + 0.2]) lbox(F, F.P, q - 0.025, 2.4, F.P + 0.07, q + 0.025, 4.6, M.steel);
+          const ah = f.z1 || 5.9;                                          // a refrigerator by default; a lower z1 (a dishwasher) gets one bar handle
+          lbox(F, 0, 0, 0, F.P, F.Q, ah, M.appWhite);
+          if (ah > 4) {
+            lbox(F, F.P, F.Q / 2 - 0.01, 0.4, F.P + 0.01, F.Q / 2 + 0.01, 5.8, M.black);
+            for (const q of [F.Q / 2 - 0.2, F.Q / 2 + 0.2]) lbox(F, F.P, q - 0.025, 2.4, F.P + 0.07, q + 0.025, 4.6, M.steel);
+          } else {
+            lbox(F, F.P, 0.15, ah - 0.45, F.P + 0.01, F.Q - 0.15, ah - 0.05, M.black);
+            lbox(F, F.P, 0.3, ah - 0.4, F.P + 0.07, F.Q - 0.3, ah - 0.35, M.steel);
+          }
         } else if (f.c === 'counter') {
           box(x0, y0, 2.5, x1, y1, 2.625, M.counter);
         }
@@ -473,9 +485,13 @@ function build(H, R) {
         const F = FX.frame(f);
         lbox(F, 0, 0, 0, F.P, F.Q, 3.0, M.steel); lbox(F, 0.05, 0.05, 3.0, F.P - 0.05, F.Q - 0.05, 3.025, M.black);
         lbox(F, F.P, 0.3, 1.0, F.P + 0.01, F.Q - 0.3, 2.4, M.black); lbox(F, F.P, 0.2, 2.5, F.P + 0.12, F.Q - 0.2, 2.56, M.steel);
-        lbox(F, 0, 0, 4.9, 1.4, F.Q, 6.3, M.appWhite); lbox(F, 1.4, 0.2, 5.0, 1.41, F.Q - 0.9, 6.2, M.black);
+        if (f.micro !== false) { lbox(F, 0, 0, 4.9, 1.4, F.Q, 6.3, M.appWhite); lbox(F, 1.4, 0.2, 5.0, 1.41, F.Q - 0.9, 6.2, M.black); }
         break;
       }
+      case 'ftub':                                                       // freestanding: an oval shell, a darker well, a tap at one end
+        cylinder(f.cx, f.cy, f.rx, f.ry, 0, 2.0, M.porc); cylinder(f.cx, f.cy, f.rx * 0.84, f.ry * 0.78, 1.97, 2.01, M.reveal);
+        if (f.rx >= f.ry) cylinder(f.cx - f.rx * 0.78, f.cy, 0.05, 0.05, 2.0, 2.7, M.chrome); else cylinder(f.cx, f.cy - f.ry * 0.78, 0.05, 0.05, 2.0, 2.7, M.chrome);
+        break;
       case 'heater': cylinder(f.cx, f.cy, f.r * 0.85, f.r * 0.85, 0, 4.4, M.heater); break;
       case 'pumps': box(x0, y0, 0, x1, y1, 2.0, M.pump); break;
       case 'front': {                                                   // front-loading washer / dryer

@@ -600,12 +600,18 @@ def build_fixtures():
                     if f.get('sink'):
                         w, d = min(2.4, F.Q - 0.3), min(1.4, F.P - 0.5); sink_in(F, fx, z, 0.3, 0.3 + d, (F.Q - w) / 2, (F.Q + w) / 2)
                     else:
-                        cx, cy = F.pt(F.P / 2 + 0.05, F.Q / 2); rq, rp = min(0.78, F.Q / 2 - 0.2), min(0.55, F.P / 2 - 0.2)
-                        basin(fx, cx, cy, rq if F.swap else rp, rp if F.swap else rq, z)
+                        two = f.get('basin') == 2                       # a double vanity has a basin in each half
+                        for qc in ((F.Q / 4, F.Q * 3 / 4) if two else (F.Q / 2,)):
+                            cx, cy = F.pt(F.P / 2 + 0.05, qc); rq, rp = min(0.78, (F.Q / 4 if two else F.Q / 2) - 0.2), min(0.55, F.P / 2 - 0.2)
+                            basin(fx, cx, cy, rq if F.swap else rp, rp if F.swap else rq, z)
             elif f.get('c') == 'app':                          # refrigerator
-                F = Frame(f)
-                F.box(ap, 0, 0, 0, F.P, F.Q, 5.9, M['appwhite']); F.box(ap, F.P, F.Q / 2 - 0.01, 0.4, F.P + 0.01, F.Q / 2 + 0.01, 5.8, M['black'])
-                for q in (F.Q / 2 - 0.2, F.Q / 2 + 0.2): F.box(ap, F.P, q - 0.025, 2.4, F.P + 0.07, q + 0.025, 4.6, M['steel'])
+                F = Frame(f); ah = f.get('z1') or 5.9              # a refrigerator by default; a lower z1 (a dishwasher) gets one bar handle
+                F.box(ap, 0, 0, 0, F.P, F.Q, ah, M['appwhite'])
+                if ah > 4:
+                    F.box(ap, F.P, F.Q / 2 - 0.01, 0.4, F.P + 0.01, F.Q / 2 + 0.01, 5.8, M['black'])
+                    for q in (F.Q / 2 - 0.2, F.Q / 2 + 0.2): F.box(ap, F.P, q - 0.025, 2.4, F.P + 0.07, q + 0.025, 4.6, M['steel'])
+                else:
+                    F.box(ap, F.P, 0.15, ah - 0.45, F.P + 0.01, F.Q - 0.15, ah - 0.05, M['black']); F.box(ap, F.P, 0.3, ah - 0.4, F.P + 0.07, F.Q - 0.3, ah - 0.35, M['steel'])
             elif f.get('c') == 'counter':
                 obj('Cabinetry', 'Countertops').box(x0, y0, 2.5, x1, y1, 2.625, M['counter'])
         elif k == 'upper':
@@ -620,7 +626,10 @@ def build_fixtures():
             F = Frame(f)
             F.box(ap, 0, 0, 0, F.P, F.Q, 3.0, M['steel']); F.box(ap, 0.05, 0.05, 3.0, F.P - 0.05, F.Q - 0.05, 3.025, M['black'])
             F.box(ap, F.P, 0.3, 1.0, F.P + 0.01, F.Q - 0.3, 2.4, M['black']); F.box(ap, F.P, 0.2, 2.5, F.P + 0.12, F.Q - 0.2, 2.56, M['steel'])
-            F.box(ap, 0, 0, 4.9, 1.4, F.Q, 6.3, M['appwhite']); F.box(ap, 1.4, 0.2, 5.0, 1.41, F.Q - 0.9, 6.2, M['black'])
+            if f.get('micro') is not False: F.box(ap, 0, 0, 4.9, 1.4, F.Q, 6.3, M['appwhite']); F.box(ap, 1.4, 0.2, 5.0, 1.41, F.Q - 0.9, 6.2, M['black'])
+        elif k == 'ftub':                                      # freestanding: an oval shell, a darker well, a tap at one end
+            fx.ellipse(f['cx'], f['cy'], f['rx'], f['ry'], 0, 2.0, M['porc']); fx.ellipse(f['cx'], f['cy'], f['rx'] * 0.84, f['ry'] * 0.78, 1.97, 2.01, M['reveal'])
+            tx, ty = (f['cx'] - f['rx'] * 0.78, f['cy']) if f['rx'] >= f['ry'] else (f['cx'], f['cy'] - f['ry'] * 0.78); fx.ellipse(tx, ty, 0.05, 0.05, 2.0, 2.7, M['chrome'])
         elif k == 'heater': fx.ellipse(f['cx'], f['cy'], f['r'] * 0.85, f['r'] * 0.85, 0, 4.4, M['heater'])
         elif k == 'pumps': fx.box(x0, y0, 0, x1, y1, 2.0, M['pump'])
         elif k == 'front':                                     # front-loading washer / dryer
