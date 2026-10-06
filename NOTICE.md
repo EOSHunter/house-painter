@@ -10,6 +10,7 @@ These are fetched from a CDN when a page opens, not copied into this repository.
 |---|---|---|
 | [three.js](https://threejs.org/) r128 (and its `OrbitControls` and `RoomEnvironment` examples) | The 3D views | MIT |
 | [PDF.js](https://mozilla.github.io/pdf.js/) 3.11 | Reading a PDF blueprint in the plan editor, only when you upload one | Apache-2.0 |
+| [tesseract.js](https://github.com/naptha/tesseract.js) 5 (and its WebAssembly core and English language data) | Reading the numbers on a blueprint's dimension lines, only when you press Read dimensions and agree to the download. It runs in your browser: the picture is not uploaded | Apache-2.0 |
 | [Bricolage Grotesque](https://fonts.google.com/specimen/Bricolage+Grotesque), [IBM Plex Sans and Mono](https://fonts.google.com/specimen/IBM+Plex+Sans) via Google Fonts | The page typography | SIL Open Font License 1.1 |
 
 The pages work without the fonts (they fall back to system fonts).

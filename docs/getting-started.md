@@ -29,6 +29,8 @@ Open the **plan editor**. The steps down the left side follow this order, and ti
 
 **2. Set the scale.** Click two points on the blueprint whose real distance you know, like the two ends of the overall width, then type it: `56'`, `26'8"`, or `12.5` for feet. Pick the longest dimension you can find, because small errors in the points matter less over a long distance. You can set the scale again at any time.
 
+**Or let it read the dimensions.** If the plan has dimension lines with their numbers (`40'-0"`), press **Read dimensions…** in the Blueprint box. The first time, it asks to load a free text-reading tool (tesseract.js, about 10 MB, from a public server); your picture is read on your own computer and never uploaded. It matches each number it can read to the dimension line beside it, shows you what it found, and sets the scale when you agree. It works best on a straightened picture with clear lettering. If it can't find enough, it says so and you click two points as above.
+
 #### Let the editor suggest the walls
 
 ![Suggested walls over a blueprint](img/editor-suggest.png)
