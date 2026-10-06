@@ -5,7 +5,7 @@ const ROOT = path.join(__dirname, '..'), OUT = path.join(ROOT, '_site');
 
 const files = [
   'index.html', 'paint.html', 'editor.html', 'floorplan.html',
-  'house-core.js', 'house-loader.js', 'storage.js', 'fixtures.js', 'tracer.js', 'house3d.js', 'paint-app.js', 'paint-colors.js', 'floorplan.js', 'editor.js',
+  'house-core.js', 'house-loader.js', 'storage.js', 'fixtures.js', 'tracer.js', 'dimensions.js', 'house3d.js', 'paint-app.js', 'paint-colors.js', 'floorplan.js', 'editor.js',
   'renders/cozy-deco-emerald-brass/doll.png', 'renders/cozy-deco-emerald-brass/export.png'
 ];
 const dirs = ['houses', 'textures'];

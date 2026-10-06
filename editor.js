@@ -1187,6 +1187,80 @@
     };
   }
 
+  // ------------------------------------------------------------------ the scale, from the dimension text on the plan
+  // The text is read by tesseract.js, an OCR engine that runs in this browser. It is fetched (about 10 MB) the first time you ask, from a public
+  // CDN; the picture itself never leaves this computer. dimensions.js matches the text to the dimension lines and works out the scale.
+  const OCR_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js', OCR_OK = 'housepainter.ocrConsent';
+  let ocrWorker = null, ocrBusy = false;
+  // the blueprint at (nearly) its own resolution, turned by its rotation, as grey levels and as a canvas
+  function rasterNative() {
+    const u = S.underlay, f = Math.min(1, 3200 / Math.max(underImg.naturalWidth, underImg.naturalHeight)), a = u.rot * Math.PI / 180, W0 = underImg.naturalWidth * f, H0 = underImg.naturalHeight * f;
+    const cs = Math.abs(Math.cos(a)), sn = Math.abs(Math.sin(a)), W = Math.ceil(W0 * cs + H0 * sn), H = Math.ceil(W0 * sn + H0 * cs);
+    const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    const ctx = cv.getContext('2d', { willReadFrequently: true }); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H); ctx.imageSmoothingQuality = 'high';
+    ctx.translate(W / 2, H / 2); ctx.rotate(a); ctx.drawImage(underImg, -W0 / 2, -H0 / 2, W0, H0);
+    return { cv, W, H, f, gray: toGray(ctx.getImageData(0, 0, W, H).data, W * H) };
+  }
+  function turned(cv, quarter) {                                          // a copy of the canvas turned a quarter turn clockwise (1) or anticlockwise (3)
+    const o = document.createElement('canvas'); o.width = cv.height; o.height = cv.width; const c = o.getContext('2d');
+    if (quarter === 1) { c.translate(o.width, 0); c.rotate(Math.PI / 2); } else { c.translate(0, o.height); c.rotate(-Math.PI / 2); }
+    c.drawImage(cv, 0, 0); return o;
+  }
+  async function readDimensions() {
+    if (ocrBusy) return;
+    if (!S.underlay || !underImg) { toast('Upload a blueprint first.'); return; }
+    if (!lsGet(OCR_OK) && !ocrWorker) {
+      await new Promise(ok => {
+        dialog(`<div class="box"><h3>Read the dimensions on the plan?</h3>
+          <p class="note">This finds numbers like <code>12'-6"</code> written beside dimension lines and sets the scale from them. To read text it loads a small, free text-recognition tool (tesseract.js, about 10 MB) from a public server, once. <b>Your blueprint stays on this computer.</b> It is not uploaded anywhere, and no account or AI service is involved.</p>
+          <div class="row-btns"><button class="btn" id="dlgCancel">Not now</button><button class="btn primary" id="dlgOk">Load it and read</button></div></div>`, true);
+        $('#dlgOk').onclick = () => { lsSet(OCR_OK, '1'); closeDialog(); ok(true); };
+        const cancel = $('#dlgCancel'); cancel.addEventListener('click', () => ok(false));
+      }).then(v => { if (!v) throw new Error('cancelled'); }).catch(() => { ocrBusy = false; });
+      if (!lsGet(OCR_OK)) return;
+    }
+    ocrBusy = true;
+    try {
+      toast(ocrWorker ? 'Reading the text on the plan\u2026' : 'Loading the text reader (first time only)\u2026');
+      if (!window.Tesseract) await loadScript(OCR_URL);
+      if (!ocrWorker) { ocrWorker = await Tesseract.createWorker('eng'); await ocrWorker.setParameters({ tessedit_pageseg_mode: '11', tessedit_char_whitelist: '0123456789\'"-/.ftmcxFTMC ' }); }
+      const r = rasterNative(), words = [];
+      for (const up of Math.max(r.W, r.H) < 2200 ? [1, 2] : [1]) for (const q of [0, 1, 3]) {          // upright text, and text that runs up or down the page; small lettering is also tried enlarged
+        let cv = q === 0 ? r.cv : turned(r.cv, q);
+        if (up > 1) { const e = document.createElement('canvas'); e.width = cv.width * up; e.height = cv.height * up; const g = e.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(cv, 0, 0, e.width, e.height); cv = e; }
+        const res = await ocrWorker.recognize(cv), data = res.data;
+        for (const wd of (data.words || []).concat(data.lines || [])) {
+          if (!wd.text || (wd.confidence !== undefined && wd.confidence < 30)) continue;
+          const b = { x0: wd.bbox.x0 / up, y0: wd.bbox.y0 / up, x1: wd.bbox.x1 / up, y1: wd.bbox.y1 / up }, t = wd.text.trim(); if (!t) continue;
+          if (q === 0) words.push({ text: t, x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1 });
+          else if (q === 1) words.push({ text: t, x0: b.y0, y0: r.H - b.x1, x1: b.y1, y1: r.H - b.x0, vertical: true });       // turned clockwise: new (x, y) is old (y, H - x)
+          else words.push({ text: t, x0: r.W - b.y1, y0: b.x0, x1: r.W - b.y0, y1: b.x1, vertical: true });                   // turned anticlockwise: old (W - y, x)
+        }
+      }
+      window.__ocrWords = words;                                          // kept for debugging what the reader saw
+      const lines = HouseDimensions.findLines(r.gray, r.W, r.H), est = HouseDimensions.estimate(words, lines);
+      ocrBusy = false;
+      if (!est.scale) { toast('No dimension text it could match to a line was found. Set the scale by clicking two points on a known distance instead.'); return; }
+      showDimensionResult(est, r);
+    } catch (err) { ocrBusy = false; toast('Could not read the dimensions: ' + (err && err.message ? err.message : err)); }
+  }
+  function showDimensionResult(est, r) {
+    const rows = est.all.map(a => `<tr${est.used.includes(a) ? '' : ' style="opacity:.45"'}><td>${esc(a.text)}</td><td>${fmt(a.feet)}</td><td>${Math.round(a.px / r.f)} px</td><td>${est.used.includes(a) ? 'used' : 'left out'}</td></tr>`).join('');
+    const ppfImage = est.scale / r.f, inch = ppfImage > 0 ? 12 / ppfImage : 0;
+    dialog(`<div class="box"><h3>Scale from the dimensions</h3>
+      <p class="note">${est.used.length} reading${est.used.length === 1 ? '' : 's'} agree: <b>${ppfImage.toFixed(2)} picture pixels to the foot</b> (one pixel is ${inch.toFixed(2)} inch). Check the readings below; wrong ones are usually a misread number.</p>
+      <table class="dimtab" style="width:100%;font-size:12px"><tr><th align="left">Text</th><th align="left">Feet</th><th align="left">Line</th><th></th></tr>${rows}</table>
+      <div class="row-btns"><button class="btn" id="dlgCancel">Cancel</button><button class="btn primary" id="dlgOk">Set the scale</button></div></div>`, true);
+    $('#dlgOk').onclick = () => {
+      closeDialog(); checkpoint();
+      const u = S.underlay, ns = r.f / est.scale, k = ns / u.s;                          // plan feet per picture pixel, from the text
+      const rd = u.rot * Math.PI / 180, hx = u.w / 2 * u.s, hy = u.h / 2 * u.s, cx = u.ox + Math.cos(rd) * hx - Math.sin(rd) * hy, cy = u.oy + Math.sin(rd) * hx + Math.cos(rd) * hy;   // scale about the middle of the picture
+      u.ox = cx + (u.ox - cx) * k; u.oy = cy + (u.oy - cy) * k; u.s = ns; u.calibrated = true;
+      changed(); fit(); toast(`Scale set from the dimension text: 1 ft is ${(1 / u.s).toFixed(1)} px on the blueprint.`);
+    };
+  }
+  window.__readDimensions = readDimensions;
+
   // ------------------------------------------------------------------ pointer input
   let downAt = null;
   svg.addEventListener('contextmenu', e => { e.preventDefault(); if (draw) { endDraw(); render(); } });
@@ -1615,7 +1689,7 @@
        <div class="row2"><span>Rotate</span><input type="range" min="-30" max="30" step="0.1" value="${u.rot}" data-u="rot" aria-label="Rotate blueprint"></div>
        <div class="note" style="margin:0">${u.calibrated ? `Scale set \u00b7 ${(1 / u.s).toFixed(1)} px per foot` : '<b>Scale not set yet.</b>'} \u00b7 rotated ${(+u.rot).toFixed(1)}\u00b0</div>
        <div class="actions"><button class="btn" data-u="straighten" title="Measure how tilted the picture is and level it">Straighten</button><button class="btn primary" data-u="trace" title="Let the editor suggest the walls it can see">Suggest walls\u2026</button></div>
-       <div class="actions"><button class="btn" data-u="scale">${u.calibrated ? 'Re-scale' : 'Set scale'}</button><button class="btn" data-u="move" aria-pressed="${tool === 'move'}">Move</button>
+       <div class="actions"><button class="btn" data-u="scale">${u.calibrated ? 'Re-scale' : 'Set scale'}</button><button class="btn" data-u="ocr" title="Read the dimension text on the plan (like 12'-6&quot;) and set the scale from it">Read dimensions\u2026</button><button class="btn" data-u="move" aria-pressed="${tool === 'move'}">Move</button>
          <button class="btn" data-u="upload">Replace</button><button class="btn danger" data-u="remove">Remove</button></div>`;
     // rooms
     renderLevels();
@@ -1655,6 +1729,7 @@
     const a = e.target.closest('button[data-u]')?.dataset.u; if (!a) return;
     if (a === 'upload') $('#underFile').click();
     if (a === 'scale') setTool('scale');
+    if (a === 'ocr') readDimensions();
     if (a === 'move') setTool(tool === 'move' ? 'select' : 'move');
     if (a === 'remove') { checkpoint(); S.underlay = null; underURL = null; underImg = null; changed(); }
     if (a === 'straighten') straighten();

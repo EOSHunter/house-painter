@@ -89,7 +89,7 @@ test('every page finds the scripts it loads', () => {
 });
 
 test('page scripts are plain ASCII so they read the same under any charset', () => {
-  for (const f of ['house-core.js', 'house-loader.js', 'storage.js', 'fixtures.js', 'house3d.js', 'paint-app.js', 'paint-colors.js', 'floorplan.js', 'editor.js', 'tracer.js']) {
+  for (const f of ['house-core.js', 'house-loader.js', 'storage.js', 'fixtures.js', 'house3d.js', 'paint-app.js', 'paint-colors.js', 'floorplan.js', 'editor.js', 'tracer.js', 'dimensions.js']) {
     const bad = read(f).match(/[^\x00-\x7f]/);
     assert.ok(!bad, `${f} has a non-ASCII character (${bad && bad[0]}): run node data/ascii_js.js`);
   }
