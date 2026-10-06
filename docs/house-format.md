@@ -65,6 +65,20 @@ A wall that is not horizontal or vertical is written as a centre line and a thic
 - Openings run along the line from its **start**: `a` and `b` are distances from `[x0, y0]`. A door's `hinge` is `"a"` (the start side) or `"b"`, and its `swing` is `"l"` or `"r"`: the left or right of the way the line runs, looking from the start to the end. (Left and right are as they look on the plan, with north at the top.)
 - Where two angled walls, or an angled wall and a straight one, meet at their ends, the corner is mitred and closed for you. Ends that stop within a wall's thickness of another wall join it, as for straight walls.
 - A room against an angled wall is written as an outline, not rectangles (see Rooms). Sides are named by compass: an angled wall facing south-east gives `LIV-SE`, and the outside of an angled wall gives `EXT-NE` and so on (named the same way as the straight ones).
+### Curved walls
+
+```json
+{ "arc": [22, 22, 10, 22, -3.6], "t": 0.5, "ext": 1, "id": "bay",
+  "openings": [ { "a": 2.2, "b": 5.4, "type": "window", "panes": 3 } ] }
+```
+
+- `arc` is `[x0, y0, x1, y1, bulge]`: the two ends, and how far (feet) the middle of the curve stands out from the straight line between them. A positive bulge bows to the **right** of the way the wall runs from its start to its end (with north at the top); a negative one to the left. The bulge can be at most half the distance between the ends (a half circle).
+- It is built as a run of short straight walls, one for about every 15° of the curve, closed up at the joints. The plan is made as big as everything in it, so a bay can stand out past the `W` and `D` you give.
+- Openings run along the curve from its start (`a` and `b` are feet along the curve). One that crosses several of the short walls is shared out among them (so a wide window gets a frame post at every joint). A door sits in the one wall that its middle falls in.
+- Paint: each face of a curve is **one** paint surface, however many short walls it has. Its id is the room, then `C` and a number: `LIV-C1`, `EXT-C2` (the number is only there if the room has more than one curved face).
+- A room that touches a curve is written as an outline (`polys`) whose corners follow it: put a point on the curve for every joint, or let the plan editor do it.
+- Limits: curves are circle arcs (no ellipses or splines), and the room outline you write for a curve is only as round as the corners you give it.
+
 - Limits: fixtures (cabinets, appliances) stay square to the plan and cannot sit along an angled wall, though they can stand beside one; an angled wall inside one room (a peninsula) needs the room split by an outline that follows it; walls are straight (no curves).
 
 **Openings:**

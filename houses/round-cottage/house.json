@@ -1,0 +1,313 @@
+{
+ "format": "house-painter/house",
+ "version": 1,
+ "id": "round-cottage",
+ "name": "Round Cottage",
+ "subtitle": "Example with curved walls · a round bay and a curved entry",
+ "units": "ft",
+ "W": 32,
+ "D": 22,
+ "wallThickness": {
+  "exterior": 0.5,
+  "interior": 0.33
+ },
+ "heights": {
+  "ceiling": 9,
+  "door": 6.833,
+  "windowHead": 7,
+  "windowSill": 3
+ },
+ "floor": {
+  "name": "White oak planks",
+  "color": "#B79E78",
+  "plankW": 0.5,
+  "plankL": 4,
+  "dir": "x",
+  "wood": "whiteoak"
+ },
+ "walls": [
+  {
+   "line": [
+    0,
+    0,
+    26,
+    0
+   ],
+   "ext": 1,
+   "id": "north",
+   "openings": [
+    {
+     "a": 3,
+     "b": 6.4,
+     "type": "window"
+    },
+    {
+     "a": 17,
+     "b": 19.6,
+     "type": "window"
+    }
+   ]
+  },
+  {
+   "arc": [
+    26,
+    0,
+    32,
+    6,
+    -1.757
+   ],
+   "ext": 1,
+   "id": "entry-curve",
+   "openings": [
+    {
+     "a": 2.4,
+     "b": 5.2,
+     "type": "door",
+     "hinge": "a",
+     "swing": "r"
+    }
+   ]
+  },
+  {
+   "line": [
+    32,
+    6,
+    32,
+    22
+   ],
+   "ext": 1,
+   "id": "east",
+   "openings": [
+    {
+     "a": 4,
+     "b": 8,
+     "type": "window"
+    }
+   ]
+  },
+  {
+   "line": [
+    32,
+    22,
+    22,
+    22
+   ],
+   "ext": 1,
+   "id": "south-right",
+   "openings": [
+    {
+     "a": 3,
+     "b": 7,
+     "type": "window"
+    }
+   ]
+  },
+  {
+   "arc": [
+    22,
+    22,
+    10,
+    22,
+    -3.6
+   ],
+   "ext": 1,
+   "id": "bay",
+   "openings": [
+    {
+     "a": 2.2,
+     "b": 5.4,
+     "type": "window",
+     "panes": 3
+    },
+    {
+     "a": 6.4,
+     "b": 9.6,
+     "type": "window",
+     "panes": 3
+    }
+   ]
+  },
+  {
+   "line": [
+    10,
+    22,
+    0,
+    22
+   ],
+   "ext": 1,
+   "id": "south-left",
+   "openings": [
+    {
+     "a": 3,
+     "b": 7,
+     "type": "window"
+    }
+   ]
+  },
+  {
+   "line": [
+    0,
+    22,
+    0,
+    0
+   ],
+   "ext": 1,
+   "id": "west",
+   "openings": [
+    {
+     "a": 12,
+     "b": 16,
+     "type": "window"
+    }
+   ]
+  },
+  {
+   "line": [
+    14,
+    0,
+    14,
+    12
+   ],
+   "t": 0.33,
+   "id": "bedroom-east"
+  },
+  {
+   "line": [
+    0,
+    12,
+    14,
+    12
+   ],
+   "t": 0.33,
+   "id": "bedroom-south",
+   "openings": [
+    {
+     "a": 9,
+     "b": 12,
+     "type": "door",
+     "hinge": "a",
+     "swing": "l"
+    }
+   ]
+  }
+ ],
+ "rooms": [
+  {
+   "id": "bedroom",
+   "name": "Bedroom",
+   "short": "BR",
+   "rects": [
+    [
+     0,
+     0,
+     14,
+     12
+    ]
+   ]
+  },
+  {
+   "id": "living",
+   "name": "Living room",
+   "short": "LIV",
+   "polys": [
+    [
+     [
+      0,
+      0
+     ],
+     [
+      26,
+      0
+     ],
+     [
+      27.553,
+      0.205
+     ],
+     [
+      29,
+      0.804
+     ],
+     [
+      30.242,
+      1.758
+     ],
+     [
+      31.196,
+      3
+     ],
+     [
+      31.795,
+      4.447
+     ],
+     [
+      32,
+      6
+     ],
+     [
+      32,
+      22
+     ],
+     [
+      22,
+      22
+     ],
+     [
+      21.067,
+      23.335
+     ],
+     [
+      19.842,
+      24.41
+     ],
+     [
+      18.397,
+      25.163
+     ],
+     [
+      16.815,
+      25.551
+     ],
+     [
+      15.185,
+      25.551
+     ],
+     [
+      13.603,
+      25.163
+     ],
+     [
+      12.158,
+      24.41
+     ],
+     [
+      10.933,
+      23.335
+     ],
+     [
+      10,
+      22
+     ],
+     [
+      0,
+      22
+     ]
+    ]
+   ]
+  }
+ ],
+ "roomOrder": [
+  "living",
+  "bedroom"
+ ],
+ "items": [],
+ "fixtures": [],
+ "start": {
+  "x": 28,
+  "y": 8,
+  "yaw": 2.356
+ },
+ "renderRooms": [
+  "living",
+  "bedroom"
+ ]
+}

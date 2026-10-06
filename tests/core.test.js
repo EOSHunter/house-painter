@@ -269,3 +269,68 @@ test('ceilings: the Blender export carries them', () => {
   assert.equal(b.rooms.find(r => r.id === 'living').ceiling.type, 'vault');
   assert.ok(b.walls.some(w => w.tops));
 });
+
+// ---------------------------------------------------------------------------------------------- curved walls
+const round = () => load('round-cottage');
+
+test('curves: an arc is worked out as a circle through its ends and its middle', () => {
+  const A = HouseCore.arcInfo([0, 0, 12, 0, 3]);                       // east, bowing 3 ft to the south (the right of the way it runs)
+  const R = (36 + 9) / 6, mid = A.pts[Math.floor(A.pts.length / 2)];
+  assert.ok(Math.abs(A.R - R) < 1e-9, 'radius ' + A.R);
+  assert.deepEqual(A.pts[0], [0, 0]); assert.deepEqual(A.pts[A.pts.length - 1], [12, 0]);
+  for (const q of A.pts) assert.ok(Math.abs(Math.hypot(q[0] - A.C[0], q[1] - A.C[1]) - R) < 1e-6, 'every point is on the circle');
+  assert.ok(Math.abs(A.C[0] - 6) < 1e-9 && A.C[1] < 0, 'the centre is on the other side');
+  assert.ok(A.pts.some(q => Math.abs(q[0] - 6) < 1e-6 && Math.abs(q[1] - 3) < 1e-6) || mid[1] > 2, 'the middle bows to the right');
+  assert.ok(Math.abs(A.length - A.R * A.sweep) < 1e-9 && A.n >= 2);
+  assert.equal(HouseCore.arcInfo([0, 0, 12, 0, 0]).straight, true);
+  const half = HouseCore.arcInfo([0, 0, 12, 0, -6]);                    // a half circle, bowing north
+  assert.ok(Math.abs(half.sweep - Math.PI) < 1e-9 && half.pts.every(q => q[1] <= 1e-9));
+});
+
+test('curves: validation explains a bad arc', () => {
+  const bad = (arc, re) => { const h = round(); h.walls[1].arc = arc; assert.ok(HouseCore.validate(h).some(p => re.test(p)), JSON.stringify(arc)); };
+  bad([26, 0, 32, 6], /arc/); bad([26, 0, 26.1, 0, 0], /half a foot/); bad([26, 0, 32, 6, 20], /half its chord/);
+  const op = round(); op.walls[1].openings = [{ a: 1, b: 40, type: 'window' }];
+  assert.ok(HouseCore.validate(op).some(p => /Wall 1, opening 0/.test(p)));
+  assert.deepEqual(HouseCore.validate(round()), []);
+});
+
+test('curves: a curved wall is a run of short straight ones, closed up, and the plan is as big as everything in it', () => {
+  const { HOUSE } = HouseCore.build(round());
+  const bay = HOUSE.slants.filter(S => S.arc === 1);
+  assert.ok(bay.length >= 7, 'facets ' + bay.length);
+  for (let i = 1; i < bay.length; i++) assert.ok(Math.hypot(bay[i].p0[0] - bay[i - 1].p1[0], bay[i].p0[1] - bay[i - 1].p1[1]) < 0.2, 'facets meet end to end');
+  assert.ok(HOUSE.D > 25.5 && HOUSE.D < 26.5, 'depth ' + HOUSE.D);                  // the bay stands out past the 22 ft the file gives
+});
+
+test('curves: each face of a curve is one paint surface, however many facets it has', () => {
+  const { ROOMS } = HouseCore.build(round());
+  const curved = ROOMS.surfaces.filter(s => s.parts);
+  assert.deepEqual(curved.map(s => s.id).sort(), ['EXT-C1', 'EXT-C2', 'LIV-C1', 'LIV-C2']);
+  const arcLen = { 'LIV-C1': HouseCore.arcInfo([26, 0, 32, 6, -1.757]).length, 'LIV-C2': HouseCore.arcInfo([22, 22, 10, 22, -3.6]).length };
+  for (const [id, L] of Object.entries(arcLen)) { const s = curved.find(x => x.id === id); assert.ok(Math.abs(s.length - L) / L < 0.06, `${id}: ${s.length} along a curve of ${L}`); }
+  for (const s of curved) { assert.ok(s.parts.length >= 5); assert.ok(Math.abs(s.parts.reduce((t, q) => t + q.area, 0) - s.area) < 0.2); }
+  assert.equal(new Set(ROOMS.surfaces.map(s => s.id)).size, ROOMS.surfaces.length);
+});
+
+test('curves: rooms and the outside follow the curve', () => {
+  const { ROOMS } = HouseCore.build(round());
+  assert.equal(ROOMS.roomAt(16, 24.5), 'living', 'inside the bay');
+  assert.equal(ROOMS.roomAt(16, 26.3), 'exterior', 'beyond it');
+  assert.equal(ROOMS.roomAt(31.3, 0.7), 'exterior', 'outside the rounded corner');
+  assert.equal(ROOMS.roomAt(28, 8), 'living');
+});
+
+test('curves: a window across several facets is split among them, keeping its width', () => {
+  const { HOUSE } = HouseCore.build(round());
+  const bay = HOUSE.slants.filter(S => S.arc === 1), wins = bay.flatMap(S => S.openings.filter(o => o.type === 'window'));
+  const total = wins.reduce((t, o) => t + (o.b - o.a), 0);
+  assert.ok(wins.length >= 4 && Math.abs(total - 6.4) < 0.1, `${wins.length} pieces, ${total} ft`);
+  assert.ok(bay.some(S => S.openings.some(o => o.panes)), 'panes are shared out');
+});
+
+test('curves: the Blender export carries the pieces of each curved surface', () => {
+  const { HOUSE, ROOMS } = HouseCore.build(round());
+  const b = HouseCore.forBlender(HOUSE, ROOMS);
+  assert.ok(b.surfaces.filter(s => s.parts).length === 4 && b.slants.some(S => S.arc === 1));
+});

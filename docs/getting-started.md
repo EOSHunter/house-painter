@@ -57,6 +57,7 @@ It is a helper, not a finished tracer. Expect to fix a few things: short walls b
 - For an exact wall, type its length (like `12'6`) and press `Enter` instead of clicking.
 - Clicking back on the first corner closes the loop, and the tool switches to inside walls.
 - Hold `Alt` to turn snapping off.
+- **Curved walls:** switch on **Curved**, click the two ends, then move the pointer to bend the wall and click. Drag the dot in the middle of a selected curve to change the bend, or type it in the panel on the right.
 
 Trace along the **centre line** of each wall. The editor gives walls their thickness.
 

@@ -344,7 +344,10 @@ function build(H, R) {
   // The same pieces as for the straight walls, built along each wall's own line. Every box here has x along the wall and
   // z across it, so its materials go in the same order as a horizontal wall's: [end b, end a, top, bottom, right face, left face].
   const slantSurfs = {};
-  R.surfaces.forEach(s => { if (s.slant !== undefined) (slantSurfs[s.slant] ||= []).push(s); });
+  R.surfaces.forEach(s => {                                                      // a face of a curve is one surface made of a piece on each facet
+    if (s.parts) s.parts.forEach(q => (slantSurfs[q.slant] ||= []).push({ ...s, slant: q.slant, a: q.a, b: q.b }));
+    else if (s.slant !== undefined) (slantSurfs[s.slant] ||= []).push(s);
+  });
   function obox(S, s0, s1, z0, z1, off, thick, mat, zB) {                       // off: sideways from the centre line, positive to the right; zB: a different top at the far end
     const top1 = zB === undefined ? z1 : zB, zM = Math.max(z1, top1), L = s1 - s0, hh = zM - z0;
     if (L < 1e-4 || hh < 1e-4 || thick < 1e-4) return null;

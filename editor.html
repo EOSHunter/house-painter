@@ -119,6 +119,12 @@
   .wall.removed rect.body { fill: rgba(214, 69, 61, .14); stroke: var(--removed); stroke-dasharray: 4 3; }
   .wall.new rect.body { fill: var(--new); }
   .hit { fill: transparent; }
+  .wall path.body { fill: none; stroke: var(--wall); }
+  .wall.ext path.body { stroke: var(--wall-ext); }
+  .wall.removed path.body { stroke: rgba(214, 69, 61, .4); stroke-dasharray: 4 3; }
+  .wall.new path.body { stroke: var(--new); }
+  .wall:hover path.body { filter: brightness(1.25); }
+  .ghostarc { stroke: var(--select); stroke-opacity: .35; pointer-events: none; }
   #plan.traced .wall rect.body, #plan.traced .wall.ext rect.body { fill: var(--select); fill-opacity: .85; }   /* stand out on the blueprint */
   .wall:hover rect.body, .opening:hover .shape { filter: brightness(1.25); }
   .opening .gap { fill: transparent; }
@@ -237,7 +243,7 @@
     </div>
     <div class="seg" id="wallMode" role="group" aria-label="Wall type" hidden>
       <button data-mode="ext" aria-pressed="true">Outside wall</button><button data-mode="int" aria-pressed="false">Inside wall</button>
-      <button data-angle="1" aria-pressed="false" title="Draw walls at any angle (or hold Shift)">Angled</button><button data-done="1" title="Finish this run of walls (Esc)">Done</button>
+      <button data-angle="1" aria-pressed="false" title="Draw walls at any angle (or hold Shift)">Angled</button><button data-curve="1" aria-pressed="false" title="Draw curved walls: click both ends, then bend">Curved</button><button data-done="1" title="Finish this run of walls (Esc)">Done</button>
     </div>
     <span class="spacer"></span>
     <div class="group">

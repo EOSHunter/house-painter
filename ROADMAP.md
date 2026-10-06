@@ -121,7 +121,8 @@ Walls at any angle: a cut corner, a bay window, a diagonal partition. The exampl
 - [x] **Plan editor:** an **Angled** switch (or `Shift`) draws walls that snap to 15°, to wall ends and to crossings; ends and whole walls can be dragged, their length and angle typed; doors and windows can be put in them; **Room** and **Find all rooms** outline spaces against them.
 - [ ] Fixtures (cabinets, appliances) stay square to the plan and cannot back onto an angled wall.
 - [ ] A free-standing angled wall inside one room (a peninsula) needs a room outline made to follow it.
-- [ ] Curved walls.
+- [x] **Curved walls** (arcs): built as short straight walls closed up at the joints; one paint surface per face of a curve; windows and doors in them; drawn in the plan editor (click both ends, then bend). The example is `houses/round-cottage/`. Ellipses and splines are not supported.
+- [ ] A curve that bends into another curve with no corner (an S-shape) is two curves today.
 
 ### Ceilings ✅ (first version)
 

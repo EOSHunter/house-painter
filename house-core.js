@@ -27,14 +27,23 @@
     if (!Array.isArray(src.walls) || !src.walls.length) p.push('"walls" must be a non-empty list.');
     else src.walls.forEach((w, i) => {
       let len = Infinity;
-      if (w.line !== undefined) {
+      if (w.arc !== undefined) {
+        if (!Array.isArray(w.arc) || w.arc.length !== 5 || !w.arc.every(num)) p.push(`Wall ${i}: "arc" must be [x0, y0, x1, y1, bulge]: the two ends, and how far (in feet) the middle bows out to the right of the way it runs.`);
+        else {
+          const chord = Math.hypot(w.arc[2] - w.arc[0], w.arc[3] - w.arc[1]);
+          if (chord < 0.5) p.push(`Wall ${i}: the arc's ends are less than half a foot apart.`);
+          else if (Math.abs(w.arc[4]) > chord / 2 + 1e-6) p.push(`Wall ${i}: the bulge of an arc can be at most half its chord (a half circle): ${Math.round(chord * 50) / 100} ft here.`);
+          else len = arcInfo(w.arc).length;
+        }
+        if (w.t !== undefined && !(num(w.t) && w.t > 0 && w.t < 3)) p.push(`Wall ${i}: "t" (thickness in feet) must be between 0 and 3.`);
+      } else if (w.line !== undefined) {
         if (!Array.isArray(w.line) || w.line.length !== 4 || !w.line.every(num)) p.push(`Wall ${i}: "line" must be [x0, y0, x1, y1], the wall's centre line in feet.`);
         else if ((len = Math.hypot(w.line[2] - w.line[0], w.line[3] - w.line[1])) < 0.5) p.push(`Wall ${i}: the line is shorter than half a foot.`);
         if (w.t !== undefined && !(num(w.t) && w.t > 0 && w.t < 3)) p.push(`Wall ${i}: "t" (thickness in feet) must be between 0 and 3.`);
-      } else if (![w.x0, w.y0, w.x1, w.y1].every(num) || w.x1 <= w.x0 || w.y1 <= w.y0) p.push(`Wall ${i}: needs x0 < x1 and y0 < y1 (a rectangle in feet), or a "line".`);
+      } else if (![w.x0, w.y0, w.x1, w.y1].every(num) || w.x1 <= w.x0 || w.y1 <= w.y0) p.push(`Wall ${i}: needs x0 < x1 and y0 < y1 (a rectangle in feet), or a "line" or an "arc".`);
       (w.openings || []).forEach((o, j) => {
         if (!num(o.a) || !num(o.b) || o.b <= o.a) p.push(`Wall ${i}, opening ${j}: needs a < b (feet along the wall).`);
-        else if (w.line !== undefined && (o.a < -1e-6 || o.b > len + 1e-6)) p.push(`Wall ${i}, opening ${j}: on an angled wall, a and b are feet from the start of the line, from 0 to ${Math.round(len * 100) / 100}.`);
+        else if ((w.line !== undefined || w.arc !== undefined) && len !== undefined && (o.a < -1e-6 || o.b > len + 1e-6)) p.push(`Wall ${i}, opening ${j}: on an angled or curved wall, a and b are feet from the start, from 0 to ${Math.round(len * 100) / 100}.`);
         if (!['door', 'window', 'cased', 'panel'].includes(o.type)) p.push(`Wall ${i}, opening ${j}: type must be door, window, cased or panel.`);
       });
     });
@@ -118,14 +127,46 @@
    * a truly angled one becomes a "slant", handled alongside the rectangles. Openings on a slant are measured in feet
    * from the start of its line, and a door's swing is 'l' or 'r' (left or right of the way the line runs).
    */
-  const EPS_LINE = 1e-6;
+  const EPS_LINE = 1e-6, FACET = 15 * Math.PI / 180;
+  // a curved wall as a circle's arc: ends P0 and P1, and `bulge`, how far the middle stands out to the right of the way it runs
+  function arcInfo(arc) {
+    const [x0, y0, x1, y1, s] = arc, c = Math.hypot(x1 - x0, y1 - y0), u = [(x1 - x0) / c, (y1 - y0) / c], nr = [-u[1], u[0]];
+    if (Math.abs(s) < 1e-3) return { straight: true, length: c, n: 1 };
+    const R = (c * c / 4 + s * s) / (2 * Math.abs(s)), sg = Math.sign(s), B = [(x0 + x1) / 2 + nr[0] * s, (y0 + y1) / 2 + nr[1] * s];
+    const C = [B[0] - nr[0] * sg * R, B[1] - nr[1] * sg * R];
+    const ang = (a, b) => Math.atan2(a[0] * b[1] - a[1] * b[0], a[0] * b[0] + a[1] * b[1]);          // signed angle from a to b
+    const v0 = [x0 - C[0], y0 - C[1]], vb = [B[0] - C[0], B[1] - C[1]], half = ang(v0, vb), sweep = 2 * Math.abs(half), dir = Math.sign(half) || 1;
+    const n = Math.max(2, Math.min(64, Math.ceil(sweep / FACET - 1e-9))), th0 = Math.atan2(v0[1], v0[0]);
+    const pts = []; for (let k = 0; k <= n; k++) { const th = th0 + dir * sweep * k / n; pts.push(k === 0 ? [x0, y0] : k === n ? [x1, y1] : [C[0] + R * Math.cos(th), C[1] + R * Math.sin(th)]); }
+    return { straight: false, R, C, sweep, length: R * sweep, n, pts, th0, dir };
+  }
+  // the facets of an arc wall: a short straight wall for each, carrying its share of the openings (measured along the arc)
+  function expandArc(w, arcIdx) {
+    const { arc, openings, t, ...rest } = w, A = arcInfo(arc);
+    if (A.straight) return [{ ...rest, t, line: [arc[0], arc[1], arc[2], arc[3]], openings: openings || [] }];
+    const out = [], L = A.length, ops = openings || [];
+    for (let k = 0; k < A.n; k++) {
+      const s0 = L * k / A.n, s1 = L * (k + 1) / A.n, pieces = [];
+      for (const o of ops) {
+        const a = Math.max(o.a, s0), b = Math.min(o.b, s1), mid = (o.a + o.b) / 2;
+        if (b - a < 0.08) continue;
+        if (o.type === 'door' && !(mid >= s0 - 1e-9 && mid < s1 + 1e-9 || (k === A.n - 1 && mid >= s0))) continue;     // a door lives in one facet: the one its middle is in
+        const q = { ...o, a: a - s0, b: b - s0 };
+        if (o.type === 'window' && o.panes) q.panes = Math.max(1, Math.round(o.panes * (b - a) / (o.b - o.a)));
+        pieces.push(q);
+      }
+      out.push({ ...rest, ...(t !== undefined ? { t } : {}), id: (w.id || 'curve') + '-' + (k + 1), line: [...A.pts[k], ...A.pts[k + 1]], arc: arcIdx, arcK: k, openings: pieces });
+    }
+    return out;
+  }
   function splitWalls(list, E, T) {
-    const ortho = [], slants = [];
+    const ortho = [], slants = []; let arcN = 0;
+    list = list.flatMap(w => (w.arc ? expandArc(w, arcN++) : [w]));
     for (const w of list) {
       if (!w.line) { ortho.push(w); continue; }
       const [x0, y0, x1, y1] = w.line, t = w.t || (w.ext ? E : T), { line, t: _t, openings, ...rest } = w;
       const horiz = Math.abs(y1 - y0) < EPS_LINE, vert = Math.abs(x1 - x0) < EPS_LINE;
-      if (horiz || vert) {                                          // an ordinary wall in a different notation
+      if ((horiz || vert) && w.arc === undefined) {                 // an ordinary wall in a different notation (a piece of a curve stays a piece of the curve)
         const rev = horiz ? x1 < x0 : y1 < y0, start = horiz ? x0 : y0, lo = Math.min(horiz ? x0 : y0, horiz ? x1 : y1), hi = Math.max(horiz ? x0 : y0, horiz ? x1 : y1);
         const ux = horiz ? (rev ? -1 : 1) : 0, uy = vert ? (rev ? -1 : 1) : 0;
         const ops = (openings || []).map(o => {
@@ -141,7 +182,7 @@
   }
   function slantGeometry(w, i, heights) {
     const [x0, y0, x1, y1] = w.line, len = Math.hypot(x1 - x0, y1 - y0), u = [(x1 - x0) / len, (y1 - y0) / len];
-    const S = { i, id: w.id || null, ext: !!w.ext, status: w.status || 'keep', t: w.t, p0: [x0, y0], p1: [x1, y1], len, u, nl: [u[1], -u[0]], nr: [-u[1], u[0]], e0: 0, e1: 0, openings: w.openings.map(o => ({ ...o })) };
+    const S = { i, id: w.id || null, arc: w.arc ?? null, arcK: w.arcK ?? 0, ext: !!w.ext, status: w.status || 'keep', t: w.t, p0: [x0, y0], p1: [x1, y1], len, u, nl: [u[1], -u[0]], nr: [-u[1], u[0]], e0: 0, e1: 0, openings: w.openings.map(o => ({ ...o })) };
     for (const o of S.openings) {
       if (o.type === 'window') { o.z0 = o.sill ?? heights.windowSill; o.z1 = o.head ?? heights.windowHead; } else { o.z0 = 0; o.z1 = o.height ?? heights.door; }
     }
@@ -224,11 +265,13 @@
       else { o.z0 = 0; o.z1 = o.height ?? heights.door; }
     }
     const plan = src.plan || {};
+    let W = src.W, D = src.D;                                           // a bay or a curve can stand out past the size the file gives: the plan is as big as everything in it
+    for (const S of slants) for (const q of slantPoly(S)) { W = Math.max(W, Math.ceil(q[0] * 100) / 100); D = Math.max(D, Math.ceil(q[1] * 100) / 100); }
     const HOUSE = {
       id: src.id || 'house', name: src.name || 'My house', subtitle: src.subtitle || '',
-      W: src.W, D: src.D, E, T, heights,
+      W, D, E, T, heights,
       floor: Object.assign({ name: 'Floor', color: '#B09672', plankW: 7 / 12, plankL: 4, dir: 'x' }, src.floor || {}),
-      floorRects: src.floorRects || [[E, E, src.W - E, src.D - E]],
+      floorRects: src.floorRects || [[E, E, W - E, D - E]],
       walls, slants, fixtures: src.fixtures || [], items: src.items || [],
       start: src.start || null, renderRooms: src.renderRooms || null,
       tints: plan.tints || [], labels: plan.labels || [], plan
@@ -288,7 +331,13 @@
         const k = stack.pop(), i = k % nx, j = (k / nx) | 0;
         for (const [a, b] of [[i + 1, j], [i - 1, j], [i, j + 1], [i, j - 1]]) { if (a < 0 || b < 0 || a >= nx || b >= ny) continue; const q = b * nx + a; if (!blocked[q] && !out[q]) { out[q] = 1; stack.push(q); } }
       }
-      outsideCell = (x, y) => { const i = Math.floor((x - x0) / G), j = Math.floor((y - y0) / G); return i < 0 || j < 0 || i >= nx || j >= ny || !!out[j * nx + i]; };
+      outsideCell = (x, y) => {
+        const i = Math.floor((x - x0) / G), j = Math.floor((y - y0) / G);
+        if (i < 0 || j < 0 || i >= nx || j >= ny || out[j * nx + i]) return true;
+        // a point just off a wall's face can share a cell with the wall: it is outside if the cell touches the outside
+        if (blocked[j * nx + i]) for (const [a, b] of [[i + 1, j], [i - 1, j], [i, j + 1], [i, j - 1]]) if (a < 0 || b < 0 || a >= nx || b >= ny || out[b * nx + a]) return true;
+        return false;
+      };
     }
     function roomAt(x, y) {
       if (inWall(x, y)) return null;                              // (a wall whose centre line is on the plan's edge sticks out past it)
@@ -352,15 +401,20 @@
     slants.forEach(S => {
       for (const side of ['lo', 'hi']) {
         const n = side === 'lo' ? S.nl : S.nr, d = S.t / 2 + OFF;
-        let run = null;
+        let run = null, gapAt = null;
         const flushS = end => { if (run && end - run.a > 0.12) rawS.push({ S, side, n, room: run.room, a: run.a, b: end }); run = null; };
         for (let t = -S.e0 + STEP / 2; t < S.len + S.e1; t += STEP) {
           const r = roomAt(S.p0[0] + S.u[0] * t + n[0] * d, S.p0[1] + S.u[1] * t + n[1] * d);
-          if (run && run.room === r) continue;
-          flushS(t - STEP / 2);
+          if (run && run.room === r) { gapAt = null; continue; }
+          if (run && r === null) {                                          // a short stretch inside a neighbouring wall (where facets of a curve meet) does not end the run
+            if (gapAt === null) gapAt = t - STEP / 2;
+            if (t - gapAt > 0.2) { flushS(gapAt); gapAt = null; }
+            continue;
+          }
+          flushS(gapAt !== null ? gapAt : t - STEP / 2); gapAt = null;
           if (r) run = { room: r, a: t - STEP / 2 };
         }
-        flushS(S.len + S.e1);
+        flushS(gapAt !== null ? gapAt : S.len + S.e1);
       }
     });
     const slantOpeningArea = (S, a, b) => S.openings.reduce((t, o) => { const ov = Math.min(b, o.b) - Math.max(a, o.a); return ov > 0 && (o.type === 'door' || o.type === 'window') ? t + ov * (o.z1 - o.z0) : t; }, 0);
@@ -381,13 +435,25 @@
       for (let i = 0; i < N; i++) t += heightAtFace(room, n, at(a + (b - a) * (i + 0.5) / N));
       return (b - a) * t / N;
     }
-    const surfaces = [];
+    const surfaces = [], curved = new Map();
     for (const r of rawS) {
       const S = r.S, len = r.b - r.a, h = S.t / 2, ci = compassOf(r.n);
       const pt = t => [S.p0[0] + S.u[0] * t + r.n[0] * h, S.p0[1] + S.u[1] * t + r.n[1] * h];
+      if (S.arc !== null) {                                              // a face of a curve: its facets are one surface, painted as one
+        const key = S.arc + '|' + r.side + '|' + r.room;
+        const part = { slant: S.i, k: S.arcK, a: +r.a.toFixed(2), b: +r.b.toFixed(2), length: +len.toFixed(2),
+          area: +Math.max(0, wallFaceArea(r.room, r.n, t => [S.p0[0] + S.u[0] * t, S.p0[1] + S.u[1] * t], r.a, r.b) - slantOpeningArea(S, r.a, r.b)).toFixed(1), seg: [pt(r.a).map(v => +v.toFixed(3)), pt(r.b).map(v => +v.toFixed(3))], normal: r.n.map(v => +v.toFixed(5)) };
+        if (!curved.has(key)) { const g = { room: r.room, slant: S.i, side: r.side, dir: 'Curved', letter: 'C', curve: S.arc, kind: r.room === 'exterior' ? 'siding' : 'wall', parts: [] }; curved.set(key, g); surfaces.push(g); }
+        curved.get(key).parts.push(part); continue;
+      }
       surfaces.push({ room: r.room, slant: S.i, side: r.side, dir: COMPASS[ci], letter: COMPASS_ID[ci], normal: r.n.map(v => +v.toFixed(5)), a: +r.a.toFixed(2), b: +r.b.toFixed(2),
                       length: +len.toFixed(2), area: +Math.max(0, wallFaceArea(r.room, r.n, t => [S.p0[0] + S.u[0] * t, S.p0[1] + S.u[1] * t], r.a, r.b) - slantOpeningArea(S, r.a, r.b)).toFixed(1), seg: [pt(r.a).map(v => +v.toFixed(3)), pt(r.b).map(v => +v.toFixed(3))],
                       kind: r.room === 'exterior' ? 'siding' : 'wall' });
+    }
+    for (const g of curved.values()) {                                  // total up each curved surface from its facets
+      g.parts.sort((p, q) => p.k - q.k);
+      const mid = g.parts[g.parts.length >> 1], first = g.parts[0], last = g.parts[g.parts.length - 1];
+      Object.assign(g, { normal: mid.normal, a: first.a, b: first.b, length: +g.parts.reduce((t, q) => t + q.length, 0).toFixed(2), area: +g.parts.reduce((t, q) => t + q.area, 0).toFixed(1), seg: [first.seg[0], last.seg[1]] });
     }
     for (const r of raw) {
       const w = H.walls[r.wi], len = r.b - r.a;
@@ -458,6 +524,9 @@
         if (s.wall !== undefined) {
           const w = H.walls[s.wall], horiz = (w.x1 - w.x0) >= (w.y1 - w.y0), at = horiz ? (t => [t, s.side === 'lo' ? w.y0 : w.y1]) : (t => [s.side === 'lo' ? w.x0 : w.x1, t]);
           s.area = +Math.max(0, wallFaceArea(s.room, s.normal, at, s.a, s.b) - openingArea(w, s.a, s.b)).toFixed(1);
+        } else if (s.parts) {
+          for (const q of s.parts) { const S = H.slants[q.slant]; q.area = +Math.max(0, wallFaceArea(s.room, q.normal, t => [S.p0[0] + S.u[0] * t, S.p0[1] + S.u[1] * t], q.a, q.b) - slantOpeningArea(S, q.a, q.b)).toFixed(1); }
+          s.area = +s.parts.reduce((t, q) => t + q.area, 0).toFixed(1);
         } else if (s.slant !== undefined) {
           const S = H.slants[s.slant];
           s.area = +Math.max(0, wallFaceArea(s.room, s.normal, t => [S.p0[0] + S.u[0] * t, S.p0[1] + S.u[1] * t], s.a, s.b) - slantOpeningArea(S, s.a, s.b)).toFixed(1);
@@ -564,7 +633,7 @@
       return { id: r.id, name: r.name, area: r.area, rects: out.map(q => q.map(v => +v.toFixed(3))), ceiling: r.ceiling };
     });
     const surfaces = R.surfaces.map(s => ({ id: s.id, name: s.name, room: s.room, wall: s.wall, slant: s.slant, side: s.side, kind: s.kind, dir: s.dir,
-      a: s.a, b: s.b, normal: s.normal, seg: s.seg, area: s.area }));
+      a: s.a, b: s.b, normal: s.normal, seg: s.seg, area: s.area, parts: s.parts }));
     return {
       format: 'house-painter/built-house', version: 1, id: H.id, name: H.name,
       W: H.W, D: H.D, E: H.E, T: H.T, heights: H.heights, floor: H.floor, floorRects: H.floorRects,
@@ -573,5 +642,5 @@
     };
   }
 
-  return { FORMAT, DEFAULT_HEIGHTS, validate, build, joinWalls, forBlender };
+  return { FORMAT, DEFAULT_HEIGHTS, validate, build, joinWalls, forBlender, arcInfo };
 });

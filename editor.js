@@ -4,7 +4,8 @@
  * Editor model (feet, same axes as the house file):
  *   wall    { uid, axis: 'h'|'v', c (centre line), a, b (extent along the axis), t, ext, status, extra, openings[] }
  *           an angled wall has axis 'l' and p [x0,y0,x1,y1] (its centre line); a = 0, b = its length, c = 0, and its openings
- *           run along the line from its start (swing 'l'/'r' = left/right of the way it runs)
+ *           run along the line from its start (swing 'l'/'r' = left/right of the way it runs).
+ *           With a `bulge` (feet; + bows to the right of the way it runs) it is a curved wall: an arc, and a and b run along the curve
  *   opening { uid, type, a, b, ...door/window fields }       (a, b absolute along the wall's axis, as in the file)
  *   room    { uid, id, name, short, rects, polys?, extra }   (first match wins, as in the file; polys are outlines [[x,y],...])
  *   split   { uid, axis, c, a, b }                          (invisible zone lines that divide open-plan rooms)
@@ -49,7 +50,7 @@
   const blank = () => ({ meta: { id: 'my-house', name: 'My house', subtitle: '' }, heights: { ...DEF.heights }, wallThickness: { ...DEF.wallThickness },
     floor: { ...DEF.floor }, walls: [], rooms: [], splits: [], keep: {}, underlay: null });
   let S = blank();
-  let tool = 'select', dimStart = null, wallMode = 'ext', wallAngle = false, lastMods = {}, sel = null, drag = null, draw = null, ghost = null, lenBuf = '', lastP = [0, 0], spaceDown = false;
+  let tool = 'select', dimStart = null, wallMode = 'ext', wallAngle = false, wallCurve = false, lastMods = {}, sel = null, drag = null, draw = null, ghost = null, lenBuf = '', lastP = [0, 0], spaceDown = false;
   let view = { x: -6, y: -6, w: 72 }, underURL = null, underImg = null, stepCur = 0, welcomeOff = false;
 
   const byUid = u => S.walls.find(w => w.uid === u) || S.rooms.find(r => r.uid === u) || S.splits.find(s => s.uid === u) || (S.keep.fixtures || []).find(f => f.uid === u) || planItems().find(x => x.uid === u);
@@ -57,29 +58,44 @@
   const planOf = () => (S.keep.plan ||= {});
   const findOpening = u => { for (const w of S.walls) { const o = w.openings.find(x => x.uid === u); if (o) return { w, o }; } return null; };
   const isL = w => w.axis === 'l';
-  const isSlant = w => isL(w) && Math.abs(w.p[2] - w.p[0]) > 1e-4 && Math.abs(w.p[3] - w.p[1]) > 1e-4;       // an angled wall that is not square to the plan
+  const isSlant = w => isL(w) && (isArc(w) || (Math.abs(w.p[2] - w.p[0]) > 1e-4 && Math.abs(w.p[3] - w.p[1]) > 1e-4));       // an angled wall that is not square to the plan
+  const isArc = w => isL(w) && !!w.bulge;
+  const arcG = w => HouseCore.arcInfo([w.p[0], w.p[1], w.p[2], w.p[3], w.bulge || 0]);
+  // a point on a curved wall `s` feet along it, and the way its right-hand side faces there
+  const arcPt = (w, s) => { const A = arcG(w); if (A.straight) return fromLocal(w, s); const th = A.th0 + A.dir * (s / A.R); return [A.C[0] + A.R * Math.cos(th), A.C[1] + A.R * Math.sin(th)]; };
+  const arcN = (w, s) => { const A = arcG(w); if (A.straight) return lineN(w); const th = A.th0 + A.dir * (s / A.R), t = [-A.dir * Math.sin(th), A.dir * Math.cos(th)]; return [-t[1], t[0]]; };
+  // where a point is relative to a curved wall: feet along it (not clamped), and feet to its right
+  const arcLocal = (w, p) => {
+    const A = arcG(w); if (A.straight) return toLocal(w, p);
+    let rel = (Math.atan2(p[1] - A.C[1], p[0] - A.C[0]) - A.th0) * A.dir; rel = (((rel + Math.PI) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
+    const s = A.R * rel, q = arcPt(w, s), n = arcN(w, s); return [s, (p[0] - q[0]) * n[0] + (p[1] - q[1]) * n[1]];
+  };
+  const arcSamples = (w, n = 24) => Array.from({ length: n + 1 }, (_, i) => arcPt(w, w.b * i / n));
+  // SVG for the stretch of a curved wall from s0 to s1, a true arc
+  const arcD = (w, s0, s1) => { const A = arcG(w), a = arcPt(w, s0), b = arcPt(w, s1); return A.straight ? `M${N(a[0])} ${N(a[1])} L${N(b[0])} ${N(b[1])}` : `M${N(a[0])} ${N(a[1])} A${N(A.R)} ${N(A.R)} 0 ${(s1 - s0) / A.R > Math.PI ? 1 : 0} ${A.dir > 0 ? 1 : 0} ${N(b[0])} ${N(b[1])}`; };
   const lineLen = w => Math.hypot(w.p[2] - w.p[0], w.p[3] - w.p[1]);
   const lineU = w => { const L = lineLen(w) || 1; return [(w.p[2] - w.p[0]) / L, (w.p[3] - w.p[1]) / L]; };
   const lineN = w => { const u = lineU(w); return [-u[1], u[0]]; };                       // the right-hand side of the way the line runs
-  const setLine = (w, q) => { w.p = q.map(r4); w.a = 0; w.b = r4(lineLen(w)); w.c = 0; };
+  const setLine = (w, q) => { w.p = q.map(r4); w.a = 0; w.b = r4(w.bulge ? arcG(w).length : lineLen(w)); w.c = 0; };
   const toLocal = (w, [x, y]) => { const u = lineU(w), n = lineN(w), dx = x - w.p[0], dy = y - w.p[1]; return [dx * u[0] + dy * u[1], dx * n[0] + dy * n[1]]; };
   const fromLocal = (w, t, o = 0) => { const u = lineU(w), n = lineN(w); return [w.p[0] + u[0] * t + n[0] * o, w.p[1] + u[1] * t + n[1] * o]; };
   const lineTf = w => `translate(${+w.p[0].toFixed(4)} ${+w.p[1].toFixed(4)}) rotate(${+(Math.atan2(w.p[3] - w.p[1], w.p[2] - w.p[0]) * 180 / Math.PI).toFixed(4)})`;
   // an angled wall as a level one in its own frame (x along the wall, y to its right), so the drawing code for straight walls serves both
   const levelOf = w => ({ ...w, axis: 'h', c: 0, a: 0, b: w.b, openings: w.openings.map(o => ({ ...o, swing: o.swing === 'l' ? 'n' : o.swing === 'r' ? 's' : o.swing })) });
   const rectOf = w => {
+    if (isArc(w)) { const ps = arcSamples(w), h = w.t / 2; return { x0: Math.min(...ps.map(q => q[0])) - h, x1: Math.max(...ps.map(q => q[0])) + h, y0: Math.min(...ps.map(q => q[1])) - h, y1: Math.max(...ps.map(q => q[1])) + h }; }
     if (isL(w)) { const h = w.t / 2, cs = [[0, -h], [w.b, -h], [w.b, h], [0, h]].map(([t, o]) => fromLocal(w, t, o)), xs = cs.map(c => c[0]), ys = cs.map(c => c[1]);
       return { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) }; }
     return w.axis === 'h' ? { x0: w.a, x1: w.b, y0: w.c - w.t / 2, y1: w.c + w.t / 2 } : { x0: w.c - w.t / 2, x1: w.c + w.t / 2, y0: w.a, y1: w.b };
   };
   const ends = w => isL(w) ? [[w.p[0], w.p[1]], [w.p[2], w.p[3]]] : w.axis === 'h' ? [[w.a, w.c], [w.b, w.c]] : [[w.c, w.a], [w.c, w.b]];
   // along / across take a wall (or, for straight ones, just its axis)
-  const along = (w, p) => { const a = w.axis || w; return a === 'l' ? toLocal(w, p)[0] : a === 'h' ? p[0] : p[1]; };
-  const across = (w, p) => { const a = w.axis || w; return a === 'l' ? toLocal(w, p)[1] : a === 'h' ? p[1] : p[0]; };
+  const along = (w, p) => { const a = w.axis || w; return a === 'l' ? (w.bulge ? arcLocal(w, p) : toLocal(w, p))[0] : a === 'h' ? p[0] : p[1]; };
+  const across = (w, p) => { const a = w.axis || w; return a === 'l' ? (w.bulge ? arcLocal(w, p) : toLocal(w, p))[1] : a === 'h' ? p[1] : p[0]; };
   const live = () => S.walls.filter(w => w.status !== 'removed');
   // is the point inside the wall (angled walls run on half a thickness at each end, so corners leave no crack)
   const inWallBox = (w, x, y) => {
-    if (isL(w)) { const [t, o] = toLocal(w, [x, y]); return t > -w.t / 2 && t < w.b + w.t / 2 && Math.abs(o) < w.t / 2; }
+    if (isL(w)) { const [t, o] = w.bulge ? arcLocal(w, [x, y]) : toLocal(w, [x, y]); return t > -w.t / 2 && t < w.b + w.t / 2 && Math.abs(o) < w.t / 2; }
     const r = rectOf(w); return x > r.x0 && x < r.x1 && y > r.y0 && y < r.y1;
   };
   const inPoly = (x, y, poly) => {
@@ -101,6 +117,11 @@
     s.wallThickness = Object.assign({}, DEF.wallThickness, src.wallThickness || {});
     s.floor = Object.assign({}, DEF.floor, src.floor || {});
     s.walls = (src.walls || []).map(w => {
+      if (w.arc) {                                                        // a curved wall
+        const { arc, ext, status, openings, t, ...extra } = w, o = { uid: uid(), axis: 'l', bulge: arc[4], ext: !!ext, t: t || (ext ? s.wallThickness.exterior : s.wallThickness.interior), status: status || 'keep', extra,
+          openings: (openings || []).map(q => ({ uid: uid(), ...q })) };
+        if (!o.bulge) delete o.bulge; setLine(o, arc.slice(0, 4)); return o;
+      }
       if (w.line) {                                                       // an angled (or any-direction) wall
         const { line, ext, status, openings, t, ...extra } = w, o = { uid: uid(), axis: 'l', ext: !!ext, t: t || (ext ? s.wallThickness.exterior : s.wallThickness.interior), status: status || 'keep', extra,
           openings: (openings || []).map(q => ({ uid: uid(), ...q })) };
@@ -142,7 +163,7 @@
     const rs = S.walls.map(rectOf);
     const dx = -Math.min(...rs.map(r => r.x0)), dy = -Math.min(...rs.map(r => r.y0));
     const walls = S.walls.map(w => {
-      const r = rectOf(w), o = isL(w) ? { line: [r4(w.p[0] + dx), r4(w.p[1] + dy), r4(w.p[2] + dx), r4(w.p[3] + dy)] } : { x0: r4(r.x0 + dx), y0: r4(r.y0 + dy), x1: r4(r.x1 + dx), y1: r4(r.y1 + dy) };
+      const r = rectOf(w), o = isArc(w) ? { arc: [r4(w.p[0] + dx), r4(w.p[1] + dy), r4(w.p[2] + dx), r4(w.p[3] + dy), r4(w.bulge)] } : isL(w) ? { line: [r4(w.p[0] + dx), r4(w.p[1] + dy), r4(w.p[2] + dx), r4(w.p[3] + dy)] } : { x0: r4(r.x0 + dx), y0: r4(r.y0 + dy), x1: r4(r.x1 + dx), y1: r4(r.y1 + dy) };
       if (isL(w) && Math.abs(w.t - (w.ext ? S.wallThickness.exterior : S.wallThickness.interior)) > 1e-6) o.t = w.t;
       if (w.ext) o.ext = 1;
       Object.assign(o, w.extra);
@@ -286,7 +307,7 @@
     if (best) return { p: best.slice(), kind: 'end' };
     const near = wallNear(p, -SNAP_PX * pxFt() + 0.01, skip);
     if (near && Math.abs(across(near.w, p) - near.w.c) < near.w.t / 2 + tol) {
-      if (isL(near.w)) return { p: fromLocal(near.w, Math.round(near.t / GRID) * GRID).map(r4), kind: 'on' };
+      if (isL(near.w)) return { p: (isArc(near.w) ? arcPt(near.w, Math.max(0, Math.min(near.w.b, Math.round(near.t / GRID) * GRID))) : fromLocal(near.w, Math.round(near.t / GRID) * GRID)).map(r4), kind: 'on' };
       const t = snapC(near.t, coordCands(near.w.axis === 'h' ? 'x' : 'y', near.w));
       return { p: near.w.axis === 'h' ? [t, near.w.c] : [near.w.c, t], kind: 'on' };
     }
@@ -331,6 +352,19 @@
     // walls + openings
     h = ''; let ho = '';
     for (const W of S.walls) {
+      if (isArc(W)) {                                                            // a curved wall: its body is a thick arc, with the doors and windows drawn level along their own chords
+        const cls = 'wall' + (W.ext ? ' ext' : '') + (W.status === 'removed' ? ' removed' : '') + (W.status === 'new' ? ' new' : '');
+        const ops = W.openings.filter(o => o.type !== 'panel').sort((p, q) => p.a - q.a); let cur = 0, d = '';
+        for (const o of ops) { if (o.a - cur > 0.001) d += arcD(W, cur, o.a); cur = Math.max(cur, o.b); }
+        if (W.b - cur > 0.001) d += arcD(W, cur, W.b);
+        h += `<g class="${cls}" data-kind="wall" data-uid="${W.uid}"><path class="hit" d="${arcD(W, 0, W.b)}" fill="none" stroke="transparent" stroke-width="${N(W.t + 8 * k)}"/><path class="body" d="${d}" stroke-width="${N(W.t)}"/></g>`;
+        for (const o of W.openings) {
+          const a0 = arcPt(W, o.a), a1 = arcPt(W, o.b), len = Math.hypot(a1[0] - a0[0], a1[1] - a0[1]), ang = Math.atan2(a1[1] - a0[1], a1[0] - a0[0]) * 180 / Math.PI;
+          const lw = { axis: 'h', c: 0, a: 0, b: len, t: W.t, openings: [] }, lo = { ...o, a: 0, b: len, swing: o.swing === 'l' ? 'n' : o.swing === 'r' ? 's' : o.swing };
+          ho += `<g transform="translate(${N(a0[0])} ${N(a0[1])}) rotate(${N(ang)})">${openingSVG(lw, lo, k)}</g>`;
+        }
+        continue;
+      }
       const L = isL(W), w = L ? levelOf(W) : W, r = rectOf(w), pad = 4 * k;                  // an angled wall is drawn level, inside a rotated group
       const cls = 'wall' + (w.ext ? ' ext' : '') + (w.status === 'removed' ? ' removed' : '') + (w.status === 'new' ? ' new' : '');
       h += `<g class="${cls}" data-kind="wall" data-uid="${w.uid}"${L ? ` transform="${lineTf(W)}"` : ''}><rect class="hit" x="${N(r.x0 - pad)}" y="${N(r.y0 - pad)}" width="${N(r.x1 - r.x0 + 2 * pad)}" height="${N(r.y1 - r.y0 + 2 * pad)}"/>`;
@@ -441,7 +475,14 @@
     if (sel) {
       const it = byUid(sel.uid), op = !it && findOpening(sel.uid);
       if (sel.kind === 'plan' && it) { /* drawn as part of its own group, outlined by CSS */ }
-      if (sel.kind === 'wall' && it && isL(it)) {
+      if (sel.kind === 'wall' && it && isArc(it)) {
+        const hw = it.t / 2, side = o => arcSamples(it, 32).map((q, i) => { const n = arcN(it, it.b * i / 32); return [q[0] + n[0] * o, q[1] + n[1] * o]; });
+        const ring = side(hw).concat(side(-hw).reverse());
+        const m = arcPt(it, it.b / 2), nn = arcN(it, it.b / 2), lab = [m[0] - nn[0] * (it.t / 2 + 12 * k) * Math.sign(it.bulge), m[1] - nn[1] * (it.t / 2 + 12 * k) * Math.sign(it.bulge)], [p, q] = ends(it);
+        h += `<polygon class="sel-outline" points="${ring.map(c => N(c[0]) + ',' + N(c[1])).join(' ')}" stroke-width="2"/>`;
+        h += dimText(lab[0], lab[1], fmt(it.b), k) + handle(p[0], p[1], k, `data-uid="${it.uid}" data-end="a" data-what="wall"`) + handle(q[0], q[1], k, `data-uid="${it.uid}" data-end="b" data-what="wall"`)
+          + handle(m[0], m[1], k, `data-uid="${it.uid}" data-end="bulge" data-what="bulge"`);
+      } else if (sel.kind === 'wall' && it && isL(it)) {
         const V = levelOf(it), r = rectOf(V), [p, q] = ends(it), n = lineN(it), m = fromLocal(it, it.b / 2, -(it.t / 2 + 12 * k));
         h += `<rect class="sel-outline" transform="${lineTf(it)}" x="${N(r.x0)}" y="${N(r.y0)}" width="${N(r.x1 - r.x0)}" height="${N(r.y1 - r.y0)}" stroke-width="2"/>`;
         h += dimText(m[0], m[1], fmt(it.b), k) + handle(p[0], p[1], k, `data-uid="${it.uid}" data-end="a" data-what="wall"`) + handle(q[0], q[1], k, `data-uid="${it.uid}" data-end="b" data-what="wall"`);
@@ -452,6 +493,13 @@
         const [p, q] = ends(it), off = 14 * k;
         h += it.axis === 'h' ? dimText((it.a + it.b) / 2, r.y0 - off * 0.6, fmt(it.b - it.a), k) : dimText(r.x0 - off * 0.6, (it.a + it.b) / 2, fmt(it.b - it.a), k, true);
         h += handle(p[0], p[1], k, `data-uid="${it.uid}" data-end="a" data-what="wall"`) + handle(q[0], q[1], k, `data-uid="${it.uid}" data-end="b" data-what="wall"`);
+      } else if (sel.kind === 'opening' && op && isArc(op.w)) {
+        const { w, o } = op, hw = w.t / 2, n = 10, ring = [];
+        for (let i = 0; i <= n; i++) { const s = o.a + (o.b - o.a) * i / n, q = arcPt(w, s), nn = arcN(w, s); ring.push([q[0] + nn[0] * hw, q[1] + nn[1] * hw]); }
+        for (let i = n; i >= 0; i--) { const s = o.a + (o.b - o.a) * i / n, q = arcPt(w, s), nn = arcN(w, s); ring.push([q[0] - nn[0] * hw, q[1] - nn[1] * hw]); }
+        const mid = arcPt(w, (o.a + o.b) / 2);
+        h += `<polygon class="sel-outline" points="${ring.map(c => N(c[0]) + ',' + N(c[1])).join(' ')}" stroke-width="2"/>` + dimText(mid[0], mid[1] - (w.t / 2 + 12 * k), fmt(o.b - o.a), k);
+        h += handle(...arcPt(w, o.a), k, `data-uid="${o.uid}" data-end="a" data-what="opening"`) + handle(...arcPt(w, o.b), k, `data-uid="${o.uid}" data-end="b" data-what="opening"`);
       } else if (sel.kind === 'opening' && op && isL(op.w)) {
         const { w, o } = op, V = levelOf(w), r = rectOf(V), m = fromLocal(w, (o.a + o.b) / 2, -(w.t / 2 + 12 * k));
         h += `<rect class="sel-outline" transform="${lineTf(w)}" x="${N(o.a)}" y="${N(r.y0)}" width="${N(o.b - o.a)}" height="${N(r.y1 - r.y0)}" stroke-width="2"/>`;
@@ -485,7 +533,10 @@
     const k = pxFt(); let h = '';
     const g = ghost;
     if (g && g.snap) h += `<circle class="snapmark" cx="${N(g.snap[0])}" cy="${N(g.snap[1])}" r="${N(7 * k)}" stroke-width="1.5"/>`;
-    if (g && g.kind === 'wall' && g.axis === 'l') {
+    if (g && g.kind === 'wall' && g.axis === 'l' && g.bulge) {
+      const gw = { p: g.p, bulge: g.bulge, b: g.b }, m = arcPt(gw, g.b / 2);
+      h += `<path class="ghostarc" d="${arcD(gw, 0, g.b)}" fill="none" stroke-width="${N(g.t)}"/>` + dimText(m[0], m[1] - (g.t / 2 + 12 * k), fmt(g.b) + '  bulge ' + fmt(Math.abs(g.bulge)), k);
+    } else if (g && g.kind === 'wall' && g.axis === 'l') {
       const t = g.t, m = fromLocal(g, g.b / 2, -(t / 2 + 12 * k));
       h += `<rect class="ghost" transform="${lineTf(g)}" x="0" y="${N(-t / 2)}" width="${N(g.b)}" height="${N(t)}" stroke-width="1.2"/>`;
       const deg = (-Math.atan2(g.p[3] - g.p[1], g.p[2] - g.p[0]) * 180 / Math.PI + 360) % 360;
@@ -498,6 +549,10 @@
     } else if (g && g.kind === 'split') {
       const [p, q] = g.axis === 'h' ? [[g.a, g.c], [g.b, g.c]] : [[g.c, g.a], [g.c, g.b]];
       h += `<line class="splitline" x1="${N(p[0])}" y1="${N(p[1])}" x2="${N(q[0])}" y2="${N(q[1])}" stroke-width="1.5"/>`;
+    } else if (g && g.kind === 'opening' && isArc(g.w)) {
+      const w = g.w, a0 = arcPt(w, g.a), a1 = arcPt(w, g.b), len = Math.hypot(a1[0] - a0[0], a1[1] - a0[1]), ang = Math.atan2(a1[1] - a0[1], a1[0] - a0[0]) * 180 / Math.PI, pad = 2 * k, m = arcPt(w, (g.a + g.b) / 2);
+      h += `<rect class="ghost${g.bad ? ' bad' : ''}" transform="translate(${N(a0[0])} ${N(a0[1])}) rotate(${N(ang)})" x="0" y="${N(-w.t / 2 - pad)}" width="${N(len)}" height="${N(w.t + 2 * pad)}" stroke-width="1.2"/>`;
+      h += dimText(m[0], m[1] - (w.t / 2 + 10 * k), fmt(g.b - g.a), k);
     } else if (g && g.kind === 'opening' && isL(g.w)) {
       const w = g.w, pad = 2 * k, m = fromLocal(w, (g.a + g.b) / 2, -(w.t / 2 + 10 * k));
       h += `<rect class="ghost${g.bad ? ' bad' : ''}" transform="${lineTf(w)}" x="${N(g.a)}" y="${N(-w.t / 2 - pad)}" width="${N(g.b - g.a)}" height="${N(w.t + 2 * pad)}" stroke-width="1.2"/>`;
@@ -524,7 +579,7 @@
   // ------------------------------------------------------------------ tools
   const HINTS = {
     select: 'Click to select. Drag a wall to move it, or drag its ends. <kbd>Del</kbd> deletes. Drag empty space to pan, scroll to zoom.',
-    wall: 'Click corner to corner. Type a length (like <kbd>12\'6</kbd>) and press <kbd>Enter</kbd> for an exact wall. <kbd>Esc</kbd> or right-click ends the run. Hold <kbd>Alt</kbd> to turn off snapping. Switch on <b>Angled</b> (or hold <kbd>Shift</kbd>) for walls at any angle: they snap to every 15\u00b0, to the ends of other walls, and to where they cross one.',
+    wall: 'Click corner to corner. Type a length (like <kbd>12\'6</kbd>) and press <kbd>Enter</kbd> for an exact wall. <kbd>Esc</kbd> or right-click ends the run. Hold <kbd>Alt</kbd> to turn off snapping. Switch on <b>Angled</b> (or hold <kbd>Shift</kbd>) for walls at any angle: they snap to every 15\u00b0, to the ends of other walls, and to where they cross one. Switch on <b>Curved</b> for a curve: click its two ends, then move to bend it and click.',
     door: 'Click on a wall to put a door there. The side you click is the side it swings into.',
     window: 'Click on a wall to put a window there.',
     cased: 'Click on a wall for a doorway with no door.',
@@ -549,7 +604,7 @@
     endDraw(); tool = t; ghost = null;
     $$('[data-tool]').forEach(b => b.setAttribute('aria-pressed', b.dataset.tool === t));
     $('#wallMode').hidden = t !== 'wall';
-    $('#wallMode').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.done ? false : b.dataset.angle ? wallAngle : b.dataset.mode === wallMode));
+    $('#wallMode').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.done ? false : b.dataset.angle ? wallAngle : b.dataset.curve ? wallCurve : b.dataset.mode === wallMode));
     $('#hint').innerHTML = HINTS[t] || ''; $('#hint').hidden = !HINTS[t];
     if (t === 'scale') ghost = { kind: 'scale', pts: [] };
     render(); renderSide();
@@ -689,7 +744,7 @@
   function endDraw() { draw = null; dimStart = null; lenBuf = ''; if (ghost && (ghost.kind === 'wall' || ghost.kind === 'split' || ghost.kind === 'dim')) ghost = null; }
 
   // wall + split drawing: click, click, click...
-  const angled = e => tool === 'wall' && wallAngle !== !!(e && e.shiftKey);              // the Angled button, turned over while Shift is held
+  const angled = e => tool === 'wall' && (wallCurve || wallAngle !== !!(e && e.shiftKey));              // the Angled button, turned over while Shift is held
   const ANG = Math.PI / 12;
   // where a ray from s at this angle crosses another wall's centre line near the cursor
   function rayHit(s, ang, p) {
@@ -730,10 +785,33 @@
     const nearEnd = allEnds().find(q => Math.hypot(q[0] - end[0], q[1] - end[1]) < 1e-6);
     return { axis, c, a: Math.min(along(axis, s), endAlong), b: Math.max(along(axis, s), endAlong), end, snap: nearEnd || null };
   }
+  // how far a curved wall bends: the distance of the cursor from the straight line between its ends, to the inch, on the side it is
+  function bulgeFor(p, e) {
+    const [a, b] = draw.chord, c = Math.hypot(b[0] - a[0], b[1] - a[1]), u = [(b[0] - a[0]) / c, (b[1] - a[1]) / c], n = [-u[1], u[0]], m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    let s = (p[0] - m[0]) * n[0] + (p[1] - m[1]) * n[1];
+    if (!(e && e.altKey)) s = Math.round(s / GRID) * GRID;
+    s = Math.max(-c / 2, Math.min(c / 2, s));
+    return Math.abs(s) < 0.05 ? (s < 0 ? -0.05 : 0.05) : r4(s);
+  }
+  function finishArc(s) {
+    const [a, b] = draw.chord, ext = wallMode === 'ext', th = ext ? S.wallThickness.exterior : S.wallThickness.interior;
+    checkpoint();
+    const nw = { uid: uid(), axis: 'l', bulge: s, t: th, ext, status: 'keep', extra: {}, openings: [] }; setLine(nw, [a[0], a[1], b[0], b[1]]); S.walls.push(nw);
+    draw.n++; draw.chord = null;
+    if (ext && draw.n >= 3 && Math.hypot(b[0] - draw.first[0], b[1] - draw.first[1]) < 0.01) { draw = null; ghost = null; wallMode = 'int'; setTool('wall'); toast('Outside walls closed. Now draw the inside walls along their centre lines.'); }
+    else draw.start = b.slice();
+    changed();
+  }
   function drawClick(p, e) {
     if (!draw) {
       const sp = snapPoint(p, e.altKey);
       const p0 = sp.p.map(r4); draw = { start: p0, first: p0, n: 0 }; ghost = null; renderGhost(); return;
+    }
+    if (tool === 'wall' && wallCurve) {                                  // curved: the two ends, then how far it bends
+      if (draw.chord) { finishArc(bulgeFor(p, e)); return; }
+      const c = drawTarget(p, e); lenBuf = '';
+      if (c.b < 0.5) return;
+      draw.chord = [draw.start.slice(), c.end.map(r4)]; return;
     }
     const g = drawTarget(p, e); lenBuf = '';
     if (g.b - g.a < 0.25) return;
@@ -1123,7 +1201,11 @@
   function pointerHover(e, p) {
     if (tool === 'dim' && dimStart) { ghost = { kind: 'dim', a: dimStart, b: dimTo(p, e) }; renderGhost(); return; }
     if (tool === 'wall' || tool === 'split') {
-      if (draw) { ghost = Object.assign({ kind: tool, t: tool === 'wall' ? (wallMode === 'ext' ? S.wallThickness.exterior : S.wallThickness.interior) : 0 }, drawTarget(p, e)); }
+      if (draw && tool === 'wall' && wallCurve && draw.chord) {
+        const [a, b] = draw.chord, s = bulgeFor(p, e), t = wallMode === 'ext' ? S.wallThickness.exterior : S.wallThickness.interior, g = { p: [a[0], a[1], b[0], b[1]], bulge: s };
+        ghost = { kind: 'wall', axis: 'l', p: g.p, bulge: s, t, a: 0, b: arcG(g).length, c: 0 };
+      }
+      else if (draw) { ghost = Object.assign({ kind: tool, t: tool === 'wall' ? (wallMode === 'ext' ? S.wallThickness.exterior : S.wallThickness.interior) : 0 }, drawTarget(p, e)); }
       else { const sp = snapPoint(p, e.altKey); ghost = { kind: 'point', snap: sp.kind ? sp.p : null }; }
       renderGhost();
     } else if (tool === 'door' || tool === 'window' || tool === 'cased') { ghost = openingGhost(p); renderGhost(); }
@@ -1172,6 +1254,13 @@
       const w = byUid(d.uid), v = d.c0 + across(w.axis, p) - across(w.axis, d.start);
       w.c = r4(snapC(v, coordCands(w.axis === 'h' ? 'y' : 'x', w), e.altKey));
       const dc = w.c - d.c0; followAttached(w, d, w.axis === 'v' ? dc : 0, w.axis === 'h' ? dc : 0); render(); return;
+    }
+    if (d.type === 'end' && d.what === 'bulge') {
+      const w = byUid(d.uid), c = lineLen(w), n = lineN(w), m = [(w.p[0] + w.p[2]) / 2, (w.p[1] + w.p[3]) / 2];
+      let s = (p[0] - m[0]) * n[0] + (p[1] - m[1]) * n[1];
+      if (!e.altKey) s = Math.round(s / GRID) * GRID;
+      s = Math.max(-c / 2, Math.min(c / 2, s)); if (Math.abs(s) < 0.05) s = s < 0 ? -0.05 : 0.05;
+      w.bulge = r4(s); setLine(w, w.p); render(); renderSide(); return;
     }
     if (d.type === 'end' && d.what === 'wall' && isL(byUid(d.uid))) {      // one end of an angled wall: to another wall's end, else every 15 degrees
       const w = byUid(d.uid), fixed = d.end === 'a' ? [w.p[2], w.p[3]] : [w.p[0], w.p[1]];
@@ -1268,7 +1357,7 @@
   });
   document.addEventListener('keyup', e => { if (e.key === ' ') spaceDown = false; });
   $$('[data-tool]').forEach(b => b.onclick = () => setTool(b.dataset.tool));
-  $('#wallMode').addEventListener('click', e => { const b = e.target.closest('[data-mode],[data-angle],[data-done]'); if (!b) return; if (b.dataset.done) { endDraw(); render(); return; } if (b.dataset.angle) wallAngle = !wallAngle; else wallMode = b.dataset.mode; endDraw(); setTool('wall'); });
+  $('#wallMode').addEventListener('click', e => { const b = e.target.closest('[data-mode],[data-angle],[data-curve],[data-done]'); if (!b) return; if (b.dataset.done) { endDraw(); render(); return; } if (b.dataset.curve) wallCurve = !wallCurve; else if (b.dataset.angle) wallAngle = !wallAngle; else wallMode = b.dataset.mode; endDraw(); setTool('wall'); });
 
   // ------------------------------------------------------------------ fixtures: placing and moving
   const SIZE_KEYS = ['box', 'upper', 'range', 'tub', 'ftub', 'shower', 'front', 'shelf', 'pumps', 'sink2', 'steps', 'deck'];
@@ -1506,12 +1595,12 @@
       const where = isL(w)
         ? `<div class="pair">${field('Start x', 'px0', w.p[0], { len: 1 })}${field('Start y', 'py0', w.p[1], { len: 1 })}</div>
           <div class="pair">${field('End x', 'px1', w.p[2], { len: 1 })}${field('End y', 'py1', w.p[3], { len: 1 })}</div>
-          ${field('Angle (degrees: 0 = east, 90 = north)', 'ang', Math.round(((-Math.atan2(w.p[3] - w.p[1], w.p[2] - w.p[0]) * 180 / Math.PI) + 360) % 360 * 100) / 100)}`
+          ${isArc(w) ? field('Bend (how far the middle stands out; + to the right of the way it runs)', 'bulge', w.bulge, { len: 1 }) + `<p class="note">Radius ${fmt(arcG(w).R)} \u00b7 ${fmt(w.b)} along the curve. Make the bend 0 to straighten it.</p>` : field('Angle (degrees: 0 = east, 90 = north)', 'ang', Math.round(((-Math.atan2(w.p[3] - w.p[1], w.p[2] - w.p[0]) * 180 / Math.PI) + 360) % 360 * 100) / 100)}`
         : `<div class="pair">${field(dir[0], 'a', w.a, { len: 1 })}${field(dir[1], 'b', w.b, { len: 1 })}</div>
           ${field(dir[2], 'c', w.c, { len: 1 })}`;
-      h += `<h3>${fmt(w.b - w.a)} ${isL(w) ? 'angled' : w.axis === 'h' ? 'horizontal' : 'vertical'} wall</h3>
+      h += `<h3>${fmt(w.b - w.a)} ${isArc(w) ? 'curved' : isL(w) ? 'angled' : w.axis === 'h' ? 'horizontal' : 'vertical'} wall</h3>
         ${field('Type', 'ext', w.ext ? '1' : '', { select: [['1', 'Outside wall (siding outside)'], ['', 'Inside wall']] })}
-        <div class="pair">${field('Length', 'len', w.b - w.a, { len: 1 })}${field('Thickness', 't', w.t, { len: 1 })}</div>
+        <div class="pair">${isArc(w) ? field('Chord (end to end)', 'len', lineLen(w), { len: 1 }) : field('Length', 'len', w.b - w.a, { len: 1 })}${field('Thickness', 't', w.t, { len: 1 })}</div>
         ${where}
         ${field('Status', 'status', w.status, { select: [['keep', 'Existing'], ['new', 'New (remodel)'], ['removed', 'Removed (shown on the Before plan only)']] })}
         ${w.openings.length ? `<div class="field">Openings<div class="chips">${w.openings.slice().sort((p, q) => p.a - q.a).map(o => `<button data-pick="${o.uid}">${o.type} ${fmt(o.b - o.a)}</button>`).join('')}</div></div>` : ''}
@@ -1661,6 +1750,12 @@
       const w = it;
       if (f === 'ext') { w.ext = !!v; return; }
       if (f === 'status') { w.status = v; return; }
+      if (isArc(w) && f === 'bulge') {
+        if (v === null || !isFinite(+v)) return false;
+        const c = lineLen(w), s = +v; if (Math.abs(s) > c / 2 + 1e-6) return false;
+        if (Math.abs(s) < 0.02) delete w.bulge; else w.bulge = r4(s);
+        setLine(w, w.p); w.openings = w.openings.filter(o => o.a < w.b - 0.5).map(o => ({ ...o, b: Math.min(o.b, w.b) })); return;
+      }
       if (isL(w) && ['px0', 'py0', 'px1', 'py1', 'ang'].includes(f)) {
         if (v === null || v === '' || !isFinite(+v)) return false;
         const q = w.p.slice(), n = +v;

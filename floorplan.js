@@ -26,10 +26,14 @@
   function surfacesSVG(){
     let o='', idx={};
     R.surfaces.forEach(s=>{
-      const i=(idx[s.room]=(idx[s.room]||0)+1), d=s.kind==='end'?0.22:0.3, [n0,n1]=s.normal;
-      const [[x0,y0],[x1,y1]]=s.seg;
-      const pts=[[x0,y0],[x1,y1],[x1+n0*d,y1+n1*d],[x0+n0*d,y0+n1*d]].map(p=>`${n(X(p[0]))},${n(Y(p[1]))}`).join(' ');
-      o+=`<polygon class="surf" data-id="${s.id}" points="${pts}" fill="${surfColor(s,i)}"><title>${s.name} \u2014 ${s.area} sq ft</title></polygon>`;
+      const i=(idx[s.room]=(idx[s.room]||0)+1), d=s.kind==='end'?0.22:0.3;
+      for(const q of (s.parts||[s])){                                          // a curved face is drawn piece by piece
+        const [m0,m1]=q.normal, [[a0,b0],[a1,b1]]=q.seg;
+        const pts=[[a0,b0],[a1,b1],[a1+m0*d,b1+m1*d],[a0+m0*d,b0+m1*d]].map(p=>`${n(X(p[0]))},${n(Y(p[1]))}`).join(' ');
+        o+=`<polygon class="surf" data-id="${s.id}" points="${pts}" fill="${surfColor(s,i)}"><title>${s.name} \u2014 ${s.area} sq ft</title></polygon>`;
+      }
+      if(s.parts){ const q=s.parts[s.parts.length>>1], [[a0,b0],[a1,b1]]=q.seg; o+=`<text class="surft" x="${X((a0+a1)/2+q.normal[0]*0.75)}" y="${Y((b0+b1)/2+q.normal[1]*0.75)+2.5}">${s.id.split('-')[1]}</text>`; return; }
+      const [n0,n1]=s.normal, [[x0,y0],[x1,y1]]=s.seg;
       if(s.kind==='end') return;
       const mx=(x0+x1)/2+n0*0.75, my=(y0+y1)/2+n1*0.75, vert=Math.abs(x1-x0)<0.01;
       const short=s.id.split('-')[1];

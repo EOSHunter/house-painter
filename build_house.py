@@ -467,7 +467,9 @@ def door_leaf(hinge, other, nrm, ext, dh):
 def build_slants():
     by = {}
     for s in H['surfaces']:
-        if s.get('slant') is not None: by.setdefault(s['slant'], []).append(s)
+        if s.get('parts'):                                     # a face of a curve is one surface made of a piece on each facet
+            for q in s['parts']: by.setdefault(q['slant'], []).append({**s, 'slant': q['slant'], 'a': q['a'], 'b': q['b']})
+        elif s.get('slant') is not None: by.setdefault(s['slant'], []).append(s)
     for S in H.get('slants', []):
         if S.get('status') == 'removed': continue
         surfs = by.get(S['i'], [])
