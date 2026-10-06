@@ -1,4 +1,4 @@
-// Adds accent walls (one per room) to every scheme, using colours from that scheme's own palette.
+// Adds accent walls (one per room) to every scheme, using colors from that scheme's own palette.
 //   bed wall: master MBR-W1, bedroom 1 BR1-W, bedroom 2 BR2-N   feature wall: living LIV-E3   vanity wall: HB-E, MB-W
 //   node data/add_accent_walls.js <dir with live scheme json>
 const { SCHEMES_DIR } = require('./example-house.js'); require('./colors.js');

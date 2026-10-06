@@ -43,12 +43,12 @@ test('the declaration reader sees the stylesheets', () => {
   assert.ok(ALL.some(d => d.prop === 'border-radius'));
 });
 
-test('no raw colours in the interface CSS', () => {
+test('no raw colors in the interface CSS', () => {
   const bad = ALL.filter(d => !d.prop.startsWith('--') && !/^mask/.test(d.prop)).filter(d => {
     const v = strip(d.value).replace(SYSTEM, '');
     return /#[0-9a-fA-F]{3,8}\b/.test(v) || /\b(?:rgba?|hsla?|hwb|oklch|oklab|lab|lch)\(/.test(v) || (d.prop !== 'content' && /(?:^|[\s,(])(?:white|black|red|green|blue|orange|yellow|purple|pink|gray|grey|silver|navy|teal|brown)(?=[\s,;)]|$)/i.test(v));
   });
-  fail(bad, 'use a colour token (var(--text), var(--brass), ...)');
+  fail(bad, 'use a color token (var(--text), var(--brass), ...)');
 });
 const SYSTEM = /\b(?:ButtonText|ButtonFace|Highlight|HighlightText|Canvas|CanvasText|GrayText|LinkText|Field|FieldText)\b/g;
 
@@ -104,11 +104,11 @@ test('the self-hosted font files in tokens.css exist, with their licences', () =
   for (const l of ['Cormorant-Garamond-OFL.txt', 'Inter-OFL.txt', 'JetBrains-Mono-OFL.txt']) assert.ok(fs.existsSync(path.join(ROOT, 'ui/fonts/LICENSES', l)), 'missing licence ' + l);
 });
 
-test('the paint colours are never recoloured: swatches take their colour from --c (data)', () => {
+test('the paint colors are never recolored: swatches take their color from --c (data)', () => {
   const swatches = ['.chip .sw', '.row .dot', '.bigchip', '.rdots i', '.totals .dot'];
   const paint = read('ui/paint.css');
   for (const sel of swatches) {
     const m = paint.match(new RegExp('(?:^|\\n)' + sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*\\{[^}]*\\}'));
-    assert.ok(m && /background(?:-color)?:\s*var\(--c\)/.test(m[0]), sel + ' must take its colour from --c');
+    assert.ok(m && /background(?:-color)?:\s*var\(--c\)/.test(m[0]), sel + ' must take its color from --c');
   }
 });

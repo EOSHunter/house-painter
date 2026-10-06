@@ -1,6 +1,6 @@
-// Cozy mid-century / Art Deco schemes. Each role gets a target colour; the nearest real paint (CIEDE2000)
+// Cozy mid-century / Art Deco schemes. Each role gets a target color; the nearest real paint (CIEDE2000)
 // in the chosen brand is used. Writes houses/waterford-4563c/schemes/<id>.json and prints the picks for review.
-const { lab, de2000 } = require('./match_colors.js');   // loads the colour books (and sets up window)
+const { lab, de2000 } = require('./match_colors.js');   // loads the color books (and sets up window)
 const { SCHEMES_DIR } = require('./example-house.js');
 
 const R = window.ROOMS, C = window.PAINT_COLORS, fs = require('fs');
@@ -22,7 +22,7 @@ function build(id, name, brand, t, opts) {
   for (const r of R.rooms.map(r => r.id).filter(r => !GREAT.includes(r))) {
     const col = P[roomMap[r]] || P.walls, wet = /bath|toil/.test(r);
     put(walls(r), col, wet ? 'satin' : 'eggshell');
-    put(['C:' + r], (opts.drench || []).includes(r) ? col : P.ceiling, 'flat');      // colour-drenched rooms: ceiling matches
+    put(['C:' + r], (opts.drench || []).includes(r) ? col : P.ceiling, 'flat');      // color-drenched rooms: ceiling matches
   }
   put(['hvanity'], P.hvanity, 'satin'); put(['mvanity'], P.mvanity, 'satin');
   put(['barn'], P.barn, 'semigloss'); put(['extdoors'], P.front, 'semigloss'); put(siding, P.siding, 'satin');

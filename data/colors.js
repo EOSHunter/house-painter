@@ -1,4 +1,4 @@
-// Loads the colour books for the Node tools: the House Painter palette (paint-colors.js) plus any extra books in
+// Loads the color books for the Node tools: the House Painter palette (paint-colors.js) plus any extra books in
 // paint-colors-extra.js (optional, never committed). Returns { books: [{ id, label, colors, popular }], byId, window }.
 // Also sets global.window.PAINT_COLORS, which is where the page scripts keep them.
 const fs = require('fs'), path = require('path');

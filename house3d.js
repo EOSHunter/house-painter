@@ -24,7 +24,7 @@ function build(H, R, opts = {}) {
   const DEFAULTS = { wall: '#F1EFEA', ceiling: '#F5F4F0', trim: '#F6F6F3', exttrim: '#F4F4F0', doors: '#F3F3EF', extdoors: '#F3F3EF', siding: '#E9E8E2', roof: '#5E5A57' };
   const ITEM = {};                                           // the house's paintable items (cabinet runs, special doors)
   for (const it of H.items) { ITEM[it.key] = it; DEFAULTS[it.key] = it.default || (it.kind === 'door' ? '#F3F3EF' : '#F1F0EC'); }
-  const mats = opts.mats || {};                              // shared between floors, so one paint colour covers them all
+  const mats = opts.mats || {};                              // shared between floors, so one paint color covers them all
   const partGroup = key => { const m = /^(\w+):(door|drawer)\d+$/.exec(key); return m ? m[1] : null; };   // "kbase:door3" -> "kbase"
   function defaultHex(key) {
     if (DEFAULTS[key]) return DEFAULTS[key];
@@ -62,7 +62,7 @@ function build(H, R, opts = {}) {
     const m = material(key);
     const wood = woodId && WOODS[woodId] ? woodTexture(woodId) : null, tex = wood || m.userData.baseMap || null;
     if (m.map !== tex) { m.map = tex; m.needsUpdate = true; }
-    m.color.copy(wood ? new T.Color(0xffffff) : lin(hex || defaultHex(key)));     // wood: the texture carries the colour; siding: the paint tints its relief
+    m.color.copy(wood ? new T.Color(0xffffff) : lin(hex || defaultHex(key)));     // wood: the texture carries the color; siding: the paint tints its relief
     m.roughness = SHEEN[sheen] ?? m.roughness;
   }
 
@@ -80,7 +80,7 @@ function build(H, R, opts = {}) {
   };
   const TILE_W = 2.5, TILE_H = 5;
   const hexRGB = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
-  for (const w of Object.values(WOODS)) {                    // average colour, for swatch dots and paint totals
+  for (const w of Object.values(WOODS)) {                    // average color, for swatch dots and paint totals
     const a = hexRGB(w.light), b = hexRGB(w.dark);
     w.avg = '#' + a.map((v, i) => Math.round(v * 0.62 + b[i] * 0.38).toString(16).padStart(2, '0')).join('').toUpperCase();
   }
@@ -107,7 +107,7 @@ function build(H, R, opts = {}) {
         const band = 0.7 * Math.exp(-(((g - 0.82) / 0.07) ** 2)) + 0.35 * Math.exp(-(((g - 0.75) / 0.22) ** 2));   // latewood lines
         const streak = fbm(u, v, 96, 3, 2, 31) - 0.5;                                                                 // fine straight streaks
         const pore = vnoise(u * 220, v * 14, 220, 14, 11) > 0.78 ? 1 : 0;                                            // long open pores
-        const tone = fbm(u, v, 2, 1, 2, 21) - 0.5;                                                                    // slow colour drift
+        const tone = fbm(u, v, 2, 1, 2, 21) - 0.5;                                                                    // slow color drift
         const t = Math.max(0, Math.min(1, band * 0.45 + streak * 0.5 + pore * w.pores * 0.7 + tone * 0.4 + 0.22));
         const i = (y * W + x) * 4;
         d[i] = L[0] + (D[0] - L[0]) * t; d[i + 1] = L[1] + (D[1] - L[1]) * t; d[i + 2] = L[2] + (D[2] - L[2]) * t; d[i + 3] = 255;
@@ -126,7 +126,7 @@ function build(H, R, opts = {}) {
     }
     return woodTex[id];
   }
-  function woodSwatch(id) {                                  // small image for colour chips
+  function woodSwatch(id) {                                  // small image for color chips
     if (!woodSw[id]) woodSw[id] = woodCanvas(WOODS[id], 96, 192).toDataURL('image/png');
     return woodSw[id];
   }
@@ -264,7 +264,7 @@ function build(H, R, opts = {}) {
       const lo = faceKey('lo', tm), hi = faceKey('hi', tm);
       const fallback = lo || hi;
       // end faces: a jamb takes trim; a face that lines up with another wall's face (an outside corner) takes that
-      // surface's paint so the colour wraps the corner; a free end takes its own end surface; else the nearest face
+      // surface's paint so the color wraps the corner; a free end takes its own end surface; else the nearest face
       const endMat = (t, dir) => {
         if (ops.some(q => Math.abs(q.a - t) < 1e-3 || Math.abs(q.b - t) < 1e-3)) return { m: material('trim'), k: 'trim' };
         const flush = R.surfaces.find(x => x.kind !== 'end' && (horiz
@@ -449,7 +449,7 @@ function build(H, R, opts = {}) {
 
   // ---------------------------------------------------------------- fixtures
   // Every door and drawer front is its own panel with its own paint key ("kbase:door3", "island:drawer2").
-  // A panel without its own colour shows the cabinet run's colour (the app resolves that).
+  // A panel without its own color shows the cabinet run's color (the app resolves that).
   // Fixtures are built in their own frame (fixtures.js): p = depth from the back to the front, q = across the front.
   const FX = window.HouseFixtures;
   const cabParts = opts.cabParts || [], partN = opts.partN || {};
@@ -466,7 +466,7 @@ function build(H, R, opts = {}) {
       const key = `${f.paint}:${kind}${c[kind]}`; cabParts.push({ key, group: f.paint, kind, n: c[kind] }); return key; };
     const pull = (b0, b1, z) => slab((b0 + b1) / 2 - 0.25, (b0 + b1) / 2 + 0.25, z - 0.025, z + 0.025, DOOR_PROUD, DOOR_PROUD + 0.06, M.black);
     if (kick) slab(0, F.Q, 0, kick, 0, 0.004, M.reveal);                 // toe-kick shadow
-    // doors are numbered west to east / north to south whichever way the run faces, so saved colours stay on their doors
+    // doors are numbered west to east / north to south whichever way the run faces, so saved colors stay on their doors
     const rev = F.d === 's' || F.d === 'w';
     for (let j = 0; j < n; j++) {
       const i = rev ? n - 1 - j : j, b0 = i * dw + GAP, b1 = (i + 1) * dw - GAP;
@@ -700,7 +700,7 @@ function build(H, R, opts = {}) {
     }
   }
   function loadFloorTexture(url, onReady) { const img = new Image(); img.onload = () => floorFromImage(img, onReady); img.src = url; }
-  // the house's own floor: a wood species (drawn like the cabinet veneers), a photo (path or data URL), or nothing (plain colour)
+  // the house's own floor: a wood species (drawn like the cabinet veneers), a photo (path or data URL), or nothing (plain color)
   function loadFloor(onReady) {
     const fl = H.floor;
     if (fl.wood && WOODS[fl.wood]) { const cache = (window.__woodFloorCanvas ||= {}); floorFromImage(cache[fl.wood] ||= woodCanvas(WOODS[fl.wood], 384, 768), onReady); }
@@ -725,7 +725,7 @@ function build(H, R, opts = {}) {
     const rf = H.roof, roofMat = material('roof'), trim = material('exttrim');
     for (const pl of rf.planes) { const m = slabFromPoly(pl, [0, 0, -rf.thick], [roofMat, trim, trim]); m.userData.keys = ['roof', 'exttrim', 'exttrim']; roofGroup.add(m); pickables.push(m); }
     const E = H.E;
-    for (const gb of rf.gables) {                                           // the wall under a roof end, in the colour of the siding it sits on
+    for (const gb of rf.gables) {                                           // the wall under a roof end, in the color of the siding it sits on
       const off = { N: [0, E, 0], S: [0, -E, 0], E: [-E, 0, 0], W: [E, 0, 0] }[gb.side], skin = gb.key ? material(gb.key) : M.cut;
       const m = slabFromPoly(gb.pts, off, [skin, M.cut, M.cut]); m.userData.keys = [gb.key, null, null]; roofGroup.add(m); pickables.push(m);
     }

@@ -1,6 +1,6 @@
 /*
-  Paint Studio (paint.html). Model centre stage, the rooms deck on the left, the colour deck on the right.
-  The surfaces and swatches carry the user's paint colours as --c (set inline from data); nothing here recolours them.
+  Paint Studio (paint.html). Model centre stage, the rooms deck on the left, the color deck on the right.
+  The surfaces and swatches carry the user's paint colors as --c (set inline from data); nothing here recolors them.
 */
 .app { --stage-min: 360px; --col-rooms: 280px; --col-paint: 360px; --pad-w: var(--s-7); height: 100%; display: grid; grid-template-columns: var(--col-rooms) minmax(0, 1fr) var(--col-paint); grid-template-rows: auto minmax(0, 1fr); }
 html, body { height: 100%; }
@@ -149,7 +149,7 @@ details.parts .row .dot { width: var(--s-4); height: var(--s-4); }
 .chip.cur { border-color: var(--brass-bright); background: var(--brass-wash-3); }
 .chip.cur .sw::after { content: ''; position: absolute; top: var(--s-1); right: var(--s-1); width: var(--s-4); height: var(--s-4); border-radius: var(--r-full); background: var(--brass-bright); }
 .chip.cur .sw::before { content: ''; position: absolute; z-index: var(--z-raised); top: calc(var(--s-2) + var(--s-1) / 2); right: var(--s-2); width: var(--s-2); height: var(--s-1); border-left: calc(1.5 * var(--bw)) solid var(--on-brass); border-bottom: calc(1.5 * var(--bw)) solid var(--on-brass); transform: rotate(-45deg); }
-.chip:disabled { cursor: not-allowed; }   /* never dim a swatch: it would misrepresent the colour */
+.chip:disabled { cursor: not-allowed; }   /* never dim a swatch: it would misrepresent the color */
 .custom { display: grid; grid-template-columns: var(--s-7) 1fr auto; gap: var(--s-2); align-items: center; }
 .custom input[type='color'] { width: var(--s-7); }
 .totals { margin: var(--s-4) var(--s-4) 0; }

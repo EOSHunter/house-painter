@@ -3,7 +3,7 @@
   ivory walls on a surface tone. The room-type fills are neutral tones; the wood floor and the surface map (hsl per surface) are data and stay as drawn.
 */
 :root {
-  /* the sheet's colours, as tokens (the script's inline styles still read these names) */
+  /* the sheet's colors, as tokens (the script's inline styles still read these names) */
   --paper: var(--bg); --card: var(--surface-1); --rule: var(--line-strong); --wall: var(--text);
   --open: var(--brass-wash-3); --bed: var(--surface-2); --clos: var(--surface-3); --wet: var(--line-strong); --util: var(--brass-wash-1);
   --cabB: var(--brass-deep); --cabW: var(--text-2); --app: var(--text-3-app);

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>House Painter</title>
-<meta name="description" content="Trace your house from a blueprint, try paint colours on every wall in 3D, walk through it, and render it in Blender. Free and open source.">
+<meta name="description" content="Trace your house from a blueprint, try paint colors on every wall in 3D, walk through it, and render it in Blender. Free and open source.">
 <link rel="preload" href="ui/fonts/inter-core-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="ui/fonts/cormorant-garamond-core-400-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="ui/tokens.css">
@@ -12,23 +12,15 @@
 <link rel="stylesheet" href="ui/home.css">
 </head>
 <body>
-<header class="site-header">
-  <div class="bar">
-    <a class="wordmark" href="./">House Painter</a>
-    <nav class="site-nav" aria-label="Project">
-      <a href="https://github.com/EOSHunter/house-painter">GitHub</a>
-      <a href="https://github.com/EOSHunter/house-painter/blob/main/docs/getting-started.md">Getting started</a>
-      <a href="https://github.com/EOSHunter/house-painter/blob/main/docs/house-format.md">House file format</a>
-      <a href="https://github.com/EOSHunter/house-painter/releases">Blender add-on</a>
-    </nav>
-  </div>
-</header>
+<div class="home-back">
+  <a class="wordmark" href="https://r7orbit.io" target="_top"><img src="ui/img/r7-mark.svg" alt="" width="21" height="18">R7 Orbit</a>
+</div>
 <main class="wrap">
 
   <section class="hero">
     <div>
-      <h1>See your house in <em>every colour</em> before you open a can.</h1>
-      <p class="lede">Trace your floor plan from a blueprint, pick a colour for any wall, ceiling, cabinet door or trim piece, walk through the rooms, and render the result in Blender.</p>
+      <h1>See your house in <em>every color</em> before you open a can.</h1>
+      <p class="lede">Trace your floor plan from a blueprint, pick a color for any wall, ceiling, cabinet door or trim piece, walk through the rooms, and render the result in Blender.</p>
       <div class="cta">
         <a class="btn solid lg" href="editor.html">Trace your house</a>
         <a class="btn lg" href="paint.html">Try the example house</a>
@@ -47,7 +39,7 @@
     <a class="card link" href="paint.html">
       <span class="n">2 · Paint studio</span>
       <h2>Paint it in 3D</h2>
-      <p>Every wall face, ceiling, door and cabinet door has its own colour. Walk through with WASD, and share a scheme as a link.</p>
+      <p>Every wall face, ceiling, door and cabinet door has its own color. Walk through with WASD, and share a scheme as a link.</p>
       <span class="go">Open the studio →</span>
     </a>
     <a class="card link" href="floorplan.html">
@@ -61,15 +53,20 @@
   <section class="facts" aria-label="About">
     <div><h3>Free, and nothing to sign up for</h3><p>No account, no AI service, no upload. It all runs in your browser, and your drawings stay on your device until you save them.</p></div>
     <div><h3>One file describes a house</h3><p>Walls, openings, rooms, cabinets and heights live in a readable JSON file you can keep, edit and share.</p></div>
-    <div><h3>Renders that match the page</h3><p>Export your scheme and the Blender add-on rebuilds the house with the same colours, ready to render.</p></div>
-    <div><h3>Open source</h3><p>MIT licensed. Colours come from an original palette, and you can add a paint maker's own book on your own machine.</p></div>
+    <div><h3>Renders that match the page</h3><p>Export your scheme and the Blender add-on rebuilds the house with the same colors, ready to render.</p></div>
+    <div><h3>Open source</h3><p>MIT licensed. Colors come from an original palette, and you can add a paint maker's own book on your own machine.</p></div>
   </section>
 
 </main>
 <footer class="wrap site-footer">
-  <span>Screen colours are approximations. Check a real chip in your own light before buying paint.</span>
-  <span class="credit"><a href="https://github.com/EOSHunter/house-painter/blob/main/LICENSE">MIT licence</a>
-    <a class="wordmark" href="https://r7orbit.io"><img src="ui/img/r7-mark.svg" alt="" width="21" height="18">R7 Orbit</a></span>
+  <span>Screen colors are approximations. Check a real chip in your own light before buying paint.</span>
+  <nav class="links" aria-label="Project">
+    <a href="https://github.com/EOSHunter/house-painter" target="_blank" rel="noopener">GitHub</a>
+    <a href="https://github.com/EOSHunter/house-painter/blob/main/docs/getting-started.md" target="_blank" rel="noopener">Getting started</a>
+    <a href="https://github.com/EOSHunter/house-painter/blob/main/docs/house-format.md" target="_blank" rel="noopener">House file format</a>
+    <a href="https://github.com/EOSHunter/house-painter/releases" target="_blank" rel="noopener">Blender add-on</a>
+    <a href="https://github.com/EOSHunter/house-painter/blob/main/LICENSE" target="_blank" rel="noopener">MIT licence</a>
+  </nav>
 </footer>
 </body>
 </html>

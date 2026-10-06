@@ -9,7 +9,7 @@ const preview = require('../preview.js');
 const DIST = path.join(__dirname, '..', '..', 'dist');
 const APP = 'housepainter.r7orbit.io', HOST = 'r7orbit.io', PORT = +process.env.PORT || 8443;
 const BASE_SANDBOX = 'allow-scripts allow-same-origin allow-pointer-lock';                                  // the minimum the host asked for
-const SANDBOX = process.env.SANDBOX || BASE_SANDBOX + ' allow-forms allow-downloads';                       // what the app needs (see docs/DEPLOY.md)
+const SANDBOX = process.env.SANDBOX || BASE_SANDBOX + ' allow-forms allow-downloads allow-top-navigation-by-user-activation allow-popups allow-popups-to-escape-sandbox';   // what the app needs (see docs/DEPLOY.md)
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hp-e2e-'));
 
 // ---- a throwaway certificate for the three names
@@ -29,10 +29,8 @@ function embedPage(url) {
 <iframe id="app" src="${esc(src)}" ${sb === 'none' ? '' : `sandbox="${esc(sb)}"`} allow="${esc(allow)}" style="width:1280px;height:800px;border:0"></iframe>`;
 }
 
-const FONTS = /^fonts.(googleapis|gstatic).com$/;      // known, and being removed by the restyle: reported, not failed
 const results = [];
-const foreignOf = (reqs) => reqs.filter(u => { try { const h = new URL(u).hostname; return h !== APP && h !== HOST && !FONTS.test(h) && !/^(data|blob):/.test(u); } catch { return false; } });
-const fontsIn = reqs => reqs.some(u => { try { return FONTS.test(new URL(u).hostname); } catch { return false; } });
+const foreignOf = (reqs) => reqs.filter(u => { try { const h = new URL(u).hostname; return h !== APP && h !== HOST && !/^(data|blob):/.test(u); } catch { return false; } });
 async function step(name, fn) {
   try { const note = await fn(); results.push({ name, ok: true, note: note || '' }); console.log('  ok   ' + name + (note ? '  (' + note + ')' : '')); }
   catch (e) { results.push({ name, ok: false, note: String(e.message || e).split('\n')[0] }); console.log('  FAIL ' + name + '\n       ' + String(e.message || e).split('\n').slice(0, 3).join('\n       ')); }
@@ -147,21 +145,21 @@ async function makeInputs(browser) {
       const c = document.getElementById('c'), gl = c.getContext('webgl2') || c.getContext('webgl'), w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
       const buf = new Uint8Array(w * h * 4); gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, buf);
       const seen = new Set(); for (let i = 0; i < buf.length; i += 4 * 97) seen.add((buf[i] >> 4) + ',' + (buf[i + 1] >> 4) + ',' + (buf[i + 2] >> 4));
-      return { w, h, colours: seen.size, webgl2: !!c.getContext('webgl2'), isolated: crossOriginIsolated, secure: isSecureContext, fullscreen: document.fullscreenEnabled };
+      return { w, h, colors: seen.size, webgl2: !!c.getContext('webgl2'), isolated: crossOriginIsolated, secure: isSecureContext, fullscreen: document.fullscreenEnabled };
     });
-    ok(info.colours > 12, 'canvas looks blank (' + info.colours + ' colours)');
-    return `canvas ${info.w}x${info.h}, ${info.colours} colours, webgl2=${info.webgl2}, crossOriginIsolated=${info.isolated}, fullscreenEnabled=${info.fullscreen}`;
+    ok(info.colors > 12, 'canvas looks blank (' + info.colors + ' colors)');
+    return `canvas ${info.w}x${info.h}, ${info.colors} colors, webgl2=${info.webgl2}, crossOriginIsolated=${info.isolated}, fullscreenEnabled=${info.fullscreen}`;
   });
   await step('no third-party requests, no failed requests, no console errors', async () => {
     const foreign = foreignOf(A.requests);
-    const info = [`${A.requests.length} requests`]; if (fontsIn(A.requests)) info.push('Google Fonts still requested (pending the restyle)');
+    const info = [`${A.requests.length} requests`];
     if (foreign.length) info.push('foreign: ' + [...new Set(foreign.map(u => new URL(u).host))].join(', '));
     ok(!foreign.length, 'third-party requests: ' + [...new Set(foreign)].slice(0, 5).join(', '));
     ok(!A.failures.length, 'failed requests: ' + A.failures.join(' | '));
     ok(!A.consoleErrors.length, 'console errors: ' + A.consoleErrors.join(' | '));
     return info.join(', ');
   });
-  await step('painting: pick a wall, pick a colour; it is saved to localStorage', async () => {
+  await step('painting: pick a wall, pick a color; it is saved to localStorage', async () => {
     await frame.click('#roomList details.room summary'); await frame.click('#roomList details.room[open] .row');
     ok(await frame.locator('#chipArea .chip:not([disabled])').count() > 0, 'chips are disabled');
     await frame.click('#chipArea .chip:not([disabled])');
@@ -335,6 +333,17 @@ async function makeInputs(browser) {
     return 'no file; the page says "' + toast.slice(0, 40) + '..."';
   }));
 
+  await step('baseline FINDING: the landing page R7 Orbit link and GitHub links are blocked without allow-top-navigation-by-user-activation / allow-popups', async () => {
+    const C = await newCtx(); const p = await C.ctx.newPage(); await embed(p, origin + '/', { sandbox: BASE_SANDBOX }); const f = await frameOf(p, APP);
+    await f.waitForSelector('.home-back a', { timeout: 30000 });
+    const popup = p.waitForEvent('popup', { timeout: 3000 }).then(() => 'popup', () => 'no popup');
+    await f.click('.links a >> text=GitHub'); const r = await popup; await sleep(300);
+    await f.click('.home-back a'); await sleep(800);
+    ok(r === 'no popup', 'a popup opened after all'); ok(p.url().includes('?src='), 'the top page navigated after all: ' + p.url());
+    const errs = C.consoleErrors.join(' | '); ok(/allow-top-navigation|allow-popups|sandboxed/i.test(errs), 'no sandbox message in console: ' + errs.slice(0, 200));
+    await C.ctx.close(); return 'no popup, the top page stayed; console: ' + errs.slice(0, 90);
+  });
+
   // ---------------------------------------------------------------- the rest
   console.log('\nOther pages');
   for (const [pth, sel] of [['/', 'h1'], ['/floorplan', 'svg']]) await step(`${pth} loads in the iframe`, async () => {
@@ -343,6 +352,19 @@ async function makeInputs(browser) {
     ok(!C.failures.length, C.failures.join(' | ')); ok(!C.consoleErrors.length, C.consoleErrors.join(' | '));
     const foreign = foreignOf(C.requests);
     ok(!foreign.length, 'third party: ' + foreign.join(', ')); await C.ctx.close(); return C.requests.length + ' requests';
+  });
+  await step('landing page: no site header or nav of its own; the R7 Orbit mark takes the top page to r7orbit.io; GitHub and docs links open in a new tab', async () => {
+    const C = await newCtx(); const p = await C.ctx.newPage(); await embed(p, origin + '/', {}); const f = await frameOf(p, APP);
+    await f.waitForSelector('.home-back a', { timeout: 30000 });
+    const dom = await f.evaluate(() => ({ header: !!document.querySelector('header, .site-header, .site-nav'), h1: document.querySelector('h1')?.textContent,
+      back: (a => a && { href: a.href, target: a.target, text: a.textContent.trim() })(document.querySelector('.home-back a')),
+      links: [...document.querySelectorAll('.site-footer .links a')].map(a => [a.textContent.trim(), a.target, a.rel]) }));
+    ok(!dom.header, 'the page still has a header / nav'); eq(dom.back.text, 'R7 Orbit'); eq(dom.back.href, 'https://r7orbit.io/'); eq(dom.back.target, '_top');
+    ok(dom.links.length === 5 && dom.links.every(l => l[1] === '_blank' && /noopener/.test(l[2])), 'footer links: ' + JSON.stringify(dom.links));
+    const [popup] = await Promise.all([p.waitForEvent('popup', { timeout: 8000 }), f.click('.links a >> text=GitHub')]);
+    ok(/github.com/.test(popup.url()) || popup.url() === 'about:blank', 'popup: ' + popup.url()); await popup.close();
+    await Promise.all([p.waitForURL(u => u.origin === 'https://' + HOST && !u.search, { timeout: 8000 }), f.click('.home-back a')]);
+    await C.ctx.close(); return dom.links.map(l => l[0]).join(', ') + '; back link went to ' + 'https://' + HOST + '/ (top page)';
   });
   await step('"Edit house" from the studio and back, inside the iframe (links go through the .html -> clean URL redirect)', async () => {
     const C = await newCtx(); const p = await C.ctx.newPage(); await embed(p, origin + '/paint'); let f = await frameOf(p, '/paint');

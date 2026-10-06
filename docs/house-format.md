@@ -122,7 +122,7 @@ The reserved ids are `exterior` and `house`.
 
 Walls rise to meet their rooms' ceilings (a wall between two rooms goes as high as the higher one), and the area of each painted wall face follows the ceiling above it. Heights are from the floor. Ceilings of any one room are one plane or two, taken across the bounding box of its shape, so an L-shaped room slopes as one rectangle would.
 
-> Saved schemes refer to surfaces by ID, such as `BR1-N`. Renaming a room's `short`, or adding a wall that splits a surface, changes IDs, and any colours saved on the old IDs no longer show.
+> Saved schemes refer to surfaces by ID, such as `BR1-N`. Renaming a room's `short`, or adding a wall that splits a surface, changes IDs, and any colors saved on the old IDs no longer show.
 
 ## Roof and siding
 
@@ -133,8 +133,8 @@ Walls rise to meet their rooms' ceilings (a wall between two rooms goes as high 
 
 - `roof.type` is `gable` (two slopes and two gable ends), `hip` (four slopes), `shed` (one slope) or `flat`. `pitch` is inches of rise for every 12 inches across (6 is typical; 0 to 24). `overhang` is how far the roof reaches past the walls, in feet (default 1.25). A gable roof's `ridge` is `"x"` (east to west) or `"y"`, defaulting to along the longer side; a shed roof's `rise` is `"n"`, `"e"`, `"s"` or `"w"`, the side it climbs toward.
 - The roof covers the bounding box of the **outside walls of the top floor**, whatever the outline. Over an L-shaped house it is a roof over the box that holds the L. It starts at the top of the walls (the tallest ceiling), so a vaulted ceiling is not carried up into it.
-- Paint: the roof is one item, `roof`; its edges are the exterior trim (`exttrim`); the wall under each gable end takes the colour of the siding it sits on. The roof shows from the outside views in the Paint Studio and in the Blender `out` view.
-- `siding.profile` is `plain` (the default), `lap`, `board` (board and batten), `shingle` or `stucco`. `exposure` is the visible height of a lap board or shingle, or the width of a board, in feet. It draws the relief of the siding, in the studio and in Blender; the paint colour shows through it.
+- Paint: the roof is one item, `roof`; its edges are the exterior trim (`exttrim`); the wall under each gable end takes the color of the siding it sits on. The roof shows from the outside views in the Paint Studio and in the Blender `out` view.
+- `siding.profile` is `plain` (the default), `lap`, `board` (board and batten), `shingle` or `stucco`. `exposure` is the visible height of a lap board or shingle, or the width of a board, in feet. It draws the relief of the siding, in the studio and in Blender; the paint color shows through it.
 - A **porch** is a fixture: `{ "k": "porch", "x": 6, "y": 24, "w": 7, "h": 5.5, "front": "s" }`: a deck, posts and a sloping roof, with its back against the house and `front` the open side. Options: `posts` (default one every 7 ft), `roof` (false for an open deck), `eave` (height of the front edge, 7.4), `attach` (height where it meets the wall).
 
 ## More than one floor
@@ -177,7 +177,7 @@ Each fixture has `k` (its kind) plus a position: `x, y, w, h` for a box, or `cx,
 
 | `k` | Notes |
 |---|---|
-| `box` with `paint` | A cabinet. `c`: `cabB` or `cabW` (its plan colour); `front`; `z1`: height (default 3, or 2.8 for `cabW`). `counter`: `false` for tall units, `"all"` to overhang every side (islands). The default is a counter when `z1` ≤ 4. `style`: `"door-drawer"` (a drawer over each door, the default under a counter), `"doors"` (the default for tall units) or `"drawers"` (a stack of three). `doors`: how many fronts (default one per 1.5 ft). `sink: true` sets a double kitchen sink into the counter and `basin: true` a bath basin. |
+| `box` with `paint` | A cabinet. `c`: `cabB` or `cabW` (its plan color); `front`; `z1`: height (default 3, or 2.8 for `cabW`). `counter`: `false` for tall units, `"all"` to overhang every side (islands). The default is a counter when `z1` ≤ 4. `style`: `"door-drawer"` (a drawer over each door, the default under a counter), `"doors"` (the default for tall units) or `"drawers"` (a stack of three). `doors`: how many fronts (default one per 1.5 ft). `sink: true` sets a double kitchen sink into the counter and `basin: true` a bath basin. |
 | `upper` | A wall cabinet with `paint`, `front`, `z0`/`z1` (its bottom and top heights), and optional `style` and `doors`. |
 | `box` with `c: "app"` | A refrigerator (`label: "FRIDGE"`). |
 | `box` with `c: "counter"` | A bare counter (desk). |

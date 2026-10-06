@@ -4,8 +4,9 @@
 //   - vendor/<lib>-<version>/ : the third-party libraries, copied as they are (the version is in the path, so they never change in place)
 //   - houses/ and textures/ : data the pages fetch by name (no schemes/: nothing loads them)
 //   - _headers, 404.html
+// ui/ (css, fonts/, img/) ships because the pages and the CSS name it: every href, src and url() is followed and emitted as assets/<name>.<hash>.<ext>.
 // It fails the build when: a file is over 25 MiB (Cloudflare Pages' limit), a reference does not resolve (checked case-sensitively, so a
-// Windows checkout can't hide a bug that Linux would show), a vendored file differs from vendor/SHA256SUMS, or a page script asks for a CDN.
+// Windows checkout can't hide a bug that Linux would show), a vendored file differs from vendor/SHA256SUMS, a page script asks for a CDN, or a page or stylesheet loads anything from another host (Google Fonts included).
 const fs = require('fs'), path = require('path'), crypto = require('crypto');
 
 const ROOT = path.join(__dirname, '..'), OUT = path.join(ROOT, 'dist');
@@ -99,7 +100,7 @@ const refFrom = (fromDirDist, to) => posix(path.posix.relative(fromDirDist || '.
 function rewriteCss(css, abs, why) {
   const dir = path.dirname(abs);
   const one = (u, hint) => {
-    if (!isLocal(u)) { if (FONT_HOSTS.test(u)) warn(`${why}: loads ${u.slice(0, 60)}... (Google Fonts): self-host the fonts so the page makes no third-party request`); return u; }
+    if (!isLocal(u)) { if (FONT_HOSTS.test(u)) fail(`${why}: loads ${u.slice(0, 60)}... (Google Fonts): the fonts are self-hosted in ui/fonts, so the page makes no third-party request`); else if (/^(https?:)?\/\//i.test(u)) fail(`${why}: loads ${u.slice(0, 60)} from another host`); return u; }
     const [file, tail] = splitRef(u), out = emit(path.resolve(dir, file), why + ' ' + hint);
     return out ? refFrom('assets', out) + tail : u;
   };
@@ -151,14 +152,14 @@ function buildPage(name) {
   // inline <style> blocks and style="" attributes can name files too
   html = html.replace(/(<style\b[^>]*>)([\s\S]*?)(<\/style>)/gi, (m, a, css, z) => a + rewriteCssInline(css, abs, name, startup) + z);
 
-  // pages have no business requesting a script from a CDN; fonts from Google are reported (the restyle removes them)
+  // pages have no business requesting a script from a CDN, or fonts from Google (they are self-hosted in ui/fonts)
   for (const m of html.matchAll(/<script\b[^>]*\ssrc=["'](https?:[^"']+)["']/gi)) fail(`${name}: loads a script from ${m[1]}; vendor it under vendor/ instead`);
   let fonts = false;
   for (const m of html.matchAll(/<link\b[^>]*\shref=["'](https?:[^"']+)["'][^>]*>/gi)) {
     if (/preconnect|stylesheet|preload/i.test(m[0]) && FONT_HOSTS.test(m[1])) fonts = true;
     else if (/stylesheet|preload|modulepreload/i.test(m[0])) fail(`${name}: loads ${m[1]} from another host`);
   }
-  if (fonts) warn(`${name}: loads Google Fonts: self-host the fonts so the page makes no third-party request`);
+  if (fonts) fail(`${name}: loads Google Fonts: use the self-hosted fonts in ui/fonts so the page makes no third-party request`);
   for (const m of html.matchAll(/\sdata-default=["']([^"']+)["']/g)) if (!existsExact(path.resolve(path.dirname(abs), splitRef(m[1])[0]))) fail(`${name}: data-default ${m[1]} does not exist`);
   put(name, Buffer.from(html, 'utf8'));
   return startup;
@@ -166,7 +167,7 @@ function buildPage(name) {
 function rewriteCssInline(css, abs, name, startup) {
   return css.replace(/url\(\s*(['"]?)([^'")]+?)\1\s*\)/g, (m, q, u) => {
     u = u.trim();
-    if (!isLocal(u)) { if (FONT_HOSTS.test(u)) warn(`${name}: <style> loads ${u.slice(0, 50)}... (Google Fonts)`); return m; }
+    if (!isLocal(u)) { if (FONT_HOSTS.test(u)) fail(`${name}: <style> loads ${u.slice(0, 50)}... (Google Fonts)`); else if (/^(https?:)?\/\//i.test(u)) fail(`${name}: <style> loads ${u.slice(0, 60)} from another host`); return m; }
     const [file, tail] = splitRef(u), out = emit(path.resolve(path.dirname(abs), file), `${name} <style> url()`);
     if (!out) return m;
     startup.add(out);

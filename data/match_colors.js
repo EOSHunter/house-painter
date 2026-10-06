@@ -1,4 +1,4 @@
-// Nearest paints to sampled colours in every loaded colour book, by CIEDE2000.
+// Nearest paints to sampled colors in every loaded color book, by CIEDE2000.
 //   node data/match_colors.js "#FC5001" "#BA410B" ...
 const { books } = require('./colors.js');
 const { lab, de2000 } = require('./color-math.js');

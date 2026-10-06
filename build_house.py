@@ -11,7 +11,7 @@ trim piece has its own material, keyed exactly as on the page), applies a scheme
                                  [--keep-scene] [--no-save]
 
   --scheme   JSON from the page's "Export for Blender" button. It contains the house too, so nothing else is needed.
-             Without it, the house is primer white with its cabinets in their default colours.
+             Without it, the house is primer white with its cabinets in their default colors.
   --house    a house file to build when the scheme doesn't carry one (default: the example house). House files are
              compiled with Node.js (export_house_json.js), so Node must be installed for this.
   --views    export   the camera you were looking through when you exported
@@ -248,7 +248,7 @@ def floor_material():
         img = bpy.data.images.load(tmp); img.pack()
     elif tex_ref and os.path.exists(os.path.join(HERE, tex_ref)):
         img = bpy.data.images.load(os.path.join(HERE, tex_ref)); img.pack()
-    if img is None:                                                        # no plank image: plain colour
+    if img is None:                                                        # no plank image: plain color
         b = m.node_tree.nodes['Principled BSDF']; b.inputs['Base Color'].default_value = lin(fl.get('color') or '#B09672')
         b.inputs['Roughness'].default_value = 0.42; return m
     photo = not fl.get('wood')
@@ -424,7 +424,7 @@ def build_walls():
             fallback = lo or hi
             def end_mat(t, d):
                 if any(abs(q['a'] - t) < 1e-3 or abs(q['b'] - t) < 1e-3 for q in ops): return paint_mat('trim')
-                for x in H['surfaces']:                           # flush with another wall's face: wrap that colour round the corner
+                for x in H['surfaces']:                           # flush with another wall's face: wrap that color round the corner
                     if x['kind'] == 'end': continue
                     (ax0, ay0), (ax1, ay1) = x['seg']
                     if horiz and x['normal'] == [d, 0] and abs(ax0 - t) < 0.02 and min(ay0, ay1) <= w['y1'] + 0.02 and max(ay0, ay1) >= w['y0'] - 0.02:
@@ -777,7 +777,7 @@ def build_roof():
     ob = obj('Roof', 'Roof'); roof_m, trim_m = paint_mat('roof'), paint_mat('exttrim')
     for pl in rf['planes']: roof_slab(ob, pl, (0, 0, -rf['thick']), roof_m, trim_m, trim_m)
     e = H0['E']
-    for g in rf['gables']:                                    # the wall under a roof end, in the colour of the siding it sits on
+    for g in rf['gables']:                                    # the wall under a roof end, in the color of the siding it sits on
         off = {'N': (0, e, 0), 'S': (0, -e, 0), 'E': (-e, 0, 0), 'W': (e, 0, 0)}[g['side']]
         roof_slab(ob, g['pts'], off, paint_mat(g['key']) if g.get('key') else M['cut'], M['cut'], M['cut'])
 
@@ -886,7 +886,7 @@ if ex_view.get('camera') and any(ex_view['camera'].get('position') or [0]):
 r = scene.render
 res = (arg('--res') or '1600x1000').split('x'); r.resolution_x, r.resolution_y = int(res[0]), int(res[1])
 scene.render.engine = 'CYCLES'; scene.cycles.samples = int(arg('--samples') or 64); scene.cycles.use_denoising = True; scene.cycles.device = 'CPU'
-scene.view_settings.view_transform = 'Standard'          # keeps paint colours true (AgX pales strong colours)
+scene.view_settings.view_transform = 'Standard'          # keeps paint colors true (AgX pales strong colors)
 scene.camera = VIEWS['doll'][0]
 set_light(LIGHT, False)
 

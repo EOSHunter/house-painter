@@ -355,7 +355,7 @@
       const L = { id: lv.id || 'level' + (k + 2), name: lv.name || (k === 0 ? 'Upper floor' : 'Floor ' + (k + 2)), elevation, slab, HOUSE: built.HOUSE, ROOMS: built.ROOMS };
       LEVELS.push(L); prev = L;
     });
-    if (src.roof) {                                                    // a roof over the top floor; each gable-end wall takes the colour of the outside wall it sits on
+    if (src.roof) {                                                    // a roof over the top floor; each gable-end wall takes the color of the outside wall it sits on
       const top = LEVELS[LEVELS.length - 1], roof = buildRoof(src.roof, top);
       const ext = top.ROOMS.surfaces.filter(sf => sf.room === 'exterior' && sf.kind === 'siding');
       for (const g of roof.gables) {

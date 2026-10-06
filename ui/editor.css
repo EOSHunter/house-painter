@@ -1,9 +1,9 @@
 /*
   Plan Editor (editor.html). The plan is drawn like an engraved drafting sheet: ivory lines on obsidian, brass for what is selected or suggested.
-  Room colours in the plan and the list are identifiers set by the script (hsl), not paint; they are only quietened (--room-saturate).
+  Room colors in the plan and the list are identifiers set by the script (hsl), not paint; they are only quietened (--room-saturate).
 */
 :root {
-  /* the plan's drawing colours, as tokens */
+  /* the plan's drawing colors, as tokens */
   --wall: var(--text-2); --wall-ext: var(--text); --open: var(--bg);
   --removed: var(--st-failed); --new: var(--st-done); --snap: var(--brass-highlight);
   --grid: var(--line); --grid-major: var(--line-strong);

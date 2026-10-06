@@ -1890,7 +1890,7 @@
           if (kind === 'vault') ce += `<div class="pair">${num('ce_eave', 'Walls (eave)', c.eave)}${num('ce_peak', 'Peak', c.peak)}</div>` + field('Ridge runs', 'ce_ridge', c.ridge || 'x', { select: [['x', 'East to west (across the page)'], ['y', 'North to south (down the page)']] });
           return ce + '<p class="note">Walls rise to meet a sloped ceiling, and their painted area follows. A taller room next to a shorter one shows its higher wall above the lower ceiling.</p>';
         })()}
-        <p class="note">Walls are named from the prefix: ${esc((r.short || r.id.toUpperCase()) + '-N')}, ${esc((r.short || r.id.toUpperCase()) + '-E')}\u2026 Changing it after you've painted renames those walls, and their saved colours won't show.</p>
+        <p class="note">Walls are named from the prefix: ${esc((r.short || r.id.toUpperCase()) + '-N')}, ${esc((r.short || r.id.toUpperCase()) + '-E')}\u2026 Changing it after you've painted renames those walls, and their saved colors won't show.</p>
         <div class="actions"><button class="btn danger" data-act="delete">Delete room</button></div>`;
     } else if (sel && sel.kind === 'plan' && it && it.t !== undefined) {
       title = 'Floor plan label';
@@ -1932,7 +1932,7 @@
         <h3 style="font-size:14px">Floor</h3>
         ${field('Flooring', 'fl_mode', floorMode(F), { select: FLOOR_OPTIONS.concat(floorMode(F) === 'photo' ? [['photo', 'My own photo']] : [['photo', 'My own photo\u2026']]) })}
         ${floorMode(F) === 'photo' ? '<div class="actions"><button class="btn" data-act="floorphoto">Choose another photo\u2026</button></div>' : ''}
-        <div class="pair">${field('Name', 'fl_name', F.name)}${field('Colour (plain)', 'fl_color', F.color, { type: 'color' })}</div>
+        <div class="pair">${field('Name', 'fl_name', F.name)}${field('Color (plain)', 'fl_color', F.color, { type: 'color' })}</div>
         <p class="note">Wood floors are drawn the way the cabinet veneers are. A photo should show one plank, or a close-up of the grain, with the grain running up the picture.</p>
         <h3 style="font-size:14px">Roof and siding</h3>
         ${(() => {
@@ -1942,7 +1942,7 @@
           if (rf && rf.type === 'flat') h2 += field('Overhang', 'rf_over', rf.overhang ?? 1.25, { len: 1 });
           if (rf && rf.type === 'gable') h2 += field('Ridge runs', 'rf_ridge', rf.ridge || 'auto', { select: [['auto', 'Along the longer side'], ['x', 'East to west'], ['y', 'North to south']] });
           if (rf && rf.type === 'shed') h2 += field('Rises toward', 'rf_rise', rf.rise || 'n', { select: [['n', 'The north'], ['s', 'The south'], ['e', 'The east'], ['w', 'The west']] });
-          if (rf) h2 += '<p class="note">One roof over the whole outline of the top floor, shown from outside in the Paint Studio. Gable ends take the colour of the siding under them.</p>';
+          if (rf) h2 += '<p class="note">One roof over the whole outline of the top floor, shown from outside in the Paint Studio. Gable ends take the color of the siding under them.</p>';
           h2 += field('Siding', 'sd_profile', sd ? sd.profile : 'plain', { select: [['plain', 'Plain'], ['lap', 'Lap boards'], ['board', 'Board and batten'], ['shingle', 'Shingles'], ['stucco', 'Stucco']] });
           if (sd && (sd.profile === 'lap' || sd.profile === 'shingle' || sd.profile === 'board')) h2 += field('Exposure (visible height or width)', 'sd_exp', sd.exposure ?? (sd.profile === 'board' ? 1 : 0.5), { len: 1 });
           return h2;
@@ -1987,10 +1987,10 @@
     if (a === 'delnote') { checkpoint(); S.keep.plan.notes.splice(+e.target.closest('[data-i]').dataset.i, 1); changed(); }
     if (a === 'wall') { const f = findOpening(sel.uid); if (f) { sel = { kind: 'wall', uid: f.w.uid }; render(); renderSide(); } }
   });
-  // flooring: plain colour, the bundled Desert Sand photo, a wood species drawn like the cabinet veneers, or your own photo
+  // flooring: plain color, the bundled Desert Sand photo, a wood species drawn like the cabinet veneers, or your own photo
   const FLOOR_WOODS = { whiteoak: ['White oak', '#CDAA7C', '#8C6A45'], redoak: ['Red oak', '#C48D63', '#86513A'], walnut: ['Walnut', '#8C5D3E', '#3A2215'], teak: ['Teak', '#B57E49', '#6A4220'],
     cherry: ['Cherry', '#A8603F', '#6A3322'], maple: ['Maple', '#E2C99E', '#BE9C70'], rosewood: ['Rosewood', '#743A26', '#29120B'], ebonized: ['Ebonized oak', '#3E3630', '#191513'] };
-  const FLOOR_OPTIONS = [['plain', 'Plain colour'], ['tex:textures/desert_sand_plank.png', 'Desert Sand LVP (photo)']].concat(Object.entries(FLOOR_WOODS).map(([id, w]) => ['wood:' + id, w[0] + ' planks']));
+  const FLOOR_OPTIONS = [['plain', 'Plain color'], ['tex:textures/desert_sand_plank.png', 'Desert Sand LVP (photo)']].concat(Object.entries(FLOOR_WOODS).map(([id, w]) => ['wood:' + id, w[0] + ' planks']));
   const floorAvg = w => '#' + [1, 3, 5].map(i => Math.round(parseInt(w[1].slice(i, i + 2), 16) * 0.62 + parseInt(w[2].slice(i, i + 2), 16) * 0.38).toString(16).padStart(2, '0')).join('').toUpperCase();
   const floorMode = F => F.wood ? 'wood:' + F.wood : F.texture ? (/^data:/.test(F.texture) ? 'photo' : 'tex:' + F.texture) : 'plain';
   $('#floorFile').addEventListener('change', async e => {
@@ -2011,7 +2011,7 @@
   function moveItems(from, to) { (S.keep.items || []).forEach(i => { if (i.room === from) i.room = to; }); }
   function newGroup() {
     const g = fxBy(sel.uid); if (!g) return;
-    dialog(`<form class="box"><h3>New paint group</h3><p class="note">Fixtures in a group share a colour, like \u201cKitchen uppers\u201d. This one starts with the fixture you have selected.</p>
+    dialog(`<form class="box"><h3>New paint group</h3><p class="note">Fixtures in a group share a color, like \u201cKitchen uppers\u201d. This one starts with the fixture you have selected.</p>
       <label class="field">Name<input id="dlgLen" autocomplete="off" placeholder="e.g. Pantry cabinets"></label>
       <div class="row-btns"><button type="button" class="btn" id="dlgCancel">Cancel</button><button class="btn primary">Create</button></div></form>`, true);
     $('#dlgLen').focus();
