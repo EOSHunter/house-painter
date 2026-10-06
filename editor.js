@@ -718,7 +718,7 @@
   }
 
   // ------------------------------------------------------------------ assisted tracing (tracer.js does the finding)
-  const TR = { opts: { style: 'solid', minLen: 2.5, sensitivity: 0.8, openings: true, symbols: true, angled: true }, res: null, off: new Set(), busy: false, ms: 0 };
+  const TR = { opts: { style: 'solid', minLen: 2.5, sensitivity: 0.8, openings: true, symbols: true, angled: true, finder: 'classic' }, res: null, off: new Set(), busy: false, ms: 0 };
   // the blueprint as a grey picture with its axes level: scaled, shifted and rotated into plan feet, so one pixel is 1/ppf ft
   function rasterUnderlay(maxSide) {
     const u = S.underlay, c = underCorners();
@@ -749,12 +749,58 @@
     checkpoint(); setRotAboutCentre(S.underlay, Math.max(-30, Math.min(30, -r.angle)));
     changed(); toast('The picture was tilted ' + Math.abs(r.angle).toFixed(1) + '\u00b0 ' + (r.angle > 0 ? 'clockwise' : 'anticlockwise') + ': levelled.');
   }
-  function runTrace() {
+  // ---- an optional learned model: a floor plan segmenter (floor / wall / door / window) as an ONNX file you provide, run in this browser by onnxruntime-web
+  const ORT_VER = '1.20.1', ORT_BASE = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@' + ORT_VER + '/dist/';
+  const LM = { session: null, name: '' };
+  const modelDB = () => new Promise((ok, bad) => { const q = indexedDB.open('house-painter-model', 1); q.onupgradeneeded = () => q.result.createObjectStore('m'); q.onsuccess = () => ok(q.result); q.onerror = () => bad(q.error); });
+  const modelPut = async (k, v) => { const db = await modelDB(); return new Promise((ok, bad) => { const t = db.transaction('m', 'readwrite'); t.objectStore('m').put(v, k); t.oncomplete = ok; t.onerror = () => bad(t.error); }); };
+  const modelGet = async k => { const db = await modelDB(); return new Promise((ok, bad) => { const q = db.transaction('m').objectStore('m').get(k); q.onsuccess = () => ok(q.result); q.onerror = () => bad(q.error); }); };
+  async function startModel(buf, name) {
+    if (!window.ort) await loadScript(ORT_BASE + 'ort.min.js');
+    ort.env.wasm.wasmPaths = ORT_BASE;
+    LM.session = await ort.InferenceSession.create(buf, { executionProviders: ['wasm'] }); LM.name = name;
+  }
+  async function ensureModel() {
+    if (LM.session) return;
+    let saved = null; try { saved = await modelGet('model'); } catch { }
+    if (saved) await startModel(saved.buf, saved.name);
+  }
+  async function forgetModel() { LM.session = null; LM.name = ''; try { const db = await modelDB(); db.transaction('m', 'readwrite').objectStore('m').delete('model'); } catch { } renderSide(); toast('Model forgotten.'); }
+  $('#modelFile').addEventListener('change', async e => {
+    const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+    try { toast('Loading the model\u2026'); const buf = await f.arrayBuffer(); await startModel(buf, f.name); try { await modelPut('model', { buf, name: f.name }); } catch { } renderSide(); toast('Model ready: ' + f.name); }
+    catch (err) { toast('That file could not be used as a model: ' + (err.message || err)); }
+  });
+  // the picture in, letterboxed to 512 x 512 with the ImageNet mean around it; masks of wall, door and window pixels out, at the picture's own size
+  async function modelMasks(r) {
+    const S = 512, { W, H, gray } = r, sc = Math.min(S / W, S / H), nw = Math.round(W * sc), nh = Math.round(H * sc), ox = Math.floor((S - nw) / 2), oy = Math.floor((S - nh) / 2);
+    const src = document.createElement('canvas'); src.width = W; src.height = H; const sctx = src.getContext('2d'), id = sctx.createImageData(W, H);
+    for (let i = 0; i < W * H; i++) { id.data[4 * i] = id.data[4 * i + 1] = id.data[4 * i + 2] = gray[i]; id.data[4 * i + 3] = 255; }
+    sctx.putImageData(id, 0, 0);
+    const mean = [0.485, 0.456, 0.406], std = [0.229, 0.224, 0.225], sm = document.createElement('canvas'); sm.width = sm.height = S; const g = sm.getContext('2d');
+    g.fillStyle = `rgb(${mean.map(v => Math.round(v * 255)).join(',')})`; g.fillRect(0, 0, S, S); g.imageSmoothingQuality = 'high'; g.drawImage(src, ox, oy, nw, nh);
+    const d = g.getImageData(0, 0, S, S).data, arr = new Float32Array(3 * S * S);
+    for (let i = 0; i < S * S; i++) for (let k = 0; k < 3; k++) arr[k * S * S + i] = (d[4 * i + k] / 255 - mean[k]) / std[k];
+    const out = await LM.session.run({ [LM.session.inputNames[0]]: new ort.Tensor('float32', arr, [1, 3, S, S]) }), L = out[LM.session.outputNames[0]].data, nc = Math.min(4, L.length / (S * S) | 0);
+    const cls = new Uint8Array(S * S);
+    for (let i = 0; i < S * S; i++) { let b = 0, bv = -Infinity; for (let k = 0; k < nc; k++) { const v = L[k * S * S + i]; if (v > bv) { bv = v; b = k; } } cls[i] = b; }
+    const ink = new Uint8Array(W * H), doors = new Uint8Array(W * H), windows = new Uint8Array(W * H);
+    for (let y = 0; y < H; y++) { const v = Math.min(S - 1, Math.floor(y * sc + oy)); for (let x = 0; x < W; x++) { const c = cls[v * S + Math.min(S - 1, Math.floor(x * sc + ox))], i = y * W + x; if (c === 1) ink[i] = 1; else if (c === 2) doors[i] = 1; else if (c === 3) windows[i] = 1; } }
+    return { ink, doors, windows };
+  }
+  async function runTrace() {
     if (!underImg || TR.busy) return;
-    TR.busy = true; TR.res = null; renderSide(); toast('Finding walls\u2026');
-    setTimeout(() => {
+    TR.busy = true; TR.res = null; renderSide(); toast(TR.opts.finder === 'model' ? 'Running the model\u2026' : 'Finding walls\u2026');
+    await new Promise(ok => setTimeout(ok, 40));
+    {
       try {
-        const t0 = performance.now(), r = rasterUnderlay(), out = HouseTracer.detect(r.gray, r.W, r.H, r.ppf, TR.opts);
+        const t0 = performance.now(), r = rasterUnderlay(); let opts = TR.opts;
+        if (TR.opts.finder === 'model') {
+          await ensureModel();
+          if (!LM.session) { toast('Choose a model file first (see docs/learned-model.md).'); TR.busy = false; renderSide(); return; }
+          const m = await modelMasks(r); opts = { ...TR.opts, style: 'solid', ink: m.ink, doors: m.doors, windows: m.windows };
+        }
+        const out = HouseTracer.detect(r.gray, r.W, r.H, r.ppf, opts);
         TR.res = out.walls.map(w => {
           if (w.axis === 'l') return { ...w, p: [w.p[0] + r.minx, w.p[1] + r.miny, w.p[2] + r.minx, w.p[3] + r.miny] };      // an angled wall's openings are along the wall already
           const ox = w.axis === 'h' ? r.minx : r.miny, oc = w.axis === 'h' ? r.miny : r.minx;
@@ -764,7 +810,7 @@
         else toast(TR.res.length + ' walls suggested. Click any that are wrong to leave them out.');
       } catch (err) { toast('Tracing failed: ' + (err.message || err)); TR.res = null; }
       TR.busy = false; render(); renderSide();
-    }, 40);
+    }
   }
   function applyTrace() {
     const todo = (TR.res || []).filter((w, i) => !TR.off.has(i));
@@ -823,6 +869,7 @@
     if (f === 'tr_sens') TR.opts.sensitivity = +v;
     if (f === 'tr_open') { TR.opts.openings = v !== '0'; TR.opts.symbols = v === '1'; }
     if (f === 'tr_angled') TR.opts.angled = v === '1';
+    if (f === 'tr_finder') { TR.opts.finder = v; if (v === 'model') ensureModel().then(() => renderSide()).catch(() => { }); }
     TR.res = null; render(); renderSide();
   }
 
@@ -1754,6 +1801,8 @@
         <label class="field">Sensitivity<input type="range" min="0.6" max="0.95" step="0.01" value="${TR.opts.sensitivity}" data-f="tr_sens" aria-label="Sensitivity"></label>
         <p class="note" style="margin-top:-6px">Raise it for a faint photo, lower it when too much is picked up.</p>
         ${field('Doors and windows', 'tr_open', !TR.opts.openings ? '0' : TR.opts.symbols ? '1' : '2', { select: [['1', 'From the gaps, and the swing arcs and window lines drawn in them'], ['2', 'From the gaps only'], ['0', 'Walls only']] })}
+        ${field('How walls are found', 'tr_finder', TR.opts.finder, { select: [['classic', 'Image processing (built in)'], ['model', 'A learned model (a file you provide)']] })}
+        ${TR.opts.finder === 'model' ? `<p class="note">${LM.session ? 'Model loaded: ' + esc(LM.name) + '.' : 'No model loaded yet.'} It runs on this computer. <button class="linkish" data-act="loadmodel">Choose a model file\u2026</button>${LM.session ? ' <button class="linkish" data-act="forgetmodel">Forget it</button>' : ''} See docs/learned-model.md for how to get one.</p>` : ''}
         ${field('Walls at an angle', 'tr_angled', TR.opts.angled ? '1' : '0', { select: [['1', 'Look for them (cut corners, bays, diagonal walls)'], ['0', 'Only level and plumb walls']] })}
         <div class="actions"><button class="btn primary" data-act="trace-run"${TR.busy ? ' disabled' : ''}>${r ? 'Find again' : 'Find walls'}</button></div>`;
       if (r) h += `<h3 style="font-size:14px">${kept.length} of ${r.length} walls kept</h3>
@@ -1924,6 +1973,8 @@
     const face = e.target.closest('[data-face]'); if (face) { fxFace = face.dataset.face; ghost = fixtureGhost(lastP, {}); renderGhost(); renderSide(); return; }
     const a = e.target.closest('[data-act]')?.dataset.act;
     if (a === 'trace-run') runTrace();
+    if (a === 'loadmodel') $('#modelFile').click();
+    if (a === 'forgetmodel') forgetModel();
     if (a === 'trace-add') applyTrace();
     if (a === 'trace-cancel') { TR.res = null; setTool('select'); }
     if (a === 'floorphoto') $('#floorFile').click();

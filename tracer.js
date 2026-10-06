@@ -33,7 +33,10 @@
     sensitivity: 0.8,    // 0.6 (only the darkest ink) .. 0.95 (faint ink too)
     openings: true,      // also turn the gaps in walls into doors and windows
     symbols: true,       // tell doors from windows by the swing arc and the window lines drawn in the gap
-    angled: true         // also look for walls that are neither level nor plumb
+    angled: true,        // also look for walls that are neither level nor plumb
+    ink: null,           // a ready-made mask of wall pixels (Uint8Array, w*h), from a learned model: used instead of looking for dark ink
+    doors: null,         // masks of door and window pixels (same size), used to tell a door from a window
+    windows: null
   };
 
   // ------------------------------------------------------------------ skew
@@ -470,6 +473,17 @@
     });
   }
 
+  // a learned model marks door and window pixels: a gap that is mostly one or the other takes that type
+  function typeByMask(walls, o, w, h, ppf) {
+    const count = (mask, x0, y0, x1, y1) => { if (!mask) return 0; let n = 0, m = 0; for (let y = Math.max(0, Math.floor(y0)); y < Math.min(h, Math.ceil(y1)); y++) for (let x = Math.max(0, Math.floor(x0)); x < Math.min(w, Math.ceil(x1)); x++) { m++; n += mask[y * w + x] ? 1 : 0; } return m ? n / m : 0; };
+    for (const wl of walls) for (const q of wl.openings) {
+      const pad = 0.4, hz = wl.axis === 'h';
+      const r = hz ? [q.a * ppf, (wl.c - wl.t / 2 - pad) * ppf, q.b * ppf, (wl.c + wl.t / 2 + pad) * ppf] : [(wl.c - wl.t / 2 - pad) * ppf, q.a * ppf, (wl.c + wl.t / 2 + pad) * ppf, q.b * ppf];
+      const d = count(o.doors, ...r), n = count(o.windows, ...r);
+      if (n > 0.2 && n >= d) q.type = 'window'; else if (d > 0.2) q.type = 'door';
+    }
+  }
+
   // ------------------------------------------------------------------ door and window symbols
   // A door is drawn as a quarter-circle swing from its hinge; a window as a line or two along the gap. Look for those in the ink.
   function symbols(ink, w, h, ppf, walls) {
@@ -508,7 +522,8 @@
     const o = Object.assign({}, DEFAULTS, opts || {});
     const maxT = o.maxThick * ppf, minT = o.style === 'thin' ? 1 : Math.max(2.5, o.minThick * ppf);
     const win = Math.max(15, Math.round(maxT * 3)) | 1;
-    const ink = binarize(gray, w, h, win, o.sensitivity);
+    const ink = o.ink || binarize(gray, w, h, win, o.sensitivity);
+    const learned = !!o.ink;                                                          // a learned model has already said what is wall: no need to measure the grey levels
     const P = { minLen: Math.max(4, Math.round(o.minLen * ppf * 0.4)), minT, thick: o.style === 'thin' ? 0 : Math.max(3, Math.round(o.minThick * ppf)), maxT: o.style === 'thin' ? Math.max(3, 0.25 * ppf) : maxT, bridge: o.style === 'outlined' ? Math.ceil(Math.min(o.maxThick, 0.75) * ppf) : 0 };
     if (o.style === 'outlined') P.maxT = Math.min(P.maxT, P.bridge + 2);                // two lines no more than ~9 inches apart make a wall; cabinets and shelves are deeper
     const hBars = findBars(ink, w, h, P), vBars = findBars(transpose(ink, w, h), h, w, P);
@@ -522,7 +537,7 @@
         || slants.some(sl => [[sl.p[0], sl.p[1]], [sl.p[2], sl.p[3]]].some(e => (a.axis === 'h' ? Math.abs(e[1] - a.c) < 0.8 && e[0] > a.a - 0.8 && e[0] < a.b + 0.8 : Math.abs(e[0] - a.c) < 0.8 && e[1] > a.a - 0.8 && e[1] < a.b + 0.8))));
       if (o.style === 'thin') for (const wl of walls) wl.t = 0.4;                   // a single line has no thickness of its own
     }
-    if (o.style === 'solid') {
+    if (o.style === 'solid' && !learned) {
       refine(gray, w, h, ppf, walls);
       const known = walls.filter(x => x.core != null).sort((p, q) => (q.b - q.a) - (p.b - p.a)).slice(0, Math.max(3, Math.ceil(walls.length / 2)));   // the longer walls say how dark a wall is
       if (known.length) {
@@ -541,7 +556,7 @@
       const med = Math.round(ts[ts.length >> 1] * 24) / 24;
       walls.filter(x => x.ext === cls).forEach(x => { if (o.style !== 'thin') x.t = Math.abs(x.t - med) < 0.1 ? med : Math.round(x.t * 24) / 24; });
     }
-    if (o.openings) { guessOpenings(walls); if (o.symbols) symbols(ink, w, h, ppf, walls); } else walls.forEach(x => { x.openings = []; });
+    if (o.openings) { guessOpenings(walls); if (o.doors || o.windows) typeByMask(walls, o, w, h, ppf); if (o.symbols) symbols(ink, w, h, ppf, walls); } else walls.forEach(x => { x.openings = []; });
     const r = v => Math.round(v * 1000) / 1000;
     for (const S of slants) {                                                        // angled walls: the thickness of the straight walls on the same side of the house, to the nearest half inch
       const same = walls.filter(x => x.ext === !!S.ext).map(x => x.t).sort((p, q) => p - q), med = same.length ? same[same.length >> 1] : null;

@@ -51,6 +51,8 @@ This is optional, and it works on the picture only: nothing is sent anywhere, an
 
 It also looks for walls at an angle (a cut corner, a diagonal wall), and tells doors from windows by the swing arcs and window lines in the gaps, when the picture draws them. You can turn either off in the panel.
 
+If the picture is hand-drawn or otherwise unusual, an optional learned model can find the walls instead: [docs/learned-model.md](learned-model.md).
+
 It is a helper, not a finished tracer. Expect to fix a few things: short walls beside doors can be missed, the gaps are only *guesses* at doors and windows (an outside gap is called a window, so change your front and back doors), and rooms with a missing wall run together until you add it. On a test set made from the two example houses (with noise, shading, blur and tilt added) it finds roughly 90% of the wall area, and about 90% of what it draws is real wall.
 
 **3. Outside walls.** Press `W` (Wall) with **Outside wall** selected and click each corner of the house in turn.

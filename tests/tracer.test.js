@@ -159,3 +159,20 @@ test('doors are told from windows by their swing arcs, with the hinge and the si
   assert.ok(doors >= 5 && right / doors >= 0.8, `doors with the right hinge and swing: ${right} of ${doors}`);
   assert.ok(windows >= 3 && winRight / windows >= 0.9, `windows: ${winRight} of ${windows}`);
 });
+
+// ------------------------------------------------------------------ a mask from a learned model
+test('a ready-made wall mask is used instead of looking for dark ink, and door and window masks type the gaps', () => {
+  const bp = drawBlueprint(house('starter-cottage'), { noise: 8, light: 0.15 });
+  const ppf = bp.ppf, I = Tracer._internals;
+  const ink = I.binarize(bp.gray, bp.w, bp.h, Math.max(15, Math.round(1.2 * ppf * 3)) | 1, 0.8);
+  const base = Tracer.detect(bp.gray, bp.w, bp.h, ppf), withMask = Tracer.detect(bp.gray, bp.w, bp.h, ppf, { ink });
+  const sBase = score(base.walls, bp.house, bp.margin), sMask = score(withMask.walls, bp.house, bp.margin);
+  assert.ok(sMask.recall > 0.8 && sMask.precision > 0.85, `recall ${sMask.recall.toFixed(2)} precision ${sMask.precision.toFixed(2)} (without: ${sBase.recall.toFixed(2)} ${sBase.precision.toFixed(2)})`);
+  // mark every gap as a window, then as a door: the types follow
+  const mk = type => { const m = new Uint8Array(bp.w * bp.h); for (const wl of base.walls) for (const q of wl.openings) {
+    const hz = wl.axis === 'h', r = hz ? [q.a, wl.c - wl.t / 2, q.b, wl.c + wl.t / 2] : [wl.c - wl.t / 2, q.a, wl.c + wl.t / 2, q.b];
+    for (let y = Math.floor(r[1] * ppf); y < Math.ceil(r[3] * ppf); y++) for (let x = Math.floor(r[0] * ppf); x < Math.ceil(r[2] * ppf); x++) m[y * bp.w + x] = 1; } return m; };
+  const asWin = Tracer.detect(bp.gray, bp.w, bp.h, ppf, { windows: mk(), symbols: false }), asDoor = Tracer.detect(bp.gray, bp.w, bp.h, ppf, { doors: mk(), symbols: false });
+  assert.ok(asWin.walls.flatMap(w => w.openings).every(o => o.type === 'window'));
+  assert.ok(asDoor.walls.flatMap(w => w.openings).every(o => o.type === 'door'));
+});

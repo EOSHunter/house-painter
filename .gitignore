@@ -16,3 +16,6 @@ paint-colors-extra.js
 # built artefacts
 dist/
 _site/
+
+# a learned wall-finding model you converted yourself (see docs/learned-model.md): large, and not ours to redistribute
+models/
