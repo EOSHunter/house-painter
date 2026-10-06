@@ -1535,6 +1535,15 @@
       h += `<h3>${esc(r.name)}</h3><p class="sub">About ${Math.round(area)} sq ft (to the wall centre lines)</p>
         ${field('Name', 'name', r.name)}
         <div class="pair">${field('Wall ID prefix', 'short', r.short, { ph: r.id.toUpperCase() })}${field('Room id', 'id', r.id)}</div>
+        ${(() => {
+          const c = r.extra.ceiling, kind = c === undefined ? 'house' : typeof c === 'number' ? 'flat' : (c.type || 'flat'), H0 = S.heights.ceiling;
+          const num = (f, label, v) => field(label, f, v, { len: 1 });
+          let ce = field('Ceiling', 'ce_mode', kind, { select: [['house', 'Same as the house (' + fmt(H0) + ')'], ['flat', 'Flat, at its own height'], ['shed', 'Sloped one way (shed)'], ['vault', 'Vaulted: a ridge down the middle']] });
+          if (kind === 'flat') ce += num('ce_h', 'Height', typeof c === 'number' ? c : (c.height ?? H0));
+          if (kind === 'shed') ce += `<div class="pair">${num('ce_low', 'Low side', c.low)}${num('ce_high', 'High side', c.high)}</div>` + field('Rises toward', 'ce_rise', c.rise || 'n', { select: [['n', 'The north (up the page)'], ['s', 'The south'], ['e', 'The east'], ['w', 'The west']] });
+          if (kind === 'vault') ce += `<div class="pair">${num('ce_eave', 'Walls (eave)', c.eave)}${num('ce_peak', 'Peak', c.peak)}</div>` + field('Ridge runs', 'ce_ridge', c.ridge || 'x', { select: [['x', 'East to west (across the page)'], ['y', 'North to south (down the page)']] });
+          return ce + '<p class="note">Walls rise to meet a sloped ceiling, and their painted area follows. A taller room next to a shorter one shows its higher wall above the lower ceiling.</p>';
+        })()}
         <p class="note">Walls are named from the prefix: ${esc((r.short || r.id.toUpperCase()) + '-N')}, ${esc((r.short || r.id.toUpperCase()) + '-E')}\u2026 Changing it after you've painted renames those walls, and their saved colours won't show.</p>
         <div class="actions"><button class="btn danger" data-act="delete">Delete room</button></div>`;
     } else if (sel && sel.kind === 'plan' && it && it.t !== undefined) {
@@ -1709,6 +1718,21 @@
       if (f === 'fx_group') { g.paint = v; return; }
       if (f === 'fx_label') { if (v.trim()) g.label = v.trim().toUpperCase(); else delete g.label; return; }
       void r;
+    }
+    if (sel && sel.kind === 'room' && it && /^ce_/.test(f)) {
+      const c = it.extra.ceiling, H0 = S.heights.ceiling, cur = c === undefined ? 'house' : typeof c === 'number' ? 'flat' : (c.type || 'flat');
+      const ok = n => typeof n === 'number' && n > 3 && n < 40;
+      if (f === 'ce_mode') {
+        if (v === 'house') delete it.extra.ceiling;
+        else if (v === 'flat') it.extra.ceiling = typeof c === 'number' ? c : H0 + 1;
+        else if (v === 'shed') it.extra.ceiling = { type: 'shed', low: H0, high: r4(H0 + 2.5), rise: 'n' };
+        else it.extra.ceiling = { type: 'vault', eave: H0, peak: r4(H0 + 4), ridge: (() => { const q = it.rects[0] || (it.polys && it.polys[0] && polyBox(it.polys[0])); return q && (q[3] - q[1]) > (q[2] - q[0]) ? 'y' : 'x'; })() };
+        return;
+      }
+      if (cur === 'flat' && f === 'ce_h') { if (!ok(v)) return false; it.extra.ceiling = r4(v); return; }
+      const map = { ce_low: 'low', ce_high: 'high', ce_eave: 'eave', ce_peak: 'peak' };
+      if (map[f]) { if (!ok(v)) return false; c[map[f]] = r4(v); return; }
+      if (f === 'ce_rise' || f === 'ce_ridge') { c[f === 'ce_rise' ? 'rise' : 'ridge'] = v; return; }
     }
     if (sel && sel.kind === 'room' && it) {
       if (f === 'name') { if (!v.trim()) return false; it.name = v.trim();

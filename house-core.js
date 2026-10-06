@@ -50,6 +50,14 @@
         if (r.rects !== undefined || !hasPolys) {
           if (!Array.isArray(r.rects) || (!r.rects.length && !hasPolys) || !r.rects.every(q => Array.isArray(q) && q.length === 4 && q.every(num))) p.push(`Room ${i}: "rects" must be a list of [x0, y0, x1, y1].`);
         }
+        if (r.ceiling !== undefined) {
+          const c = r.ceiling, ok = v => num(v) && v > 3 && v < 40;
+          if (num(c)) { if (!ok(c)) p.push(`Room ${i}: "ceiling" is a height in feet, between 3 and 40.`); }
+          else if (!c || typeof c !== 'object' || !['flat', 'shed', 'vault'].includes(c.type || 'flat')) p.push(`Room ${i}: "ceiling" is a height, or { "type": "flat" | "shed" | "vault", ... }.`);
+          else if ((c.type || 'flat') === 'flat' && c.height !== undefined && !ok(c.height)) p.push(`Room ${i}: ceiling "height" is in feet, between 3 and 40.`);
+          else if (c.type === 'shed' && !(ok(c.low) && ok(c.high) && (c.rise === undefined || 'nesw'.includes(c.rise) && String(c.rise).length === 1))) p.push(`Room ${i}: a "shed" ceiling needs "low" and "high" heights, and "rise" (n, e, s or w).`);
+          else if (c.type === 'vault' && !(ok(c.eave) && ok(c.peak) && (c.ridge === undefined || c.ridge === 'x' || c.ridge === 'y'))) p.push(`Room ${i}: a "vault" ceiling needs "eave" and "peak" heights, and "ridge" ("x" or "y").`);
+        }
         if (r.polys !== undefined && (!Array.isArray(r.polys) || !r.polys.every(poly => Array.isArray(poly) && poly.length >= 3 && poly.every(v => Array.isArray(v) && v.length === 2 && v.every(num))))) p.push(`Room ${i}: "polys" must be a list of polygons, each a list of at least three [x, y] points.`);
       });
     }
@@ -233,6 +241,29 @@
     return { HOUSE, ROOMS };
   }
 
+  // ------------------------------------------------------------------ ceilings
+  // A room's ceiling is flat (at the house height, or its own), a shed (one plane, rising toward n/e/s/w), or a vault (two planes
+  // meeting at a ridge down the middle of the room, along x or y). The shapes work from the room's bounding box.
+  function ceilingSpec(spec, bbox, def) {
+    if (typeof spec === 'number') return { type: 'flat', h: spec };
+    if (!spec || (spec.type || 'flat') === 'flat') return { type: 'flat', h: spec && spec.height !== undefined ? spec.height : def };
+    if (spec.type === 'shed') return { type: 'shed', low: spec.low, high: spec.high, rise: spec.rise || 'n', bbox };
+    return { type: 'vault', eave: spec.eave, peak: spec.peak, ridge: spec.ridge || 'x', bbox };
+  }
+  function ceilingH(c, x, y) {
+    if (c.type === 'flat') return c.h;
+    const [x0, y0, x1, y1] = c.bbox, wx = Math.max(1e-6, x1 - x0), wy = Math.max(1e-6, y1 - y0), clamp = v => Math.max(0, Math.min(1, v));
+    if (c.type === 'shed') {
+      const t = c.rise === 'n' ? (y1 - y) / wy : c.rise === 's' ? (y - y0) / wy : c.rise === 'e' ? (x - x0) / wx : (x1 - x) / wx;
+      return c.low + (c.high - c.low) * clamp(t);
+    }
+    const t = c.ridge === 'x' ? 1 - Math.abs(y - (y0 + y1) / 2) / (wy / 2) : 1 - Math.abs(x - (x0 + x1) / 2) / (wx / 2);
+    return c.eave + (c.peak - c.eave) * clamp(t);
+  }
+  const ceilingMaxOf = c => (c.type === 'flat' ? c.h : c.type === 'shed' ? Math.max(c.low, c.high) : Math.max(c.eave, c.peak));
+  // where a ceiling bends: the coordinate of its ridge, as ['x' | 'y', value]
+  const ceilingKinks = c => (c.type === 'vault' ? [c.ridge === 'x' ? ['y', (c.bbox[1] + c.bbox[3]) / 2] : ['x', (c.bbox[0] + c.bbox[2]) / 2]] : []);
+
   // ------------------------------------------------------------------ rooms + paintable surfaces
   /*
    * A "surface" is one face of one wall, cut wherever the room on that side changes. Room zones are a first-match
@@ -241,7 +272,7 @@
    */
   function buildRooms(H, roomList, roomOrder) {
     const CEIL = H.heights.ceiling;
-    const rooms = roomList.map(r => ({ id: r.id, name: r.name || r.id, short: r.short || r.id.toUpperCase().slice(0, 4), rects: r.rects || [], polys: r.polys || [] }));
+    const rooms = roomList.map(r => ({ id: r.id, name: r.name || r.id, short: r.short || r.id.toUpperCase().slice(0, 4), rects: r.rects || [], polys: r.polys || [], ceilingSpec: r.ceiling }));
     const byId = Object.fromEntries(rooms.map(r => [r.id, r]));
 
     const walls = H.walls.filter(w => w.status !== 'removed'), slants = H.slants.filter(S => S.status !== 'removed');
@@ -334,18 +365,35 @@
     });
     const slantOpeningArea = (S, a, b) => S.openings.reduce((t, o) => { const ov = Math.min(b, o.b) - Math.max(a, o.a); return ov > 0 && (o.type === 'door' || o.type === 'window') ? t + ov * (o.z1 - o.z0) : t; }, 0);
 
+    // the ceiling height at a point of a wall face, as the room it lies in (or, for the outside of a wall, the room behind it) has it
+    let ceilings = null;                                                // set once the rooms' shapes are known (below); until then every ceiling is the house's
+    const roomCeiling = id => (ceilings && ceilings[id]) || null;
+    function heightAtFace(room, n, p) {
+      if (room !== 'exterior') { const c = roomCeiling(room); return c ? ceilingH(c, p[0], p[1]) : CEIL; }
+      for (const d of [0.45, 0.9, 1.6]) { const id = roomAt(p[0] - n[0] * d, p[1] - n[1] * d); if (id && id !== 'exterior') { const c = roomCeiling(id); return c ? ceilingH(c, p[0], p[1]) : CEIL; } }
+      return CEIL;
+    }
+    function wallFaceArea(room, n, at, a, b) {
+      const c = room === 'exterior' ? null : roomCeiling(room);
+      if (c && c.type === 'flat') return (b - a) * c.h;
+      if (!ceilings || (room !== 'exterior' && !c)) return (b - a) * CEIL;
+      let t = 0; const N = 24;
+      for (let i = 0; i < N; i++) t += heightAtFace(room, n, at(a + (b - a) * (i + 0.5) / N));
+      return (b - a) * t / N;
+    }
     const surfaces = [];
     for (const r of rawS) {
       const S = r.S, len = r.b - r.a, h = S.t / 2, ci = compassOf(r.n);
       const pt = t => [S.p0[0] + S.u[0] * t + r.n[0] * h, S.p0[1] + S.u[1] * t + r.n[1] * h];
       surfaces.push({ room: r.room, slant: S.i, side: r.side, dir: COMPASS[ci], letter: COMPASS_ID[ci], normal: r.n.map(v => +v.toFixed(5)), a: +r.a.toFixed(2), b: +r.b.toFixed(2),
-                      length: +len.toFixed(2), area: +Math.max(0, len * CEIL - slantOpeningArea(S, r.a, r.b)).toFixed(1), seg: [pt(r.a).map(v => +v.toFixed(3)), pt(r.b).map(v => +v.toFixed(3))],
+                      length: +len.toFixed(2), area: +Math.max(0, wallFaceArea(r.room, r.n, t => [S.p0[0] + S.u[0] * t, S.p0[1] + S.u[1] * t], r.a, r.b) - slantOpeningArea(S, r.a, r.b)).toFixed(1), seg: [pt(r.a).map(v => +v.toFixed(3)), pt(r.b).map(v => +v.toFixed(3))],
                       kind: r.room === 'exterior' ? 'siding' : 'wall' });
     }
     for (const r of raw) {
       const w = H.walls[r.wi], len = r.b - r.a;
       const dir = r.cap ? 'Wall end' : facing[r.n.join(',')];
-      const area = r.cap ? r.th * CEIL : Math.max(0, len * CEIL - openingArea(w, r.a, r.b));
+      const at = r.horiz ? (t => [t, r.side === 'lo' ? w.y0 : w.y1]) : (t => [r.side === 'lo' ? w.x0 : w.x1, t]);
+      const area = r.cap ? r.th * CEIL : Math.max(0, wallFaceArea(r.room, r.n, at, r.a, r.b) - openingArea(w, r.a, r.b));
       let seg;
       if (r.cap) seg = r.horiz ? [[r.at, w.y0], [r.at, w.y1]] : [[w.x0, r.at], [w.x1, r.at]];
       else if (r.horiz) { const y = r.side === 'lo' ? w.y0 : w.y1; seg = [[r.a, y], [r.b, y]]; }
@@ -394,7 +442,86 @@
 
     const order = (roomOrder || []).filter(id => byId[id]);
     rooms.forEach(r => { if (!order.includes(r.id)) order.push(r.id); });
-    return { rooms, byId, order, surfaces, roomAt, ceilingHeight: CEIL, doorHeight: H.heights.door, windowHead: H.heights.windowHead };
+
+    // ceilings. Only when some room has its own do the areas and the wall tops need working out again; a plain house is untouched.
+    for (const r of rooms) {
+      const all = r.shape.length ? r.shape : r.rects;
+      const bbox = all.length ? [Math.min(...all.map(q => q[0])), Math.min(...all.map(q => q[1])), Math.max(...all.map(q => q[2])), Math.max(...all.map(q => q[3]))] : [0, 0, H.W, H.D];
+      r.ceiling = ceilingSpec(r.ceilingSpec, bbox, CEIL); delete r.ceilingSpec;
+    }
+    const custom = rooms.some(r => !(r.ceiling.type === 'flat' && r.ceiling.h === CEIL));
+    const ceilingMax = Math.max(CEIL, ...rooms.map(r => ceilingMaxOf(r.ceiling)));
+    if (custom) {
+      ceilings = Object.fromEntries(rooms.map(r => [r.id, r.ceiling]));
+      for (const s of surfaces) {                                       // wall areas again, now that a room's ceiling can be higher, lower or sloped
+        if (s.kind === 'end') continue;
+        if (s.wall !== undefined) {
+          const w = H.walls[s.wall], horiz = (w.x1 - w.x0) >= (w.y1 - w.y0), at = horiz ? (t => [t, s.side === 'lo' ? w.y0 : w.y1]) : (t => [s.side === 'lo' ? w.x0 : w.x1, t]);
+          s.area = +Math.max(0, wallFaceArea(s.room, s.normal, at, s.a, s.b) - openingArea(w, s.a, s.b)).toFixed(1);
+        } else if (s.slant !== undefined) {
+          const S = H.slants[s.slant];
+          s.area = +Math.max(0, wallFaceArea(s.room, s.normal, t => [S.p0[0] + S.u[0] * t, S.p0[1] + S.u[1] * t], s.a, s.b) - slantOpeningArea(S, s.a, s.b)).toFixed(1);
+        }
+      }
+      for (const r of rooms) r.wallArea = +surfaces.filter(s => s.room === r.id).reduce((t, s) => t + s.area, 0).toFixed(0);
+    }
+    const ceilingAt = (id, x, y) => { const r = byId[id]; return r ? ceilingH(r.ceiling, x, y) : CEIL; };
+    // the top of a wall at a point: the higher of the ceilings on its two sides (n: the wall's normal there, t: its thickness)
+    function topOrNull(x, y, nx, ny, t) {
+      const d = t / 2 + 0.12; let best = null;
+      for (const sg of [-1, 1]) { const id = roomAt(x + nx * d * sg, y + ny * d * sg); if (id && id !== 'exterior') best = Math.max(best === null ? 0 : best, ceilingAt(id, x, y)); }
+      return best;
+    }
+    const topAround = (x, y, nx, ny, t) => { const v = topOrNull(x, y, nx, ny, t); return v === null ? CEIL : v; };
+    // each wall's top, as straight pieces along it ({ a, b, za, zb }), cut where a ceiling bends or the room on a side changes
+    if (custom) {
+      const kinks = rooms.flatMap(r => ceilingKinks(r.ceiling));
+      const profile = (len, from, pt, nrm, thick, cutsIn) => {                   // from: coordinate of the start; pt(t): the point; cutsIn: extra cuts (absolute)
+        const cuts = new Set([from, from + len, ...cutsIn.filter(c => c > from + 1e-3 && c < from + len - 1e-3)]), ts = [...cuts].sort((p, q) => p - q), out = [];
+        const side = (a, b, sg) => {                                              // the ceiling of the room on one side, as a straight line along this piece (null if no room there)
+          const good = [];
+          for (let k = 0; k < 7; k++) {
+            const t = a + (b - a) * (0.06 + 0.88 * k / 6), q = pt(t), d = thick / 2 + 0.12, id = roomAt(q[0] + nrm[0] * d * sg, q[1] + nrm[1] * d * sg);
+            if (id && id !== 'exterior') good.push([t, ceilingAt(id, q[0], q[1])]);
+          }
+          if (!good.length) return null;
+          const g0 = good[0], g1 = good[good.length - 1], k = g1[0] > g0[0] + 1e-6 ? (g1[1] - g0[1]) / (g1[0] - g0[0]) : 0;
+          return { za: g0[1] + k * (a - g0[0]), zb: g0[1] + k * (b - g0[0]) };
+        };
+        const put = (a, b, za, zb) => out.push({ a: +a.toFixed(3), b: +b.toFixed(3), za: +za.toFixed(3), zb: +zb.toFixed(3) });
+        for (let i = 0; i < ts.length - 1; i++) {
+          const a = ts[i], b = ts[i + 1], L = side(a, b, -1), R = side(a, b, 1);
+          if (!L && !R) { put(a, b, CEIL, CEIL); continue; }
+          if (!L || !R) { const o = L || R; put(a, b, o.za, o.zb); continue; }
+          const da = L.za - R.za, db = L.zb - R.zb;                               // the wall is as high as the higher side: where the two cross, the top bends
+          if (da * db < -1e-9) {
+            const m = a + (b - a) * da / (da - db), zm = L.za + (L.zb - L.za) * (m - a) / (b - a);
+            put(a, m, Math.max(L.za, R.za), zm); put(m, b, zm, Math.max(L.zb, R.zb));
+          } else put(a, b, Math.max(L.za, R.za), Math.max(L.zb, R.zb));
+        }
+        return out;
+      };
+      H.walls.forEach((w, wi) => {
+        if (w.status === 'removed') return;
+        const horiz = (w.x1 - w.x0) >= (w.y1 - w.y0), s0 = horiz ? w.x0 : w.y0, e0 = horiz ? w.x1 : w.y1;
+        const cuts = [];
+        for (const sf of surfaces) if (sf.wall === wi && sf.kind !== 'end') cuts.push(sf.a, sf.b);
+        for (const [ax, v] of kinks) if ((horiz && ax === 'x') || (!horiz && ax === 'y')) cuts.push(v);
+        const mid = horiz ? (w.y0 + w.y1) / 2 : (w.x0 + w.x1) / 2, th = horiz ? w.y1 - w.y0 : w.x1 - w.x0;
+        w.tops = profile(e0 - s0, s0, horiz ? (t => [t, mid]) : (t => [mid, t]), horiz ? [0, 1] : [1, 0], th, cuts);
+      });
+      H.slants.forEach((S, si) => {
+        if (S.status === 'removed') return;
+        const cuts = [];
+        for (const sf of surfaces) if (sf.slant === si) cuts.push(sf.a, sf.b);
+        for (const [ax, v] of kinks) {                                     // where the line crosses the ridge
+          const du = ax === 'x' ? S.u[0] : S.u[1], p0 = ax === 'x' ? S.p0[0] : S.p0[1];
+          if (Math.abs(du) > 1e-6) cuts.push((v - p0) / du);
+        }
+        S.tops = profile(S.len + S.e0 + S.e1, -S.e0, t => [S.p0[0] + S.u[0] * t, S.p0[1] + S.u[1] * t], S.nr, S.t, cuts);
+      });
+    }
+    return { rooms, byId, order, surfaces, roomAt, ceilingHeight: CEIL, ceilingMax, ceilingAt, topAround, doorHeight: H.heights.door, windowHead: H.heights.windowHead };
   }
 
   // where the walkthrough starts when the file doesn't say: just inside the first outside door, facing in
@@ -434,7 +561,7 @@
         }
         q[0] = Math.min(x0, n[0]); q[1] = Math.min(y0, n[1]); q[2] = Math.max(x1, n[2]); q[3] = Math.max(y1, n[3]);
       }
-      return { id: r.id, name: r.name, area: r.area, rects: out.map(q => q.map(v => +v.toFixed(3))) };
+      return { id: r.id, name: r.name, area: r.area, rects: out.map(q => q.map(v => +v.toFixed(3))), ceiling: r.ceiling };
     });
     const surfaces = R.surfaces.map(s => ({ id: s.id, name: s.name, room: s.room, wall: s.wall, slant: s.slant, side: s.side, kind: s.kind, dir: s.dir,
       a: s.a, b: s.b, normal: s.normal, seg: s.seg, area: s.area }));
@@ -442,7 +569,7 @@
       format: 'house-painter/built-house', version: 1, id: H.id, name: H.name,
       W: H.W, D: H.D, E: H.E, T: H.T, heights: H.heights, floor: H.floor, floorRects: H.floorRects,
       walls: H.walls, slants: H.slants, fixtures: H.fixtures, items: H.items, renderRooms: H.renderRooms,
-      surfaces, rooms, ceilingHeight: R.ceilingHeight, doorHeight: R.doorHeight, windowHead: R.windowHead
+      surfaces, rooms, ceilingHeight: R.ceilingHeight, ceilingMax: R.ceilingMax, doorHeight: R.doorHeight, windowHead: R.windowHead
     };
   }
 

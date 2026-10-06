@@ -91,6 +91,20 @@ Rooms are paint zones, and each is made of one or more rectangles, or outlines. 
 
 The reserved ids are `exterior` and `house`.
 
+**Ceilings.** Every room is flat at the house's `heights.ceiling` unless it says otherwise:
+
+```json
+{ "id": "great", "name": "Great room", "rects": [[0, 0, 20, 14]], "ceiling": { "type": "vault", "eave": 8, "peak": 13, "ridge": "x" } }
+```
+
+| `ceiling` | Meaning |
+|---|---|
+| a number, or `{ "type": "flat", "height": 10 }` | Flat, at that height (feet). |
+| `{ "type": "shed", "low": 8, "high": 11, "rise": "e" }` | One slope across the room's bounding box, rising toward `n`, `e`, `s` or `w`. |
+| `{ "type": "vault", "eave": 8, "peak": 13, "ridge": "x" }` | Two slopes meeting at a ridge down the middle of the room's bounding box. `ridge: "x"` runs the ridge east to west, `"y"` north to south. |
+
+Walls rise to meet their rooms' ceilings (a wall between two rooms goes as high as the higher one), and the area of each painted wall face follows the ceiling above it. Heights are from the floor. Ceilings of any one room are one plane or two, taken across the bounding box of its shape, so an L-shaped room slopes as one rectangle would.
+
 > Saved schemes refer to surfaces by ID, such as `BR1-N`. Renaming a room's `short`, or adding a wall that splits a surface, changes IDs, and any colours saved on the old IDs no longer show.
 
 ## Items

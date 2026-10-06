@@ -61,6 +61,26 @@ SLUG = re.sub(r'[^a-z0-9]+', '-', ((SCHEME or {}).get('scheme', {}).get('name') 
 FT = 0.3048
 W, D, E, T = H['W'], H['D'], H['E'], H['T']
 CEIL = H['ceilingHeight']                                   # openings carry their own z0 / z1 (sill-head, 0-door height)
+CEILMAX = H.get('ceilingMax') or CEIL
+
+def ceil_h(c, x, y):
+    """A room's ceiling height at a point: flat, a shed (one slope), or a vault (two slopes meeting at a ridge). Same as house-core.js."""
+    if not c or c['type'] == 'flat': return (c or {}).get('h', CEIL)
+    x0, y0, x1, y1 = c['bbox']; wx, wy = max(1e-6, x1 - x0), max(1e-6, y1 - y0)
+    cl = lambda v: max(0.0, min(1.0, v))
+    if c['type'] == 'shed':
+        r = c['rise']
+        t = (y1 - y) / wy if r == 'n' else (y - y0) / wy if r == 's' else (x - x0) / wx if r == 'e' else (x1 - x) / wx
+        return c['low'] + (c['high'] - c['low']) * cl(t)
+    t = 1 - abs(y - (y0 + y1) / 2) / (wy / 2) if c['ridge'] == 'x' else 1 - abs(x - (x0 + x1) / 2) / (wx / 2)
+    return c['eave'] + (c['peak'] - c['eave']) * cl(t)
+
+def top_at(w, t):
+    """The top of a wall at distance t along it, from the pieces house-core.js worked out (the house's height unless a room has its own)."""
+    tops = w.get('tops')
+    if not tops: return CEIL
+    q = next((r for r in tops if r['a'] - 1e-6 <= t <= r['b'] + 1e-6), tops[-1])
+    return q['za'] if q['b'] - q['a'] < 1e-6 else q['za'] + (q['zb'] - q['za']) * (t - q['a']) / (q['b'] - q['a'])
 K = max(W, D) / 56                                          # camera distances were tuned on a 56' house
 BASE_H, BASE_T, CASE_W, CASE_T, DOOR_T, DOOR_OPEN = 0.375, 0.03, 0.29, 0.035, 0.115, 68
 GROUND_Z = -2.0
@@ -261,22 +281,26 @@ class Obj:
         self.face(lo, mat); self.face(hi[::-1], mat)
         for i in range(n):
             j = (i + 1) % n; self.face((lo[i], lo[j], hi[j], hi[i]), mat)
-    def box(self, x0, y0, z0, x1, y1, z1, mats):
-        """mats: one material, or a dict with xmin xmax ymin ymax zmin zmax (plan axes; ymin = north side)."""
+    def box(self, x0, y0, z0, x1, y1, z1, mats, tops=None, along='x'):
+        """mats: one material, or a dict with xmin xmax ymin ymax zmin zmax (plan axes; ymin = north side).
+        tops: (z at the low end, z at the high end) along `along`, for a sloping top."""
         x0, x1 = sorted((x0, x1)); y0, y1 = sorted((y0, y1)); z0, z1 = sorted((z0, z1))
+        if tops: z1 = max(max(tops), z0 + 2e-5)
         if x1 - x0 < 1e-5 or y1 - y0 < 1e-5 or z1 - z0 < 1e-5: return
         g = (lambda k: mats[k]) if isinstance(mats, dict) else (lambda k: mats)
-        v = {(i, j, k): self.bm.verts.new(P((x0, x1)[i], (y0, y1)[j], (z0, z1)[k])) for i in (0, 1) for j in (0, 1) for k in (0, 1)}
+        zt = lambda i, j: max(tops[i if along == 'x' else j], z0 + 1e-5) if tops else z1
+        v = {(i, j, k): self.bm.verts.new(P((x0, x1)[i], (y0, y1)[j], z0 if k == 0 else zt(i, j))) for i in (0, 1) for j in (0, 1) for k in (0, 1)}
         self.face([v[0, 0, 0], v[0, 1, 0], v[0, 1, 1], v[0, 0, 1]], g('xmin')); self.face([v[1, 0, 0], v[1, 0, 1], v[1, 1, 1], v[1, 1, 0]], g('xmax'))
         self.face([v[0, 0, 0], v[0, 0, 1], v[1, 0, 1], v[1, 0, 0]], g('ymin')); self.face([v[0, 1, 0], v[1, 1, 0], v[1, 1, 1], v[0, 1, 1]], g('ymax'))
         self.face([v[0, 0, 0], v[1, 0, 0], v[1, 1, 0], v[0, 1, 0]], g('zmin')); self.face([v[0, 0, 1], v[0, 1, 1], v[1, 1, 1], v[1, 0, 1]], g('zmax'))
-    def obox(self, S, s0, s1, z0, z1, off, thick, mats):
+    def obox(self, S, s0, s1, z0, z1, off, thick, mats, ztop=None):
         """A box along an angled wall S, from s0 to s1 (feet from the start of its line), offset sideways by `off` (positive = right).
-        mats: one material, or a dict with end_a end_b lo hi bottom top."""
-        if s1 - s0 < 1e-5 or z1 - z0 < 1e-5 or thick < 1e-5: return
+        mats: one material, or a dict with end_a end_b lo hi bottom top. ztop: the height of the top at s1 when it differs from z1 (a sloping top)."""
+        zb = z1 if ztop is None else ztop
+        if s1 - s0 < 1e-5 or max(z1, zb) - z0 < 1e-5 or thick < 1e-5: return
         g = (lambda k: mats[k]) if isinstance(mats, dict) else (lambda k: mats)
         u, nr, p0, h = S['u'], S['nr'], S['p0'], thick / 2
-        V = {(i, j, k): self.bm.verts.new(P(p0[0] + u[0] * (s0, s1)[i] + nr[0] * (off + (-h, h)[j]), p0[1] + u[1] * (s0, s1)[i] + nr[1] * (off + (-h, h)[j]), (z0, z1)[k]))
+        V = {(i, j, k): self.bm.verts.new(P(p0[0] + u[0] * (s0, s1)[i] + nr[0] * (off + (-h, h)[j]), p0[1] + u[1] * (s0, s1)[i] + nr[1] * (off + (-h, h)[j]), z0 if k == 0 else max((z1, zb)[i], z0 + 1e-5)))
              for i in (0, 1) for j in (0, 1) for k in (0, 1)}
         self.face([V[0, 0, 0], V[1, 0, 0], V[1, 0, 1], V[0, 0, 1]], g('lo'), [(s0, z0), (s1, z0), (s1, z1), (s0, z1)])
         self.face([V[0, 1, 0], V[1, 1, 0], V[1, 1, 1], V[0, 1, 1]], g('hi'), [(s0, z0), (s1, z0), (s1, z1), (s0, z1)])
@@ -319,7 +343,7 @@ def build_walls():
         s, e = (w['x0'], w['x1']) if horiz else (w['y0'], w['y1'])
         ops = sorted([o for o in w.get('openings', []) if o['type'] != 'panel'], key=lambda o: o['a'])
         surfs = SURF_BY_WALL.get(wi, [])
-        top = CEIL - 0.0007 * (wi % 9)
+        hair = 0.0007 * (wi % 9)                              # a hair of height apart, so the tops of neighbouring walls never share a plane
         ob = obj('Walls', f"Wall_{wi:02d}_{w.get('id') or ('ext' if w.get('ext') else 'int')}")
         def face_key(side, t):
             for x in surfs:
@@ -341,13 +365,15 @@ def build_walls():
         for o in ops: cuts.update((o['a'], o['b']))
         for x in surfs:
             if x['kind'] != 'end': cuts.update((max(s, min(e, x['a'])), max(s, min(e, x['b']))))
+        for q in w.get('tops') or []: cuts.update((max(s, min(e, q['a'])), max(s, min(e, q['b']))))
         ts = sorted(cuts)
         for i in range(len(ts) - 1):
             t0, t1 = ts[i], ts[i + 1]
             if t1 - t0 < 1e-3: continue
             tm = (t0 + t1) / 2
             o = next((q for q in ops if q['a'] < tm < q['b']), None)
-            zr = [(0, top)] if not o else [(0, o['z0']), (o['z1'], top)] if o['type'] == 'window' else [(o['z1'], top)]
+            zA, zB = top_at(w, t0 + 1e-6) - hair, top_at(w, t1 - 1e-6) - hair
+            zr = [(0, None)] if not o else [(0, o['z0']), (o['z1'], None)] if o['type'] == 'window' else [(o['z1'], None)]
             lo, hi = face_key('lo', tm), face_key('hi', tm)
             fallback = lo or hi
             def end_mat(t, d):
@@ -366,12 +392,15 @@ def build_walls():
             st, en = end_mat(t0, -1), end_mat(t1, 1)
             loK, hiK = lo or nearest('lo', tm), hi or nearest('hi', tm)
             fm = lambda k: paint_mat(k) if k else M['cut']
-            for z0, z1 in zr:
-                topm = M['cut'] if z1 >= top - 1e-3 else paint_mat('trim'); botm = M['cut'] if z0 <= 1e-3 else paint_mat('trim')
+            for z0, zq in zr:
+                to_top = zq is None
+                if to_top and max(zA, zB) <= z0 + 1e-3: continue          # a low ceiling: nothing of the wall is left above the opening
+                z1 = max(zA, zB) if to_top else zq; tops = (zA, zB) if to_top and abs(zA - zB) > 1e-4 else None
+                topm = M['cut'] if to_top else paint_mat('trim'); botm = M['cut'] if z0 <= 1e-3 else paint_mat('trim')
                 if horiz:
-                    ob.box(t0, w['y0'], z0, t1, w['y1'], z1, {'xmin': st, 'xmax': en, 'ymin': fm(loK), 'ymax': fm(hiK), 'zmin': botm, 'zmax': topm})
+                    ob.box(t0, w['y0'], z0, t1, w['y1'], z1, {'xmin': st, 'xmax': en, 'ymin': fm(loK), 'ymax': fm(hiK), 'zmin': botm, 'zmax': topm}, tops, 'x')
                 else:
-                    ob.box(w['x0'], t0, z0, w['x1'], t1, z1, {'xmin': fm(loK), 'xmax': fm(hiK), 'ymin': st, 'ymax': en, 'zmin': botm, 'zmax': topm})
+                    ob.box(w['x0'], t0, z0, w['x1'], t1, z1, {'xmin': fm(loK), 'xmax': fm(hiK), 'ymin': st, 'ymax': en, 'zmin': botm, 'zmax': topm}, tops, 'y')
                 if z0 <= 1e-3:
                     tb = obj('Trim', 'Baseboards')
                     for k, side in ((lo, 'lo'), (hi, 'hi')):
@@ -444,7 +473,7 @@ def build_slants():
         surfs = by.get(S['i'], [])
         ops = sorted([o for o in S['openings'] if o['type'] != 'panel'], key=lambda o: o['a'])
         ob = obj('Walls', f"Slant_{S['i']:02d}_{S.get('id') or ('ext' if S['ext'] else 'int')}")
-        top = CEIL - 0.0007 * ((S['i'] + 4) % 9)
+        hair = 0.0007 * ((S['i'] + 4) % 9)
         def face_key(side, t):
             for x in surfs:
                 if x['side'] == side and x['a'] - 1e-3 <= t <= x['b'] + 1e-3: return x['id']
@@ -461,13 +490,15 @@ def build_slants():
         cuts = {lo0, hi0}
         for o in ops: cuts.update((o['a'], o['b']))
         for x in surfs: cuts.update((max(lo0, min(hi0, x['a'])), max(lo0, min(hi0, x['b']))))
+        for q in S.get('tops') or []: cuts.update((max(lo0, min(hi0, q['a'])), max(lo0, min(hi0, q['b']))))
         ts = sorted(cuts)
         for i in range(len(ts) - 1):
             t0, t1 = ts[i], ts[i + 1]
             if t1 - t0 < 1e-3: continue
             tm = (t0 + t1) / 2
             o = next((q for q in ops if q['a'] < tm < q['b']), None)
-            zr = [(0, top)] if not o else [(0, o['z0']), (o['z1'], top)] if o['type'] == 'window' else [(o['z1'], top)]
+            zA, zB = top_at(S, t0 + 1e-6) - hair, top_at(S, t1 - 1e-6) - hair
+            zr = [(0, None)] if not o else [(0, o['z0']), (o['z1'], None)] if o['type'] == 'window' else [(o['z1'], None)]
             lo, hi = face_key('lo', tm), face_key('hi', tm)
             lo_k, hi_k = lo or nearest('lo', tm), hi or nearest('hi', tm)
             def end_m(t):
@@ -477,9 +508,11 @@ def build_slants():
                     return paint_mat(k) if k else M['cut']
                 return M['cut']
             fm = lambda k: paint_mat(k) if k else M['cut']
-            for z0, z1 in zr:
-                ob.obox(S, t0, t1, z0, z1, 0, S['t'], {'end_a': end_m(t0), 'end_b': end_m(t1), 'lo': fm(lo_k), 'hi': fm(hi_k),
-                        'top': M['cut'] if z1 >= top - 1e-3 else paint_mat('trim'), 'bottom': M['cut'] if z0 <= 1e-3 else paint_mat('trim')})
+            for z0, zq in zr:
+                to_top = zq is None
+                if max(zA, zB) <= z0 + 1e-3 and to_top: continue
+                ob.obox(S, t0, t1, z0, zA if to_top else zq, 0, S['t'], {'end_a': end_m(t0), 'end_b': end_m(t1), 'lo': fm(lo_k), 'hi': fm(hi_k),
+                        'top': M['cut'] if to_top else paint_mat('trim'), 'bottom': M['cut'] if z0 <= 1e-3 else paint_mat('trim')}, zB if to_top else None)
                 if z0 <= 1e-3:
                     tb = obj('Trim', 'Baseboards')
                     for k, side in ((lo, -1), (hi, 1)):
@@ -679,10 +712,27 @@ def build_shell():
     obj('Exterior', 'Ground').box(-150, -150, GROUND_Z - 0.5, W + 150, D + 150, GROUND_Z, M['ground'])
     k = 0
     for r in H['rooms']:                                      # one ceiling per room, painted with its own key
-        c = obj('Ceiling', 'Ceiling_' + r['id']); m = paint_mat('C:' + r['id'])
-        for x0, y0, x1, y1 in r['rects']:                     # pieces may overlap: a hair of height apart so no faces coincide
-            k += 1; c.box(x0, y0, CEIL - 0.004 - 0.0003 * k, x1, y1, CEIL + 0.06, m)
-    obj('Ceiling', 'Roof_Lighttight').box(0, 0, CEIL + 0.07, W, D, CEIL + 0.4, M['cut'])   # stops sky light leaking in at ceiling edges
+        c = obj('Ceiling', 'Ceiling_' + r['id']); m = paint_mat('C:' + r['id']); cd = r.get('ceiling')
+        rects = r['rects']
+        if cd and cd['type'] == 'vault':                      # a ridge: cut the pieces along it so each is one plane
+            bx0, by0, bx1, by1 = cd['bbox']; v = (by0 + by1) / 2 if cd['ridge'] == 'x' else (bx0 + bx1) / 2; cut = []
+            for a, b, c2, d in rects:
+                if cd['ridge'] == 'x' and b < v - 1e-6 and d > v + 1e-6: cut += [[a, b, c2, v], [a, v, c2, d]]
+                elif cd['ridge'] == 'y' and a < v - 1e-6 and c2 > v + 1e-6: cut += [[a, b, v, d], [v, b, c2, d]]
+                else: cut.append([a, b, c2, d])
+            rects = cut
+        for x0, y0, x1, y1 in rects:                          # pieces may overlap: a hair of height apart so no faces coincide
+            k += 1
+            if cd and cd['type'] != 'flat':                   # a sloping ceiling: a thin slab whose corners follow the plane
+                zc = lambda x, y: ceil_h(cd, x, y) - 0.004 - 0.0003 * k
+                cs = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+                lo = [c.bm.verts.new(P(x, y, zc(x, y))) for x, y in cs]; hi = [c.bm.verts.new(P(x, y, zc(x, y) + 0.064)) for x, y in cs]
+                c.face(lo, m); c.face(hi[::-1], m)
+                for i in range(4): j = (i + 1) % 4; c.face((lo[i], lo[j], hi[j], hi[i]), m)
+            else:
+                zf = (cd or {}).get('h', CEIL)
+                c.box(x0, y0, zf - 0.004 - 0.0003 * k, x1, y1, zf + 0.06, m)
+    obj('Ceiling', 'Roof_Lighttight').box(0, 0, CEILMAX + 0.07, W, D, CEILMAX + 0.4, M['cut'])   # stops sky light leaking in at ceiling edges
 
 build_shell(); build_walls(); build_slants(); build_fixtures()
 for o in list(OBJS.values()): o.finish()
@@ -701,7 +751,7 @@ for r in H['rooms']:
     cx, cy = (big[0] + big[2]) / 2, (big[1] + big[3]) / 2
     area = sum((q[2] - q[0]) * (q[3] - q[1]) for q in r['rects'])
     ld = bpy.data.lights.new('Light_' + r['id'], 'AREA'); ld.shape = 'SQUARE'; ld.size = 1.0
-    lo = bpy.data.objects.new('Light_' + r['id'], ld); lo.location = (cx * FT, -cy * FT, (CEIL - 0.15) * FT)
+    lo = bpy.data.objects.new('Light_' + r['id'], ld); lo.location = (cx * FT, -cy * FT, (ceil_h(r.get('ceiling'), cx, cy) - 0.15) * FT)
     coll('Room_Lights').objects.link(lo); ROOM_LIGHTS.append((ld, area))
 def set_light(mode, inside):
     """inside: the camera is in a room with the ceiling on, so daylight needs help from ceiling lights."""

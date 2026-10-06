@@ -145,11 +145,29 @@ function build(H, R) {
     m.scale.set(rx, z1 - z0, ry); m.position.set(cx, (z0 + z1) / 2, cy);
     m.castShadow = m.receiveShadow = true; root.add(m); return m;
   }
-  function rectsGeometry(rects, z, faceDown) {             // flat quads in plan, at height z
-    const pos = [], uv = [], idx = [];
+  // A wall piece whose top slopes: built as an ordinary box up to its higher end, then the top corners at the lower end are
+  // brought down. Heights zA and zB are those at the start and the end of the piece, along x (alongX) or along y.
+  function sbox(x0, y0, z0, x1, y1, zA, zB, mat, alongX) {
+    if (x1 < x0) [x0, x1] = [x1, x0]; if (y1 < y0) [y0, y1] = [y1, y0];
+    zA = Math.max(zA, z0 + 1e-3); zB = Math.max(zB, z0 + 1e-3);
+    const zM = Math.max(zA, zB), m = box(x0, y0, z0, x1, y1, zM, mat);
+    if (!m || Math.abs(zA - zB) < 1e-4) return m;
+    const g = m.geometry, pos = g.attributes.position, hh = zM - z0;
+    for (let i = 0; i < pos.count; i++) if (pos.getY(i) > 0) pos.setY(i, ((alongX ? pos.getX(i) : pos.getZ(i)) < 0 ? zA : zB) - z0 - hh / 2);
+    pos.needsUpdate = true; g.computeVertexNormals(); g.computeBoundingBox(); g.computeBoundingSphere();
+    return m;
+  }
+  // the top of a wall at distance t along it: from the pieces the core worked out (every wall has the house's height unless a room has its own)
+  function topAt(w, t) {
+    if (!w.tops) return CEIL;
+    const q = w.tops.find(r => t >= r.a - 1e-6 && t <= r.b + 1e-6) || w.tops[w.tops.length - 1];
+    return q.b - q.a < 1e-6 ? q.za : q.za + (q.zb - q.za) * (t - q.a) / (q.b - q.a);
+  }
+  function rectsGeometry(rects, z, faceDown) {             // quads in plan, at height z (a number, or a function of x and y)
+    const pos = [], uv = [], idx = [], zf = typeof z === 'function' ? z : () => z;
     rects.forEach(([x0, y0, x1, y1]) => {
       const b = pos.length / 3;
-      pos.push(x0, z, y0, x1, z, y0, x1, z, y1, x0, z, y1);
+      pos.push(x0, zf(x0, y0), y0, x1, zf(x1, y0), y0, x1, zf(x1, y1), y1, x0, zf(x0, y1), y1);
       uv.push(x0, y0, x1, y0, x1, y1, x0, y1);
       idx.push(...(faceDown ? [b, b + 1, b + 2, b, b + 2, b + 3] : [b, b + 2, b + 1, b, b + 3, b + 2]));
     });
@@ -174,7 +192,21 @@ function build(H, R) {
       cx = (big[0] + big[2]) / 2; cy = (big[1] + big[3]) / 2;
     }
     roomInfo[r.id] = { cx, cy, bbox: [bx0, by0, bx1, by1], rects };
-    const ceil = new T.Mesh(rectsGeometry(rects, CEIL - 0.004, true), material('C:' + r.id));
+    const cd = r.ceiling;
+    let cr = rects, zf = CEIL - 0.004;
+    if (cd && !(cd.type === 'flat' && cd.h === CEIL)) {
+      zf = (x, y) => R.ceilingAt(r.id, x, y) - 0.004;
+      if (cd.type === 'vault') {                                             // a ridge: cut the pieces along it so each is one plane
+        const [bx0, by0, bx1, by1] = cd.bbox, v = cd.ridge === 'x' ? (by0 + by1) / 2 : (bx0 + bx1) / 2, cut = [];
+        for (const [a, b, c, d] of rects) {
+          if (cd.ridge === 'x' && b < v - 1e-6 && d > v + 1e-6) { cut.push([a, b, c, v], [a, v, c, d]); }
+          else if (cd.ridge === 'y' && a < v - 1e-6 && c > v + 1e-6) { cut.push([a, b, v, d], [v, b, c, d]); }
+          else cut.push([a, b, c, d]);
+        }
+        cr = cut;
+      }
+    }
+    const ceil = new T.Mesh(rectsGeometry(cr, zf, true), material('C:' + r.id));
     ceil.receiveShadow = true;
     ceilings.add(pick(ceil, 'C:' + r.id));
   }
@@ -200,13 +232,15 @@ function build(H, R) {
     const cuts = new Set([s, e]);
     ops.forEach(o => { cuts.add(o.a); cuts.add(o.b); });
     surfs.forEach(x => { if (x.kind !== 'end') { cuts.add(Math.max(s, Math.min(e, x.a))); cuts.add(Math.max(s, Math.min(e, x.b))); } });
+    (w.tops || []).forEach(q => { cuts.add(Math.max(s, Math.min(e, q.a))); cuts.add(Math.max(s, Math.min(e, q.b))); });
     const ts = [...cuts].sort((a, b) => a - b);
 
     for (let i = 0; i < ts.length - 1; i++) {
       const t0 = ts[i], t1 = ts[i + 1];
       if (t1 - t0 < 1e-3) continue;
       const tm = (t0 + t1) / 2, o = ops.find(q => tm > q.a && tm < q.b);
-      const zr = !o ? [[0, CEIL]] : o.type === 'window' ? [[0, o.z0], [o.z1, CEIL]] : [[o.z1, CEIL]];
+      const zA = topAt(w, t0 + 1e-6), zB = topAt(w, t1 - 1e-6);
+      const zr = !o ? [[0, 'T']] : o.type === 'window' ? [[0, o.z0], [o.z1, 'T']] : [[o.z1, 'T']];
       const lo = faceKey('lo', tm), hi = faceKey('hi', tm);
       const fallback = lo || hi;
       // end faces: a jamb takes trim; a face that lines up with another wall's face (an outside corner) takes that
@@ -223,17 +257,20 @@ function build(H, R) {
         return k ? { m: material(k), k } : { m: M.cut, k: null };
       };
       const st = endMat(t0, -1), en = endMat(t1, 1);
-      for (const [z0, z1] of zr) {
+      for (const [z0, zq] of zr) {
+        const toTop = zq === 'T', z1 = toTop ? Math.max(zA, zB) : zq;
+        if (z1 <= z0 + 1e-3) continue;                                    // a low ceiling: nothing of the wall is left above the opening
         const faceMat = k => (k ? material(k) : M.cut);
         const loK = lo || nearest('lo', tm), hiK = hi || nearest('hi', tm);   // hairline slivers at junctions borrow the neighbour's paint
-        const topMat = z1 >= CEIL - 1e-3 ? M.cut : material('trim');   // window stool / door head soffit read as trim
+        const topMat = toTop ? M.cut : material('trim');   // window stool / door head soffit read as trim
         const botMat = z0 <= 1e-3 ? M.cut : material('trim');
         const mats = horiz
           ? [en.m, st.m, topMat, botMat, faceMat(hiK), faceMat(loK)]
           : [faceMat(hiK), faceMat(loK), topMat, botMat, en.m, st.m];
-        const keys = horiz ? [en.k, st.k, z1 < CEIL - 1e-3 ? 'trim' : null, z0 > 1e-3 ? 'trim' : null, hiK, loK]
-                           : [hiK, loK, z1 < CEIL - 1e-3 ? 'trim' : null, z0 > 1e-3 ? 'trim' : null, en.k, st.k];
-        const mesh = horiz ? box(t0, w.y0, z0, t1, w.y1, z1, mats) : box(w.x0, t0, z0, w.x1, t1, z1, mats);
+        const keys = horiz ? [en.k, st.k, !toTop ? 'trim' : null, z0 > 1e-3 ? 'trim' : null, hiK, loK]
+                           : [hiK, loK, !toTop ? 'trim' : null, z0 > 1e-3 ? 'trim' : null, en.k, st.k];
+        const mesh = !toTop ? (horiz ? box(t0, w.y0, z0, t1, w.y1, z1, mats) : box(w.x0, t0, z0, w.x1, t1, z1, mats))
+                            : (horiz ? sbox(t0, w.y0, z0, t1, w.y1, zA, zB, mats, true) : sbox(w.x0, t0, z0, w.x1, t1, zA, zB, mats, false));
         if (mesh) { mesh.userData.keys = keys; pickables.push(mesh); }
         // baseboards on interior faces of floor-level pieces
         if (z0 <= 1e-3) for (const [k, side] of [[lo, 'lo'], [hi, 'hi']]) {
@@ -308,13 +345,18 @@ function build(H, R) {
   // z across it, so its materials go in the same order as a horizontal wall's: [end b, end a, top, bottom, right face, left face].
   const slantSurfs = {};
   R.surfaces.forEach(s => { if (s.slant !== undefined) (slantSurfs[s.slant] ||= []).push(s); });
-  function obox(S, s0, s1, z0, z1, off, thick, mat) {                           // off: sideways from the centre line, positive to the right
-    const L = s1 - s0, hh = z1 - z0;
+  function obox(S, s0, s1, z0, z1, off, thick, mat, zB) {                       // off: sideways from the centre line, positive to the right; zB: a different top at the far end
+    const top1 = zB === undefined ? z1 : zB, zM = Math.max(z1, top1), L = s1 - s0, hh = zM - z0;
     if (L < 1e-4 || hh < 1e-4 || thick < 1e-4) return null;
     const g = new T.BoxGeometry(L, hh, thick), uv = g.attributes.uv, dims = [[thick, hh], [thick, hh], [L, thick], [L, thick], [L, hh], [L, hh]];
     for (let f = 0; f < 6; f++) for (let i = 0; i < 4; i++) { const k = f * 4 + i; uv.setXY(k, uv.getX(k) * dims[f][0], uv.getY(k) * dims[f][1]); }
+    if (Math.abs(z1 - top1) > 1e-4) {                                             // a sloping top: the near end at z1, the far end at zB
+      const pos = g.attributes.position;
+      for (let i = 0; i < pos.count; i++) if (pos.getY(i) > 0) pos.setY(i, (pos.getX(i) < 0 ? Math.max(z1, z0 + 1e-3) : Math.max(top1, z0 + 1e-3)) - z0 - hh / 2);
+      pos.needsUpdate = true; g.computeVertexNormals();
+    }
     const m = new T.Mesh(g, mat), sm = (s0 + s1) / 2;
-    m.position.set(S.p0[0] + S.u[0] * sm + S.nr[0] * off, (z0 + z1) / 2, S.p0[1] + S.u[1] * sm + S.nr[1] * off);
+    m.position.set(S.p0[0] + S.u[0] * sm + S.nr[0] * off, (z0 + zM) / 2, S.p0[1] + S.u[1] * sm + S.nr[1] * off);
     m.rotation.y = -Math.atan2(S.u[1], S.u[0]);
     m.castShadow = m.receiveShadow = true; root.add(m);
     return m;
@@ -332,22 +374,26 @@ function build(H, R) {
     const lo0 = -S.e0, hi0 = S.len + S.e1, cuts = new Set([lo0, hi0]);
     ops.forEach(o => { cuts.add(o.a); cuts.add(o.b); });
     surfs.forEach(x => { cuts.add(Math.max(lo0, Math.min(hi0, x.a))); cuts.add(Math.max(lo0, Math.min(hi0, x.b))); });
+    (S.tops || []).forEach(q => { cuts.add(Math.max(lo0, Math.min(hi0, q.a))); cuts.add(Math.max(lo0, Math.min(hi0, q.b))); });
     const ts = [...cuts].sort((a, b) => a - b);
     for (let i = 0; i < ts.length - 1; i++) {
       const t0 = ts[i], t1 = ts[i + 1];
       if (t1 - t0 < 1e-3) continue;
       const tm = (t0 + t1) / 2, o = ops.find(q => tm > q.a && tm < q.b);
-      const zr = !o ? [[0, CEIL]] : o.type === 'window' ? [[0, o.z0], [o.z1, CEIL]] : [[o.z1, CEIL]];
+      const zA = topAt(S, t0 + 1e-6), zB = topAt(S, t1 - 1e-6);
+      const zr = !o ? [[0, 'T']] : o.type === 'window' ? [[0, o.z0], [o.z1, 'T']] : [[o.z1, 'T']];
       const lo = faceKey('lo', tm), hi = faceKey('hi', tm), loK = lo || nearest('lo', tm), hiK = hi || nearest('hi', tm);
       const endM = t => {                                                   // a doorway edge takes trim; the wall's own ends take its paint; cuts in between are hidden
         const k = ops.some(q => Math.abs(q.a - t) < 1e-3 || Math.abs(q.b - t) < 1e-3) ? 'trim' : (Math.abs(t - lo0) < 1e-3 || Math.abs(t - hi0) < 1e-3) ? (loK || hiK) : null;
         return k ? { m: material(k), k } : { m: M.cut, k: null };
       };
       const st = endM(t0), en = endM(t1), fm = k => (k ? material(k) : M.cut);
-      for (const [z0, z1] of zr) {
-        const topMat = z1 >= CEIL - 1e-3 ? M.cut : material('trim'), botMat = z0 <= 1e-3 ? M.cut : material('trim');
-        const mesh = obox(S, t0, t1, z0, z1, 0, S.t, [en.m, st.m, topMat, botMat, fm(hiK), fm(loK)]);
-        if (mesh) { mesh.userData.keys = [en.k, st.k, z1 < CEIL - 1e-3 ? 'trim' : null, z0 > 1e-3 ? 'trim' : null, hiK, loK]; pickables.push(mesh); }
+      for (const [z0, zq] of zr) {
+        const toTop = zq === 'T', z1 = toTop ? zA : zq;
+        if (Math.max(z1, toTop ? zB : z1) <= z0 + 1e-3) continue;
+        const topMat = toTop ? M.cut : material('trim'), botMat = z0 <= 1e-3 ? M.cut : material('trim');
+        const mesh = obox(S, t0, t1, z0, z1, 0, S.t, [en.m, st.m, topMat, botMat, fm(hiK), fm(loK)], toTop ? zB : undefined);
+        if (mesh) { mesh.userData.keys = [en.k, st.k, !toTop ? 'trim' : null, z0 > 1e-3 ? 'trim' : null, hiK, loK]; pickables.push(mesh); }
         if (z0 <= 1e-3) for (const [k, side] of [[lo, 'lo'], [hi, 'hi']]) {          // baseboards on inside faces
           if (!k || isExt(k)) continue;
           pick(obox(S, t0, t1, 0, BASE_H, (side === 'lo' ? -1 : 1) * (S.t / 2 + BASE_T / 2), BASE_T, material('trim')), 'trim');

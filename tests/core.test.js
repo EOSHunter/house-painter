@@ -202,3 +202,70 @@ test('angled walls: the Blender export carries the angled walls', () => {
   assert.equal(b.slants.length, 3);
   assert.ok(b.surfaces.some(s => s.slant !== undefined));
 });
+
+// ---------------------------------------------------------------------------------------------- ceilings
+const cabin = () => load('vaulted-cabin');
+
+test('ceilings: a room can have its own height, a shed ceiling or a vault, and the file says so plainly', () => {
+  assert.deepEqual(HouseCore.validate(cabin()), []);
+  const bad = cabin(); bad.rooms[0].ceiling = { type: 'dome' };
+  assert.ok(HouseCore.validate(bad).some(p => /Room 0/.test(p)));
+  const low = cabin(); low.rooms[0].ceiling = 1;
+  assert.ok(HouseCore.validate(low).some(p => /between 3 and 40/.test(p)));
+  const shed = cabin(); shed.rooms[0].ceiling = { type: 'shed', low: 8 };
+  assert.ok(HouseCore.validate(shed).some(p => /shed/.test(p)));
+  const vault = cabin(); vault.rooms[0].ceiling = { type: 'vault', eave: 8, peak: 12, ridge: 'z' };
+  assert.ok(HouseCore.validate(vault).some(p => /vault/.test(p)));
+});
+
+test('ceilings: a house with none of them is exactly as before (every room flat at the house height)', () => {
+  const { ROOMS, HOUSE } = HouseCore.build(load('starter-cottage'));
+  for (const r of ROOMS.rooms) assert.deepEqual(r.ceiling, { type: 'flat', h: HOUSE.heights.ceiling });
+  assert.ok(HOUSE.walls.every(w => !w.tops), 'no wall tops are worked out when nothing needs them');
+  assert.equal(ROOMS.ceilingMax, HOUSE.heights.ceiling);
+});
+
+test('ceilings: height at a point follows the room (flat, shed, vault)', () => {
+  const { ROOMS } = HouseCore.build(cabin());
+  const liv = ROOMS.byId.living.ceiling, bb = liv.bbox, mid = (bb[1] + bb[3]) / 2;
+  assert.equal(liv.type, 'vault');
+  assert.ok(Math.abs(ROOMS.ceilingAt('living', 10, mid) - 13) < 1e-6, 'the ridge is the peak');
+  assert.ok(Math.abs(ROOMS.ceilingAt('living', 10, bb[1]) - 8) < 1e-6, 'the eave');
+  assert.ok(Math.abs(ROOMS.ceilingAt('living', 10, (bb[1] + mid) / 2) - 10.5) < 1e-6, 'halfway up the slope');
+  const bed = ROOMS.byId.bed1.ceiling, bx = bed.bbox;
+  assert.ok(Math.abs(ROOMS.ceilingAt('bed1', bx[0], 5) - 8) < 1e-6 && Math.abs(ROOMS.ceilingAt('bed1', bx[2], 5) - 10.5) < 1e-6, 'a shed ceiling rises to the east');
+  assert.equal(ROOMS.ceilingAt('bed2', 30, 20), 9);
+  assert.equal(ROOMS.ceilingMax, 13);
+});
+
+test('ceilings: wall areas follow the height, so a vaulted room has more wall to paint than a flat one', () => {
+  const house = c => { const h = load('starter-cottage'); h.rooms.find(r => r.id === 'living').ceiling = c; return h; };
+  const area = (R, id) => R.surfaces.filter(s => s.room === id).reduce((t, s) => t + s.area, 0);
+  const at8 = HouseCore.build(house(8)).ROOMS, at10 = HouseCore.build(house(10)).ROOMS, vault = HouseCore.build(house({ type: 'vault', eave: 8, peak: 13, ridge: 'x' })).ROOMS;
+  assert.ok(Math.abs(area(at10, 'living') / area(at8, 'living') - 1.25) < 0.02 || area(at10, 'living') > area(at8, 'living'), 'a taller flat room has more wall');
+  assert.ok(area(vault, 'living') > area(at8, 'living') * 1.2, `${area(vault, 'living')} vs ${area(at8, 'living')}`);
+  assert.ok(area(vault, 'living') < area(at10, 'living') * 1.2);
+  // other rooms are untouched by it
+  assert.equal(area(vault, 'bed1'), area(at8, 'bed1'));
+});
+
+test('ceilings: each wall carries the pieces of its top, and a gable wall peaks at the ridge', () => {
+  const { HOUSE, ROOMS } = HouseCore.build(cabin());
+  const mid = (ROOMS.byId.living.ceiling.bbox[1] + ROOMS.byId.living.ceiling.bbox[3]) / 2;
+  const withTops = HOUSE.walls.filter(w => w.tops);
+  assert.ok(withTops.length > 0);
+  // find a wall whose top reaches the ridge height, at the ridge
+  const peak = withTops.flatMap(w => w.tops).find(q => Math.abs(q.a - mid) < 1e-2 || Math.abs(q.b - mid) < 1e-2);
+  assert.ok(peak, 'a piece starts or ends at the ridge');
+  for (const w of withTops) for (let i = 1; i < w.tops.length; i++) assert.ok(Math.abs(w.tops[i].a - w.tops[i - 1].b) < 1e-6, 'the pieces run on from each other');
+  const max = Math.max(...withTops.flatMap(w => w.tops.flatMap(q => [q.za, q.zb])));
+  assert.ok(Math.abs(max - 13) < 0.02, 'tallest wall point ' + max);
+});
+
+test('ceilings: the Blender export carries them', () => {
+  const { HOUSE, ROOMS } = HouseCore.build(cabin());
+  const b = HouseCore.forBlender(HOUSE, ROOMS);
+  assert.equal(b.ceilingMax, 13);
+  assert.equal(b.rooms.find(r => r.id === 'living').ceiling.type, 'vault');
+  assert.ok(b.walls.some(w => w.tops));
+});

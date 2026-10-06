@@ -123,10 +123,16 @@ Walls at any angle: a cut corner, a bay window, a diagonal partition. The exampl
 - [ ] A free-standing angled wall inside one room (a peninsula) needs a room outline made to follow it.
 - [ ] Curved walls.
 
+### Ceilings ✅ (first version)
+
+- [x] **A ceiling height per room, and sloped ceilings:** flat, shed (one slope) or vault (a ridge down the middle). The example is `houses/vaulted-cabin/`.
+- [x] Walls rise to meet them (including gable-shaped walls), a wall between two rooms follows the higher side, and wall areas follow the height. The studio, the walkthrough and Blender draw them, and the plan editor sets them per room.
+- [ ] Ceilings that are not one plane or two across a room: hips, domes, trays, beams.
+- [ ] A ceiling that slopes through two rooms (a ridge that carries on through an open-plan space) is two separate ceilings today.
+
 ### Other ideas
 
 - [ ] Imports: Apple RoomPlan (iPhone LiDAR) USDZ/JSON, DXF, and SVG.
-- [ ] Vaulted and sloped ceilings, and a ceiling height per room.
 - [ ] Multiple storeys and stairs.
 - [ ] Exterior detail: roof, porch and siding profiles.
 
