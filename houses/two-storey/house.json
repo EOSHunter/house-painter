@@ -1,0 +1,398 @@
+{
+ "format": "house-painter/house",
+ "version": 1,
+ "id": "two-storey",
+ "name": "Two-Storey House",
+ "subtitle": "Example with two floors and a staircase",
+ "units": "ft",
+ "W": 30,
+ "D": 24,
+ "wallThickness": {
+  "exterior": 0.5,
+  "interior": 0.33
+ },
+ "heights": {
+  "ceiling": 8,
+  "door": 6.833,
+  "windowHead": 7,
+  "windowSill": 3
+ },
+ "floor": {
+  "name": "White oak planks",
+  "color": "#B79E78",
+  "plankW": 0.5,
+  "plankL": 4,
+  "dir": "x",
+  "wood": "whiteoak"
+ },
+ "walls": [
+  {
+   "x0": 0,
+   "y0": 0,
+   "x1": 30,
+   "y1": 0.5,
+   "ext": 1,
+   "id": "north",
+   "openings": [
+    {
+     "a": 3,
+     "b": 6.4,
+     "type": "window"
+    },
+    {
+     "a": 19,
+     "b": 22,
+     "type": "window"
+    }
+   ]
+  },
+  {
+   "x0": 0,
+   "y0": 23.5,
+   "x1": 30,
+   "y1": 24,
+   "ext": 1,
+   "id": "south",
+   "openings": [
+    {
+     "a": 4,
+     "b": 8,
+     "type": "window"
+    },
+    {
+     "a": 12,
+     "b": 15,
+     "type": "door",
+     "hinge": "a",
+     "swing": "n"
+    },
+    {
+     "a": 21,
+     "b": 25,
+     "type": "window"
+    }
+   ]
+  },
+  {
+   "x0": 0,
+   "y0": 0.5,
+   "x1": 0.5,
+   "y1": 23.5,
+   "ext": 1,
+   "id": "west",
+   "openings": [
+    {
+     "a": 8,
+     "b": 12,
+     "type": "window"
+    }
+   ]
+  },
+  {
+   "x0": 29.5,
+   "y0": 0.5,
+   "x1": 30,
+   "y1": 23.5,
+   "ext": 1,
+   "id": "east",
+   "openings": [
+    {
+     "a": 7,
+     "b": 11,
+     "type": "window"
+    }
+   ]
+  },
+  {
+   "x0": 17.835,
+   "y0": 0.5,
+   "x1": 18.165,
+   "y1": 23.5,
+   "id": "hall-west",
+   "openings": [
+    {
+     "a": 10.5,
+     "b": 13.5,
+     "type": "cased"
+    }
+   ]
+  },
+  {
+   "x0": 17.835,
+   "y0": 8.185,
+   "x1": 29.5,
+   "y1": 8.515,
+   "id": "hall-north",
+   "openings": [
+    {
+     "a": 21,
+     "b": 24,
+     "type": "cased"
+    }
+   ]
+  }
+ ],
+ "rooms": [
+  {
+   "id": "living",
+   "name": "Living room",
+   "short": "LIV",
+   "rects": [
+    [
+     0,
+     0,
+     18,
+     24
+    ]
+   ]
+  },
+  {
+   "id": "kitchen",
+   "name": "Kitchen",
+   "short": "KIT",
+   "rects": [
+    [
+     18,
+     0,
+     30,
+     8.35
+    ]
+   ]
+  },
+  {
+   "id": "hall",
+   "name": "Hall",
+   "short": "HAL",
+   "rects": [
+    [
+     18,
+     8.35,
+     30,
+     24
+    ]
+   ]
+  }
+ ],
+ "roomOrder": [
+  "living",
+  "kitchen",
+  "hall"
+ ],
+ "items": [
+  {
+   "key": "kbase",
+   "name": "Kitchen cabinets",
+   "room": "kitchen",
+   "kind": "cabinet",
+   "default": "#E8E4DA"
+  }
+ ],
+ "fixtures": [
+  {
+   "k": "box",
+   "c": "cabB",
+   "x": 18.4,
+   "y": 0.5,
+   "w": 11,
+   "h": 2,
+   "paint": "kbase",
+   "front": "s",
+   "z1": 3,
+   "counter": true
+  },
+  {
+   "k": "stairs",
+   "x": 26,
+   "y": 8.7,
+   "w": 3.5,
+   "h": 12.5,
+   "front": "n"
+  }
+ ],
+ "start": {
+  "x": 12,
+  "y": 18,
+  "yaw": 3.14
+ },
+ "renderRooms": [
+  "living",
+  "kitchen",
+  "hall"
+ ],
+ "levels": [
+  {
+   "id": "upper",
+   "name": "Upstairs",
+   "walls": [
+    {
+     "x0": 0,
+     "y0": 0,
+     "x1": 30,
+     "y1": 0.5,
+     "ext": 1,
+     "id": "north",
+     "openings": [
+      {
+       "a": 3,
+       "b": 6.4,
+       "type": "window"
+      },
+      {
+       "a": 12,
+       "b": 15.4,
+       "type": "window"
+      },
+      {
+       "a": 21,
+       "b": 24.4,
+       "type": "window"
+      }
+     ]
+    },
+    {
+     "x0": 0,
+     "y0": 23.5,
+     "x1": 30,
+     "y1": 24,
+     "ext": 1,
+     "id": "south",
+     "openings": [
+      {
+       "a": 4,
+       "b": 8,
+       "type": "window"
+      },
+      {
+       "a": 21,
+       "b": 25,
+       "type": "window"
+      }
+     ]
+    },
+    {
+     "x0": 0,
+     "y0": 0.5,
+     "x1": 0.5,
+     "y1": 23.5,
+     "ext": 1,
+     "id": "west",
+     "openings": [
+      {
+       "a": 8,
+       "b": 12,
+       "type": "window"
+      }
+     ]
+    },
+    {
+     "x0": 29.5,
+     "y0": 0.5,
+     "x1": 30,
+     "y1": 23.5,
+     "ext": 1,
+     "id": "east",
+     "openings": [
+      {
+       "a": 7,
+       "b": 11,
+       "type": "window"
+      }
+     ]
+    },
+    {
+     "x0": 14.835,
+     "y0": 0.5,
+     "x1": 15.165,
+     "y1": 23.5,
+     "id": "bed-split",
+     "openings": [
+      {
+       "a": 5,
+       "b": 8,
+       "type": "door",
+       "hinge": "a",
+       "swing": "w"
+      },
+      {
+       "a": 14,
+       "b": 17,
+       "type": "door",
+       "hinge": "a",
+       "swing": "w"
+      }
+     ]
+    },
+    {
+     "x0": 15.165,
+     "y0": 8.335,
+     "x1": 25.9,
+     "y1": 8.665,
+     "id": "study-wall",
+     "openings": [
+      {
+       "a": 3,
+       "b": 6,
+       "type": "door",
+       "hinge": "a",
+       "swing": "s"
+      }
+     ]
+    }
+   ],
+   "rooms": [
+    {
+     "id": "bed1",
+     "name": "Bedroom 1",
+     "short": "BR1",
+     "rects": [
+      [
+       0,
+       0,
+       15,
+       24
+      ]
+     ]
+    },
+    {
+     "id": "study",
+     "name": "Study",
+     "short": "STU",
+     "rects": [
+      [
+       15,
+       0,
+       30,
+       8.5
+      ]
+     ]
+    },
+    {
+     "id": "landing",
+     "name": "Landing",
+     "short": "LND",
+     "rects": [
+      [
+       15,
+       8.5,
+       30,
+       24
+      ]
+     ]
+    }
+   ],
+   "roomOrder": [
+    "bed1",
+    "study",
+    "landing"
+   ],
+   "voids": [
+    [
+     26,
+     8.7,
+     29.5,
+     21.2
+    ]
+   ]
+  }
+ ]
+}

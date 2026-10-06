@@ -10,6 +10,8 @@
  *   room    { uid, id, name, short, rects, polys?, extra }   (first match wins, as in the file; polys are outlines [[x,y],...])
  *   split   { uid, axis, c, a, b }                          (invisible zone lines that divide open-plan rooms)
  *   underlay{ key, name, w, h, s (ft per px), ox, oy, rot, opacity, calibrated }   (the image itself is in IndexedDB)
+ * More floors: S.lv is a list of floors { id, name, walls, rooms, splits, fixtures, voids: [{ uid, r }] } and S.cur the one being drawn; the drawing
+ * always works on S.walls, S.rooms, S.splits and S.keep.fixtures, which are the current floor's lists (S.lv is null for a one-floor house).
  * Everything the editor doesn't edit yet (fixtures, items, plan extras, ...) rides along in S.keep.
  * Saved files are shifted so the outside corner sits at 0,0.
  */
@@ -48,12 +50,12 @@
   const DEF = { heights: { ceiling: 8, door: 6.667, windowHead: 6.667, windowSill: 3 }, wallThickness: { exterior: 0.5, interior: 0.375 },
     floor: { name: 'Natural oak', color: '#B58E62', plankW: 0.5, plankL: 4, dir: 'x' } };
   const blank = () => ({ meta: { id: 'my-house', name: 'My house', subtitle: '' }, heights: { ...DEF.heights }, wallThickness: { ...DEF.wallThickness },
-    floor: { ...DEF.floor }, walls: [], rooms: [], splits: [], keep: {}, underlay: null });
+    floor: { ...DEF.floor }, walls: [], rooms: [], splits: [], keep: {}, underlay: null, lv: null, cur: 0 });
   let S = blank();
-  let tool = 'select', dimStart = null, wallMode = 'ext', wallAngle = false, wallCurve = false, lastMods = {}, sel = null, drag = null, draw = null, ghost = null, lenBuf = '', lastP = [0, 0], spaceDown = false;
+  let tool = 'select', voidStart = null, dimStart = null, wallMode = 'ext', wallAngle = false, wallCurve = false, lastMods = {}, sel = null, drag = null, draw = null, ghost = null, lenBuf = '', lastP = [0, 0], spaceDown = false;
   let view = { x: -6, y: -6, w: 72 }, underURL = null, underImg = null, stepCur = 0, welcomeOff = false;
 
-  const byUid = u => S.walls.find(w => w.uid === u) || S.rooms.find(r => r.uid === u) || S.splits.find(s => s.uid === u) || (S.keep.fixtures || []).find(f => f.uid === u) || planItems().find(x => x.uid === u);
+  const byUid = u => S.walls.find(w => w.uid === u) || S.rooms.find(r => r.uid === u) || S.splits.find(s => s.uid === u) || (S.keep.fixtures || []).find(f => f.uid === u) || planItems().find(x => x.uid === u) || curVoids().find(v => v.uid === u);
   const planItems = () => { const P = S.keep.plan; return P ? [...(P.labels || []), ...(P.dims || [])] : []; };
   const planOf = () => (S.keep.plan ||= {});
   const findOpening = u => { for (const w of S.walls) { const o = w.openings.find(x => x.uid === u); if (o) return { w, o }; } return null; };
@@ -136,9 +138,18 @@
     const ed = src.editor || {};
     s.splits = (ed.splits || []).map(p => ({ uid: uid(), ...p }));
     s.underlay = ed.underlay ? { ...ed.underlay } : null;
-    const known = new Set(['format', 'version', 'id', 'name', 'subtitle', 'units', 'W', 'D', 'wallThickness', 'heights', 'floor', 'walls', 'rooms', 'editor']);
+    const known = new Set(['format', 'version', 'id', 'name', 'subtitle', 'units', 'W', 'D', 'wallThickness', 'heights', 'floor', 'walls', 'rooms', 'editor', 'levels', 'levelName', 'levelId']);
     s.keep = Object.fromEntries(Object.entries(src).filter(([k]) => !known.has(k)).map(([k, v]) => [k, JSON.parse(JSON.stringify(v))]));
     (s.keep.fixtures || []).forEach(f => { if (window.HouseFixtures.editable(f)) f.uid = uid(); });   // editor-only identity, stripped when saving
+    if (Array.isArray(src.levels) && src.levels.length) {                // the floors above: each is read the way a house is
+      s.lv = [{ id: src.levelId || 'ground', name: src.levelName || 'Ground floor', walls: s.walls, rooms: s.rooms, splits: s.splits, fixtures: s.keep.fixtures || (s.keep.fixtures = []), voids: [] }];
+      src.levels.forEach((lv, k) => {
+        const sub = fromHouse({ format: 'house-painter/house', id: 'level', name: 'level', walls: lv.walls || [], rooms: lv.rooms || [], fixtures: lv.fixtures || [], editor: lv.editor, heights: src.heights, wallThickness: src.wallThickness, floor: src.floor });
+        s.lv.push({ id: lv.id || 'level' + (k + 2), name: lv.name || 'Floor ' + (k + 2), ...(lv.elevation !== undefined ? { elevation: lv.elevation } : {}), walls: sub.walls, rooms: sub.rooms, splits: sub.splits,
+          fixtures: sub.keep.fixtures || [], voids: (lv.voids || []).map(r => ({ uid: uid(), r: r.slice() })) });
+      });
+      s.cur = 0;
+    }
     if (s.keep.plan) { (s.keep.plan.labels || []).forEach(x => { x.uid = uid(); }); (s.keep.plan.dims || []).forEach(x => { x.uid = uid(); }); }
     return s;
   }
@@ -158,10 +169,32 @@
     return v;
   }
 
+  // the whole house; with several floors, each one's walls, rooms and fixtures, all shifted the same way
   function toHouse() {
+    if (!S.lv) return toHouse1();
+    syncOut(); const cur = S.cur;
+    const rs = S.lv.flatMap(L => L.walls).map(rectOf); if (!rs.length) return null;
+    const sh = [-Math.min(...rs.map(r => r.x0)), -Math.min(...rs.map(r => r.y0))], allIds = new Set(S.lv.flatMap(L => L.rooms.map(r => r.id)));
+    let base = null, W = 0, D = 0; const levels = [];
+    try {
+      for (let i = 0; i < S.lv.length; i++) {
+        activate(i); const L = S.lv[i], h = S.walls.length ? toHouse1(sh, allIds) : null;
+        if (i === 0) { if (!h) return null; base = h; W = h.W; D = h.D; continue; }
+        if (!h || !h.rooms.length) continue;                                    // a floor with no walls or rooms yet is left out until it has some
+        W = Math.max(W, h.W); D = Math.max(D, h.D);
+        levels.push({ id: L.id, name: L.name, ...(L.elevation !== undefined ? { elevation: L.elevation } : {}), walls: h.walls, rooms: h.rooms, ...(h.fixtures && h.fixtures.length ? { fixtures: h.fixtures } : {}),
+          ...(h.floorRects ? { floorRects: h.floorRects } : {}), ...(L.voids.length ? { voids: L.voids.map(v => [r4(v.r[0] + sh[0]), r4(v.r[1] + sh[1]), r4(v.r[2] + sh[0]), r4(v.r[3] + sh[1])]) } : {}),
+          ...(h.editor && h.editor.splits ? { editor: { splits: h.editor.splits } } : {}) });
+      }
+    } finally { activate(cur); }
+    base.W = W; base.D = D;
+    if (levels.length) { base.levelName = S.lv[0].name; base.levels = levels; }
+    return base;
+  }
+  function toHouse1(sh, allIds) {
     if (!S.walls.length) return null;
     const rs = S.walls.map(rectOf);
-    const dx = -Math.min(...rs.map(r => r.x0)), dy = -Math.min(...rs.map(r => r.y0));
+    const dx = sh ? sh[0] : -Math.min(...rs.map(r => r.x0)), dy = sh ? sh[1] : -Math.min(...rs.map(r => r.y0));
     const walls = S.walls.map(w => {
       const r = rectOf(w), o = isArc(w) ? { arc: [r4(w.p[0] + dx), r4(w.p[1] + dy), r4(w.p[2] + dx), r4(w.p[3] + dy), r4(w.bulge)] } : isL(w) ? { line: [r4(w.p[0] + dx), r4(w.p[1] + dy), r4(w.p[2] + dx), r4(w.p[3] + dy)] } : { x0: r4(r.x0 + dx), y0: r4(r.y0 + dy), x1: r4(r.x1 + dx), y1: r4(r.y1 + dy) };
       if (isL(w) && Math.abs(w.t - (w.ext ? S.wallThickness.exterior : S.wallThickness.interior)) > 1e-6) o.t = w.t;
@@ -178,7 +211,7 @@
     const keep = shiftDeep(S.keep, dx, dy);
     if (keep.fixtures) keep.fixtures = keep.fixtures.map(({ uid: _u, ...rest }) => rest);
     if (keep.plan) { const pl = keep.plan; for (const k of ['labels', 'dims']) if (pl[k]) pl[k] = pl[k].map(({ uid: _u, ...rest }) => rest); }
-    const ids = new Set(rooms.map(r => r.id));
+    const ids = allIds || new Set(rooms.map(r => r.id));
     if (keep.items) keep.items = keep.items.map(it => (!it.room || it.room === 'house' || ids.has(it.room) ? it : { ...it, room: 'house' }));
     if (keep.roomOrder) keep.roomOrder = keep.roomOrder.filter(id => ids.has(id));
     if (keep.renderRooms) keep.renderRooms = keep.renderRooms.filter(id => ids.has(id));
@@ -209,11 +242,16 @@
 
   // ------------------------------------------------------------------ undo + autosave
   const undoS = [], redoS = [];
-  const snap = () => JSON.stringify({ meta: S.meta, heights: S.heights, wallThickness: S.wallThickness, floor: S.floor, walls: S.walls, rooms: S.rooms, splits: S.splits, keep: S.keep, underlay: S.underlay });
+  const snap = () => { syncOut(); return JSON.stringify({ meta: S.meta, heights: S.heights, wallThickness: S.wallThickness, floor: S.floor, walls: S.walls, rooms: S.rooms, splits: S.splits, keep: S.keep, underlay: S.underlay, lv: S.lv, cur: S.cur }); };
+  // floors: the lists of the current one are the live ones; these keep S.lv in step and switch between floors
+  function syncOut() { if (!S.lv) return; const L = S.lv[S.cur]; L.walls = S.walls; L.rooms = S.rooms; L.splits = S.splits; L.fixtures = S.keep.fixtures || (S.keep.fixtures = []); }
+  function loadIn() { if (!S.lv) return; const L = S.lv[S.cur]; S.walls = L.walls; S.rooms = L.rooms; S.splits = L.splits; S.keep.fixtures = L.fixtures; }
+  function activate(i) { syncOut(); S.cur = i; loadIn(); }
+  const curVoids = () => (S.lv ? S.lv[S.cur].voids : []);
   function checkpoint(before) { undoS.push(before || snap()); if (undoS.length > 150) undoS.shift(); redoS.length = 0; }
   function restoreSnap(str) {
     const o = JSON.parse(str), prevKey = S.underlay && S.underlay.key;
-    Object.assign(S, o); if (sel && !byUid(sel.uid) && !findOpening(sel.uid)) sel = null;
+    Object.assign(S, o); loadIn(); if (sel && !byUid(sel.uid) && !findOpening(sel.uid)) sel = null;
     if ((S.underlay && S.underlay.key) !== prevKey) loadUnderlayImage();
     changed();
   }
@@ -382,10 +420,75 @@
     $('#lSplits').innerHTML = S.splits.map(s => { const [p, q] = s.axis === 'h' ? [[s.a, s.c], [s.b, s.c]] : [[s.c, s.a], [s.c, s.b]];
       return `<g data-kind="split" data-uid="${s.uid}"><line x1="${N(p[0])}" y1="${N(p[1])}" x2="${N(q[0])}" y2="${N(q[1])}" stroke="transparent" stroke-width="12" class="nse"/>
         <line class="splitline" x1="${N(p[0])}" y1="${N(p[1])}" x2="${N(q[0])}" y2="${N(q[1])}" stroke-width="1.5"/></g>`; }).join('');
+    renderBelow();
     renderPlan(k);
     renderSel(); renderGhost();
     renderTrace();
     svg.setAttribute('class', 't-' + tool + (drag && drag.type === 'pan' ? ' panning' : '') + (S.underlay && underURL ? ' traced' : ''));
+  }
+  // ------------------------------------------------------------------ floors
+  function renderLevels() {
+    const box = $('#levelBox'); if (!box) return;
+    if (!S.lv) { box.innerHTML = `<p class="empty" style="margin:0 0 6px">One floor. Add another to draw upstairs: the outside walls are copied to start you off.</p><div class="actions"><button class="btn" data-lv="add">Add a floor above</button></div>`; return; }
+    box.innerHTML = S.lv.map((L, i) => `<button class="roomrow${i === S.cur ? ' on' : ''}" data-lv="${i}"><i style="background:var(--muted)"></i><span>${esc(L.name)}</span><small>${L.walls.length} walls \u00b7 ${L.rooms.length} rooms</small></button>`).join('')
+      + `<label class="field" style="margin-top:6px">Name of this floor<input id="lvName" value="${esc(S.lv[S.cur].name)}" autocomplete="off"></label>`
+      + `<div class="actions"><button class="btn" data-lv="add">Add a floor above</button>${S.cur > 0 ? '<button class="btn danger" data-lv="del">Delete this floor</button>' : ''}</div>`
+      + (S.cur > 0 ? '<p class="note">Use the Stairwell tool to cut the hole stairs come up through, and the Fixture tool for the stairs on the floor below.</p>' : '');
+  }
+  function addLevel() {
+    checkpoint();
+    if (!S.lv) { S.lv = [{ id: 'ground', name: 'Ground floor', walls: S.walls, rooms: S.rooms, splits: S.splits, fixtures: S.keep.fixtures || (S.keep.fixtures = []), voids: [] }]; S.cur = 0; }
+    syncOut();
+    const below = S.lv[S.lv.length - 1], n = S.lv.length + 1;
+    const walls = below.walls.filter(w => w.ext && w.status !== 'removed').map(w => ({ ...JSON.parse(JSON.stringify(w)), uid: uid(), openings: [], extra: { ...(w.extra && w.extra.id ? { id: w.extra.id } : {}) } }));
+    S.lv.push({ id: 'level' + n, name: n === 2 ? 'Upstairs' : 'Floor ' + n, walls, rooms: [], splits: [], fixtures: [], voids: [] });
+    activate(S.lv.length - 1); sel = null; changed(); fit();
+    toast('Added a floor above, with the outside walls copied from the floor below. Add its doors and windows, inside walls and rooms.');
+  }
+  function removeLevel() {
+    if (!S.lv || S.cur === 0) return;
+    checkpoint(); const i = S.cur; activate(i - 1); S.lv.splice(i, 1);
+    if (S.lv.length === 1) S.lv = null; else loadIn();
+    S.cur = Math.min(S.cur, (S.lv ? S.lv.length : 1) - 1); sel = null; changed();
+  }
+  $('#levelBox').addEventListener('click', e => {
+    const b = e.target.closest('[data-lv]'); if (!b) return;
+    const v = b.dataset.lv;
+    if (v === 'add') addLevel(); else if (v === 'del') removeLevel();
+    else { activate(+v); sel = null; endDraw(); changed(); }
+  });
+  $('#levelBox').addEventListener('change', e => { if (e.target.id === 'lvName' && S.lv && e.target.value.trim()) { checkpoint(); S.lv[S.cur].name = e.target.value.trim(); changed(); } });
+  // the floor below, faintly, under the one being drawn
+  function renderBelow() {
+    const g = $('#lBelow'); if (!g) return; let h = '';
+    if (S.lv && S.cur > 0) for (const w of S.lv[S.cur - 1].walls) {
+      if (w.status === 'removed') continue;
+      if (isArc(w)) h += `<path d="${arcD(w, 0, w.b)}" fill="none" stroke-width="${N(w.t)}"/>`;
+      else if (isL(w)) h += `<rect transform="${lineTf(w)}" x="0" y="${N(-w.t / 2)}" width="${N(w.b)}" height="${N(w.t)}"/>`;
+      else { const r = rectOf(w); h += `<rect x="${N(r.x0)}" y="${N(r.y0)}" width="${N(r.x1 - r.x0)}" height="${N(r.y1 - r.y0)}"/>`; }
+    }
+    if (S.lv && S.cur > 0) for (const f of S.lv[S.cur - 1].fixtures) if (f.k === 'stairs') { const r = FX.footprint(f); if (r) h += `<rect class="stairghost" x="${N(r[0])}" y="${N(r[1])}" width="${N(r[2] - r[0])}" height="${N(r[3] - r[1])}"/>`; }
+    g.innerHTML = h;
+  }
+  // stairwells: holes in the floor that the stairs from below come up through
+  function renderVoids(k) {
+    let h = '';
+    for (const v of curVoids()) {
+      const on = sel && sel.uid === v.uid, [x0, y0, x1, y1] = v.r;
+      h += `<g class="pvoid${on ? ' on' : ''}" data-kind="void" data-uid="${v.uid}"><rect x="${N(x0)}" y="${N(y0)}" width="${N(x1 - x0)}" height="${N(y1 - y0)}"/><line x1="${N(x0)}" y1="${N(y0)}" x2="${N(x1)}" y2="${N(y1)}"/><line x1="${N(x1)}" y1="${N(y0)}" x2="${N(x0)}" y2="${N(y1)}"/>`
+        + `<text x="${N((x0 + x1) / 2)}" y="${N((y0 + y1) / 2)}" font-size="${N(10 * k)}" text-anchor="middle">STAIRWELL</text></g>`;
+    }
+    return h;
+  }
+  function voidClick(p) {
+    if (!S.lv || S.cur === 0) { toast(S.lv ? 'The ground floor has no floor to cut a stairwell in: use this on a floor above.' : 'Add a floor above first (Floors, on the left).'); return; }
+    const q = snapPoint(p, false).p.map(r4);
+    if (!voidStart) { voidStart = q; return; }
+    const a = voidStart; voidStart = null; ghost = null;
+    if (Math.abs(q[0] - a[0]) < 0.5 || Math.abs(q[1] - a[1]) < 0.5) { renderGhost(); return; }
+    checkpoint();
+    const v = { uid: uid(), r: [Math.min(a[0], q[0]), Math.min(a[1], q[1]), Math.max(a[0], q[0]), Math.max(a[1], q[1])] };
+    S.lv[S.cur].voids.push(v); sel = { kind: 'void', uid: v.uid }; changed();
   }
   // ------------------------------------------------------------------ floor plan labels, dimensions and the walkthrough start
   const YAW = { N: 0, NE: -Math.PI / 4, E: -Math.PI / 2, SE: -3 * Math.PI / 4, S: Math.PI, SW: 3 * Math.PI / 4, W: Math.PI / 2, NW: Math.PI / 4 };
@@ -414,7 +517,7 @@
       h += `<g class="pstart${on ? ' on' : ''}" data-kind="start" data-uid="start"><circle cx="${N(st.x)}" cy="${N(st.y)}" r="${N(8 * k)}"/><line x1="${N(st.x)}" y1="${N(st.y)}" x2="${N(st.x + d[0] * 26 * k)}" y2="${N(st.y + d[1] * 26 * k)}" stroke-width="${N(3 * k)}"/>`
         + `<circle cx="${N(st.x + d[0] * 26 * k)}" cy="${N(st.y + d[1] * 26 * k)}" r="${N(4 * k)}"/><text x="${N(st.x)}" y="${N(st.y + 3.5 * k)}" font-size="${N(10 * k)}" text-anchor="middle">\u25b6</text></g>`;
     }
-    $('#lPlan').innerHTML = h;
+    $('#lPlan').innerHTML = h + renderVoids(k);
   }
   // ------------------------------------------------------------------ fixtures: plan symbols
   const FX = window.HouseFixtures;
@@ -567,6 +670,8 @@
       const w = g.rect[2] - g.rect[0], d = g.rect[3] - g.rect[1];
       h += dimText((g.rect[0] + g.rect[2]) / 2, g.rect[1] - 8 * k, fmt(FX.width(g.f)) + ' \u00d7 ' + fmt(FX.depth(g.f)), k);
       void w; void d;
+    } else if (g && g.kind === 'void') {
+      h += `<rect class="ghost" x="${N(Math.min(g.a[0], g.b[0]))}" y="${N(Math.min(g.a[1], g.b[1]))}" width="${N(Math.abs(g.b[0] - g.a[0]))}" height="${N(Math.abs(g.b[1] - g.a[1]))}" stroke-width="1.2"/>`;
     } else if (g && g.kind === 'dim') {
       h += `<line class="guide" x1="${N(g.a[0])}" y1="${N(g.a[1])}" x2="${N(g.b[0])}" y2="${N(g.b[1])}" stroke-width="1.5"/>` + dimText((g.a[0] + g.b[0]) / 2, (g.a[1] + g.b[1]) / 2 - 8 * k, fmt(Math.hypot(g.b[0] - g.a[0], g.b[1] - g.a[1])), k);
     } else if (g && g.kind === 'scale') {
@@ -590,6 +695,7 @@
     label: 'Click to put a room name on the floor plan. Drag a label to move it; edit its text on the right.',
     dim: 'Click two points to measure between them. A level or plumb pair of points makes a dimension line on the floor plan.',
     start: 'Click where the walkthrough should start. Drag the dot on the arrow to turn it.',
+    void: 'Click two opposite corners of the hole that the stairs come up through. This is for a floor above the ground floor.',
     scale: 'Click two points a known distance apart on the blueprint.',
     move: 'Drag the blueprint to line it up. Press <kbd>Esc</kbd> when it\'s in place.'
   };
@@ -741,7 +847,7 @@
     checkpoint(before); changed();
     toast('Made ' + made + ' room' + (made === 1 ? '' : 's') + '. Click each in the list on the left to name it.' + (leaky ? ' Some spaces leak outside and were skipped.' : ''));
   }
-  function endDraw() { draw = null; dimStart = null; lenBuf = ''; if (ghost && (ghost.kind === 'wall' || ghost.kind === 'split' || ghost.kind === 'dim')) ghost = null; }
+  function endDraw() { draw = null; dimStart = null; voidStart = null; lenBuf = ''; if (ghost && (ghost.kind === 'wall' || ghost.kind === 'split' || ghost.kind === 'dim')) ghost = null; }
 
   // wall + split drawing: click, click, click...
   const angled = e => tool === 'wall' && (wallCurve || wallAngle !== !!(e && e.shiftKey));              // the Angled button, turned over while Shift is held
@@ -1102,6 +1208,7 @@
     if (tool === 'fixture') return fixtureClick(p, e);
     if (tool === 'room') return roomClick(p);
     if (tool === 'scale') return scaleClick(snapPoint(p, true).p);
+    if (tool === 'void') return voidClick(p);
     if (tool === 'label') return labelClick(p);
     if (tool === 'dim') return dimClick(p, e);
     if (tool === 'start') return startClick(p);
@@ -1182,6 +1289,8 @@
     } else if (kind === 'plan') {
       const it = byUid(u); sel = { kind: 'plan', uid: u };
       drag = { type: 'plan', uid: u, start: p, orig: JSON.parse(JSON.stringify(it)), before };
+    } else if (kind === 'void') {
+      sel = { kind: 'void', uid: u }; drag = { type: 'pan-later', sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y };
     } else if (kind === 'start') {
       sel = { kind: 'start', uid: 'start' }; drag = { type: 'startmove', start: p, orig: { ...S.keep.start }, before };
     } else if (kind === 'room' || kind === 'split') {
@@ -1199,6 +1308,7 @@
     pointerHover(e, p);
   });
   function pointerHover(e, p) {
+    if (tool === 'void' && voidStart) { const q = snapPoint(p, e && e.altKey).p; ghost = { kind: 'void', a: voidStart, b: q }; renderGhost(); return; }
     if (tool === 'dim' && dimStart) { ghost = { kind: 'dim', a: dimStart, b: dimTo(p, e) }; renderGhost(); return; }
     if (tool === 'wall' || tool === 'split') {
       if (draw && tool === 'wall' && wallCurve && draw.chord) {
@@ -1323,7 +1433,7 @@
   $('#zFit').onclick = fit;
 
   // ------------------------------------------------------------------ keyboard
-  const KEYTOOL = { v: 'select', w: 'wall', d: 'door', n: 'window', o: 'cased', r: 'room', l: 'split', f: 'fixture', a: 'trace', b: 'label', m: 'dim', g: 'start' };
+  const KEYTOOL = { v: 'select', w: 'wall', d: 'door', n: 'window', o: 'cased', r: 'room', l: 'split', f: 'fixture', a: 'trace', b: 'label', m: 'dim', g: 'start', u: 'void' };
   document.addEventListener('keydown', e => {
     const typing = /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName) || !$('#dialog').hidden;
     if ((e.ctrlKey || e.metaKey) && !typing) {
@@ -1360,7 +1470,7 @@
   $('#wallMode').addEventListener('click', e => { const b = e.target.closest('[data-mode],[data-angle],[data-curve],[data-done]'); if (!b) return; if (b.dataset.done) { endDraw(); render(); return; } if (b.dataset.curve) wallCurve = !wallCurve; else if (b.dataset.angle) wallAngle = !wallAngle; else wallMode = b.dataset.mode; endDraw(); setTool('wall'); });
 
   // ------------------------------------------------------------------ fixtures: placing and moving
-  const SIZE_KEYS = ['box', 'upper', 'range', 'tub', 'ftub', 'shower', 'front', 'shelf', 'pumps', 'sink2', 'steps', 'deck'];
+  const SIZE_KEYS = ['box', 'upper', 'range', 'tub', 'ftub', 'stairs', 'shower', 'front', 'shelf', 'pumps', 'sink2', 'steps', 'deck'];
   let fxItem = 'base', fxFace = 's';
   const catOf = id => FX.CATALOG.find(c => c.id === id);
   const hasFront = c => !['tub', 'shelf', 'heater', 'ftub'].includes(c.make().k);
@@ -1452,6 +1562,7 @@
     if (sel.kind === 'split') S.splits = S.splits.filter(s => s.uid !== sel.uid);
     if (sel.kind === 'plan' && S.keep.plan) { const P = S.keep.plan; P.labels = (P.labels || []).filter(x => x.uid !== sel.uid); P.dims = (P.dims || []).filter(x => x.uid !== sel.uid); }
     if (sel.kind === 'start') delete S.keep.start;
+    if (sel.kind === 'void' && S.lv) S.lv[S.cur].voids = S.lv[S.cur].voids.filter(v => v.uid !== sel.uid);
     if (sel.kind === 'fixture') S.keep.fixtures = fxs().filter(f => f.uid !== sel.uid);
     if (sel.kind === 'opening') { const f = findOpening(sel.uid); if (f) f.w.openings = f.w.openings.filter(o => o !== f.o); }
     sel = null; changed();
@@ -1488,6 +1599,7 @@
        <div class="actions"><button class="btn" data-u="scale">${u.calibrated ? 'Re-scale' : 'Set scale'}</button><button class="btn" data-u="move" aria-pressed="${tool === 'move'}">Move</button>
          <button class="btn" data-u="upload">Replace</button><button class="btn danger" data-u="remove">Remove</button></div>`;
     // rooms
+    renderLevels();
     $('#findRoomsBtn').hidden = !live().length;
     $('#roomList').innerHTML = S.rooms.length ? S.rooms.map((r, i) => `<button class="roomrow${sel && sel.uid === r.uid ? ' on' : ''}" data-room="${r.uid}" style="--c:hsl(${roomHue(i)} 60% 55%)"><i></i><span>${esc(r.name)}</span><small>${esc(r.short || r.id)}</small></button>`).join('')
       : '<p class="empty">No rooms yet. Use the Room tool and click inside each space.</p>';
@@ -1646,6 +1758,12 @@
       const [a, b] = dimEnds(it);
       h += `<h3>${fmt(Math.hypot(b[0] - a[0], b[1] - a[1]))} dimension</h3>${field('Text (blank = the measured length)', 'pl_label', it.label || '')}
         <div class="actions"><button class="btn danger" data-act="delete">Delete dimension</button></div>`;
+    } else if (sel && sel.kind === 'void' && curVoids().find(v => v.uid === sel.uid)) {
+      const v = curVoids().find(q => q.uid === sel.uid); title = 'Stairwell';
+      h += `<h3>${fmt(v.r[2] - v.r[0])} \u00d7 ${fmt(v.r[3] - v.r[1])} stairwell</h3><div class="pair">${field('Left x', 'vd_0', v.r[0], { len: 1 })}${field('Top y', 'vd_1', v.r[1], { len: 1 })}</div>
+        <div class="pair">${field('Right x', 'vd_2', v.r[2], { len: 1 })}${field('Bottom y', 'vd_3', v.r[3], { len: 1 })}</div>
+        <p class="note">A hole in this floor, over the stairs that come up from the floor below. Match it to the stairs' footprint.</p>
+        <div class="actions"><button class="btn danger" data-act="delete">Delete stairwell</button></div>`;
     } else if (sel && sel.kind === 'start' && S.keep.start) {
       const st = S.keep.start; title = 'Walkthrough start';
       h += `<h3>Walkthrough start</h3><div class="pair">${field('x', 'st_x', st.x, { len: 1 })}${field('y', 'st_y', st.y, { len: 1 })}</div>
@@ -1784,6 +1902,7 @@
       if (f === 'st_x' || f === 'st_y') { if (v == null) return false; st[f === 'st_x' ? 'x' : 'y'] = r4(v); return; }
       if (f === 'st_face') { st.yaw = YAW[v]; return; }
     }
+    if (sel && sel.kind === 'void' && /^vd_[0-3]$/.test(f)) { const vd = curVoids().find(q => q.uid === sel.uid); if (!vd || v == null) return false; const nr = vd.r.slice(); nr[+f[3]] = r4(v); if (nr[2] - nr[0] < 0.5 || nr[3] - nr[1] < 0.5) return false; vd.r = nr; return; }
     if (/^nt_/.test(f)) {
       const m = /^nt_(title|ord|items)_(\d+)$/.exec(f), c = m && S.keep.plan && S.keep.plan.notes[+m[2]]; if (!c) return false;
       if (m[1] === 'title') c.title = v; else if (m[1] === 'ord') { if (v) c.ordered = true; else delete c.ordered; } else c.items = v.split('\n').map(x => x.trim()).filter(Boolean);
@@ -1861,6 +1980,7 @@
     if (!src.walls.some(w => w.ext)) out.push('No outside walls yet (siding and the walkthrough start need them).');
     if (!src.rooms.length) out.push('No rooms yet: use the Room tool and click inside each space.');
     else HouseCore.validate(src).forEach(p => out.push(p));
+    if (S.lv) S.lv.forEach((L, i) => { if (i > 0 && !(L.walls.length && L.rooms.length)) out.push(`${L.name} has no ${L.walls.length ? 'rooms' : 'walls'} yet, so it is left out of the 3D preview and the Paint Studio.`); });
     return out;
   }
   function renderStatus() {
@@ -1880,8 +2000,9 @@
     shapes = {};
     try {
       const src = toHouse(); if (!src || !src.rooms.length) return;
-      const rs = S.walls.map(rectOf), dx = -Math.min(...rs.map(r => r.x0)), dy = -Math.min(...rs.map(r => r.y0));
-      const { ROOMS } = HouseCore.build(src);
+      const rs = (S.lv ? S.lv.flatMap(L => L.walls) : S.walls).map(rectOf), dx = -Math.min(...rs.map(r => r.x0)), dy = -Math.min(...rs.map(r => r.y0));
+      const built = HouseCore.build(src), L = built.LEVELS && built.LEVELS[S.cur]; if (!L) return;
+      const ROOMS = L.ROOMS;
       ROOMS.rooms.forEach((r, i) => { const u = S.rooms[i]; if (u && r.shape.length) shapes[u.uid] = r.shape.map(q => [q[0] - dx, q[1] - dy, q[2] - dx, q[3] - dy]); });
     } catch { shapes = {}; }
   }
@@ -2018,7 +2139,7 @@
     let built;
     try { built = HouseCore.build(src); } catch (e) { msg.hidden = false; msg.textContent = e.message; return; }
     if (P3.B) { P3.scene.remove(P3.B.root); P3.B.root.traverse(o => { o.geometry && o.geometry.dispose(); }); }
-    const B = window.House3DBuild(built.HOUSE, built.ROOMS);
+    const B = window.House3DBuild(built.HOUSE, built.ROOMS, built.LEVELS);
     B.ceilings.visible = false; P3.scene.add(B.root); P3.B = B;
     B.loadFloor(() => { });
     msg.hidden = !!S.rooms.length; msg.textContent = 'Walls only: add rooms to see paintable surfaces and ceilings.';
@@ -2046,7 +2167,7 @@
       } catch { toast('Couldn\'t open ' + want); }
       try { history.replaceState(null, '', location.pathname); } catch { }
     }
-    if (!loaded) { const a = lsGet(AUTOSAVE); if (a) { try { Object.assign(S, JSON.parse(a)); } catch { } } }
+    if (!loaded) { const a = lsGet(AUTOSAVE); if (a) { try { Object.assign(S, JSON.parse(a)); loadIn(); } catch { } } }
     // uids from saved state must not collide with new ones
     const used = JSON.stringify(S).match(/"uid":"u([0-9a-z]+)"/g) || [];
     used.forEach(m => { const n = parseInt(m.slice(8, -1), 36); if (n >= uidN) uidN = n + 1; });

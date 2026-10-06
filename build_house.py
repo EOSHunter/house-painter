@@ -60,6 +60,11 @@ SLUG = re.sub(r'[^a-z0-9]+', '-', ((SCHEME or {}).get('scheme', {}).get('name') 
 
 FT = 0.3048
 W, D, E, T = H['W'], H['D'], H['E'], H['T']
+ZOFF = 0.0                                                  # height of the floor being built above the ground floor, in feet
+H0 = H
+LEVELS = [{'house': H0, 'elevation': 0.0, 'slab': 0.0, 'ceilVoids': H0.get('ceilVoids') or []}] + [
+    {'house': L['house'], 'elevation': L['elevation'], 'slab': L.get('slab', 0.9), 'ceilVoids': L.get('ceilVoids') or [], 'name': L.get('name')} for L in H0.get('levels', [])]
+TOP = max(L['elevation'] + (L['house'].get('ceilingMax') or L['house']['ceilingHeight']) for L in LEVELS)    # the height of the tallest ceiling
 CEIL = H['ceilingHeight']                                   # openings carry their own z0 / z1 (sill-head, 0-door height)
 CEILMAX = H.get('ceilingMax') or CEIL
 
@@ -130,7 +135,7 @@ M = {k: fixed(*v) for k, v in {
     'brass': ('Brass', '#B8923C', 0.3, 1.0), 'chrome': ('Chrome', '#D8DADD', 0.12, 1.0), 'porc': ('Porcelain', '#FBFBFA', 0.1),
     'winframe': ('Window_Frame', '#F7F7F5', 0.45), 'glass': ('Glass', '#FFFFFF', 0.0, 0.0, 1.0), 'wire': ('Wire_Shelf', '#E8E8E6', 0.5),
     'heater': ('Water_Heater', '#E2E4E6', 0.4), 'pump': ('Pump', '#35607F', 0.45), 'skirt': ('Skirting', '#C9C6BD', 0.85),
-    'deck': ('Deck_Wood', '#7A5A3B', 0.75), 'ground': ('Ground', '#6E7E58', 0.95), 'reveal': ('Reveal', '#3A3C40', 0.6)}.items()}
+    'slab': ('Floor_Slab', '#CFCBC2', 0.85), 'stair': ('Stair_Wood', '#A88B66', 0.7), 'deck': ('Deck_Wood', '#7A5A3B', 0.75), 'ground': ('Ground', '#6E7E58', 0.95), 'reveal': ('Reveal', '#3A3C40', 0.6)}.items()}
 
 def part_group(key):
     m = re.match(r'^(\w+):(door|drawer)\d+$', key); return m.group(1) if m else None
@@ -139,7 +144,7 @@ def default_hex(key):
     g = part_group(key)
     if g: return DEFAULTS.get(g, DEFAULTS['wall'])
     if key.startswith('C:'): return DEFAULTS['ceiling']
-    if key.startswith('EXT-'): return DEFAULTS['siding']
+    if re.match(r'^EXT\d*-', key): return DEFAULTS['siding']
     return DEFAULTS['wall']
 def default_sheen(key):
     if key.startswith('C:'): return 'flat'
@@ -262,7 +267,7 @@ def floor_material():
     return m
 
 # ----------------------------------------------------------------------------- geometry builder
-def P(x, y, z): return Vector((x * FT, -y * FT, z * FT))
+def P(x, y, z): return Vector((x * FT, -y * FT, (z + ZOFF) * FT))
 
 class Obj:
     """One Blender object: a bmesh with per-face materials and UVs in feet."""
@@ -333,8 +338,28 @@ def obj(c, name):
 
 # ----------------------------------------------------------------------------- walls (same algorithm as house3d.js)
 SURF_BY_WALL = {}
-for s in H['surfaces']:
-    if s.get('wall') is not None: SURF_BY_WALL.setdefault(s['wall'], []).append(s)
+def set_level(Hk, zoff):
+    """Build the next floor: the builders below read these module-level names."""
+    global H, W, D, E, T, CEIL, CEILMAX, ZOFF
+    H = Hk; W, D, E, T = H['W'], H['D'], H['E'], H['T']; CEIL = H['ceilingHeight']; CEILMAX = H.get('ceilingMax') or CEIL; ZOFF = zoff
+    SURF_BY_WALL.clear()
+    for sf in H['surfaces']:
+        if sf.get('wall') is not None: SURF_BY_WALL.setdefault(sf['wall'], []).append(sf)
+set_level(H0, 0.0)
+
+def subtract_rects(rects, holes):
+    cur = [list(q) for q in rects]
+    for hx0, hy0, hx1, hy1 in holes:
+        nxt = []
+        for x0, y0, x1, y1 in cur:
+            if hx0 >= x1 or hx1 <= x0 or hy0 >= y1 or hy1 <= y0: nxt.append([x0, y0, x1, y1]); continue
+            if hy0 > y0: nxt.append([x0, y0, x1, hy0])
+            if hy1 < y1: nxt.append([x0, hy1, x1, y1])
+            ya, yb = max(y0, hy0), min(y1, hy1)
+            if hx0 > x0: nxt.append([x0, ya, hx0, yb])
+            if hx1 < x1: nxt.append([hx1, ya, x1, yb])
+        cur = nxt
+    return cur
 
 def build_walls():
     for wi, w in enumerate(H['walls']):
@@ -546,7 +571,7 @@ def build_slants():
 
 # ----------------------------------------------------------------------------- cabinets, fixtures (same frames and numbering as house3d.js)
 # Fixtures are built in their own frame (fixtures.js): p = depth from the back to the front, q = across the front.
-DEFAULT_FRONT = {'app': 'e', 'range': 'e', 'front': 'e', 'shower': 'n', 'sink2': 's', 'barn': 's'}
+DEFAULT_FRONT = {'app': 'e', 'range': 'e', 'front': 'e', 'shower': 'n', 'sink2': 's', 'barn': 's', 'stairs': 'e'}
 def facing(f):
     if f['k'] == 'toilet': return f.get('dir', 'w')
     return f.get('front') or DEFAULT_FRONT.get('app' if f['k'] == 'box' and f.get('c') == 'app' else f['k'])
@@ -665,6 +690,10 @@ def build_fixtures():
         elif k == 'ftub':                                      # freestanding: an oval shell, a darker well, a tap at one end
             fx.ellipse(f['cx'], f['cy'], f['rx'], f['ry'], 0, 2.0, M['porc']); fx.ellipse(f['cx'], f['cy'], f['rx'] * 0.84, f['ry'] * 0.78, 1.97, 2.01, M['reveal'])
             tx, ty = (f['cx'] - f['rx'] * 0.78, f['cy']) if f['rx'] >= f['ry'] else (f['cx'], f['cy'] - f['ry'] * 0.78); fx.ellipse(tx, ty, 0.05, 0.05, 2.0, 2.7, M['chrome'])
+        elif k == 'stairs':                                    # a straight flight: solid steps, the top one level with the floor above
+            F = Frame(f); rise = f.get('rise') or (CEIL + 0.9); n = max(2, round(rise / 0.6)); rh = rise / n; tr = F.P / n
+            for i in range(n): F.box(fx, tr * i, 0, 0, tr * (i + 1), F.Q, rh * (i + 1), M['stair'])
+            F.box(fx, 0, 0, 0, F.P, 0.06, rise * 0.5 + 1.0, M['stair']); F.box(fx, 0, F.Q - 0.06, 0, F.P, F.Q, rise * 0.5 + 1.0, M['stair'])
         elif k == 'heater': fx.ellipse(f['cx'], f['cy'], f['r'] * 0.85, f['r'] * 0.85, 0, 4.4, M['heater'])
         elif k == 'pumps': fx.box(x0, y0, 0, x1, y1, 2.0, M['pump'])
         elif k == 'front':                                     # front-loading washer / dryer
@@ -704,14 +733,19 @@ def build_fixtures():
         elif k == 'deck':
             st = obj('Exterior', 'Steps'); st.box(x0, y0 + 0.9, GROUND_Z, x1, y1, -0.25, M['deck']); st.box(x0, y0, GROUND_Z, x1, y0 + 0.9, -1.15, M['deck'])
 
-def build_shell():
+def build_shell(upper=False, slab=0.9, voids=()):
     fl = obj('Floor', 'Floor'); fm = floor_material()
     for x0, y0, x1, y1 in H.get('floorRects') or [[E, E, W - E, D - E]]:
         vs = [fl.bm.verts.new(P(x, y, 0)) for x, y in ((x0, y0), (x1, y0), (x1, y1), (x0, y1))]; fl.face(vs, fm)
-    if H.get('slants'):
-        for x0, y0, x1, y1 in H.get('floorRects') or []: obj('Exterior', 'Skirting').box(x0 - 0.3, y0 - 0.3, GROUND_Z, x1 + 0.3, y1 + 0.3, -0.02, M['skirt'])
-    else: obj('Exterior', 'Skirting').box(-0.05, -0.05, GROUND_Z, W + 0.05, D + 0.05, -0.02, M['skirt'])
-    obj('Exterior', 'Ground').box(-150, -150, GROUND_Z - 0.5, W + 150, D + 150, GROUND_Z, M['ground'])
+    if upper:                                                 # a floor above: the slab it stands on (under the walls too), with its stairwell left open
+        ex = E + 0.05
+        for x0, y0, x1, y1 in subtract_rects([[a - ex, b - ex, c + ex, d + ex] for a, b, c, d in (H.get('floorRects') or [[E, E, W - E, D - E]])], H.get('voids') or []):
+            obj('Floor', 'Slab').box(x0, y0, -slab, x1, y1, -0.02, M['slab'])
+    else:
+        if H.get('slants'):
+            for x0, y0, x1, y1 in H.get('floorRects') or []: obj('Exterior', 'Skirting').box(x0 - 0.3, y0 - 0.3, GROUND_Z, x1 + 0.3, y1 + 0.3, -0.02, M['skirt'])
+        else: obj('Exterior', 'Skirting').box(-0.05, -0.05, GROUND_Z, W + 0.05, D + 0.05, -0.02, M['skirt'])
+        obj('Exterior', 'Ground').box(-150, -150, GROUND_Z - 0.5, W + 150, D + 150, GROUND_Z, M['ground'])
     k = 0
     for r in H['rooms']:                                      # one ceiling per room, painted with its own key
         c = obj('Ceiling', 'Ceiling_' + r['id']); m = paint_mat('C:' + r['id']); cd = r.get('ceiling')
@@ -723,6 +757,7 @@ def build_shell():
                 elif cd['ridge'] == 'y' and a < v - 1e-6 and c2 > v + 1e-6: cut += [[a, b, v, d], [v, b, c2, d]]
                 else: cut.append([a, b, c2, d])
             rects = cut
+        if voids: rects = subtract_rects(rects, voids)                # the stairwell above is open
         for x0, y0, x1, y1 in rects:                          # pieces may overlap: a hair of height apart so no faces coincide
             k += 1
             if cd and cd['type'] != 'flat':                   # a sloping ceiling: a thin slab whose corners follow the plane
@@ -736,7 +771,10 @@ def build_shell():
                 c.box(x0, y0, zf - 0.004 - 0.0003 * k, x1, y1, zf + 0.06, m)
     obj('Ceiling', 'Roof_Lighttight').box(0, 0, CEILMAX + 0.07, W, D, CEILMAX + 0.4, M['cut'])   # stops sky light leaking in at ceiling edges
 
-build_shell(); build_walls(); build_slants(); build_fixtures()
+for li, L in enumerate(LEVELS):                           # each floor in turn, at its own height
+    set_level(L['house'], L['elevation'])
+    build_shell(upper=li > 0, slab=L['slab'], voids=L['ceilVoids']); build_walls(); build_slants(); build_fixtures()
+set_level(H0, 0.0)
 for o in list(OBJS.values()): o.finish()
 COLL['Ceiling'].hide_render = True
 
@@ -748,12 +786,13 @@ bg = world.node_tree.nodes['Background']
 sun_d = bpy.data.lights.new('Sun', 'SUN'); sun_d.angle = math.radians(1.5)
 sun = bpy.data.objects.new('Sun', sun_d); sun.rotation_euler = (math.radians(50), math.radians(8), math.radians(-35)); coll('Lighting').objects.link(sun)
 ROOM_LIGHTS = []
-for r in H['rooms']:
+ALL_ROOMS = [(r, L['elevation']) for L in LEVELS for r in L['house']['rooms']]          # every room of every floor, with the height of its floor
+for r, zl in ALL_ROOMS:
     big = max(r['rects'], key=lambda q: (q[2] - q[0]) * (q[3] - q[1]))
     cx, cy = (big[0] + big[2]) / 2, (big[1] + big[3]) / 2
     area = sum((q[2] - q[0]) * (q[3] - q[1]) for q in r['rects'])
     ld = bpy.data.lights.new('Light_' + r['id'], 'AREA'); ld.shape = 'SQUARE'; ld.size = 1.0
-    lo = bpy.data.objects.new('Light_' + r['id'], ld); lo.location = (cx * FT, -cy * FT, (ceil_h(r.get('ceiling'), cx, cy) - 0.15) * FT)
+    lo = bpy.data.objects.new('Light_' + r['id'], ld); lo.location = (cx * FT, -cy * FT, (zl + ceil_h(r.get('ceiling'), cx, cy) - 0.15) * FT)
     coll('Room_Lights').objects.link(lo); ROOM_LIGHTS.append((ld, area))
 def set_light(mode, inside):
     """inside: the camera is in a room with the ceiling on, so daylight needs help from ceiling lights."""
@@ -775,18 +814,19 @@ pv = lambda p: Vector((p[0] * FT, -p[1] * FT, p[2] * FT))          # plan feet -
 
 VIEWS = {}                                                     # name -> (camera object, inside?)
 cx, cy = W / 2 * FT, -D / 2 * FT
-c = make_cam('Cam_doll'); c.data.lens = 30; look(c, (cx + 9 * K, cy - 15.5 * K, 13 * K), (cx, cy + 0.3, 0)); VIEWS['doll'] = (c, False)
+TOPM = (TOP - CEIL) * FT if len(LEVELS) > 1 else 0.0         # more height to fit in with several floors
+c = make_cam('Cam_doll'); c.data.lens = 30; look(c, (cx + 9 * K, cy - 15.5 * K, 13 * K + TOPM * 1.6), (cx, cy + 0.3, TOPM * 0.35)); VIEWS['doll'] = (c, False)
 c = make_cam('Cam_top'); c.data.type = 'ORTHO'; c.data.ortho_scale = max(W, D * 1.6) * FT * 1.1; look(c, (cx, cy, 40), (cx, cy, 0)); VIEWS['top'] = (c, False)
-c = make_cam('Cam_out'); c.data.lens = 28; look(c, (cx - 8 * K, cy - 16 * K, 3.0), (cx, cy, 1.2)); VIEWS['out'] = (c, False)
-ROOM_VIEW_IDS = H.get('renderRooms') or [r['id'] for r in H['rooms'] if r.get('area', 0) >= 40]
-for r in H['rooms']:                                          # eye-level corner shot: stand in one corner, look across to the far one
+c = make_cam('Cam_out'); c.data.lens = 28; look(c, (cx - 8 * K, cy - 16 * K * (1 + TOPM / 12), 3.0 + TOPM * 0.5), (cx, cy, 1.2 + TOPM * 0.4)); VIEWS['out'] = (c, False)
+ROOM_VIEW_IDS = [i for L in LEVELS for i in (L['house'].get('renderRooms') or [r['id'] for r in L['house']['rooms'] if r.get('area', 0) >= 40])]
+for r, zl in ALL_ROOMS:                                       # eye-level corner shot: stand in one corner, look across to the far one
     big = max(r['rects'], key=lambda q: (q[2] - q[0]) * (q[3] - q[1]))
     x0, y0, x1, y1 = big
     inset = min(1.0, (x1 - x0) / 4, (y1 - y0) / 4)
     corners = [(x0 + inset, y0 + inset), (x1 - inset, y0 + inset), (x1 - inset, y1 - inset), (x0 + inset, y1 - inset)]
     ex, ey = corners[2]; tx, ty = corners[0]                    # stand in the south-east corner, look north-west
     c = make_cam('Cam_' + r['id']); c.data.sensor_fit = 'HORIZONTAL'; c.data.angle = math.radians(92)
-    look(c, pv((ex, ey, 5.0)), pv((tx, ty, 3.6))); VIEWS[r['id']] = (c, True)
+    look(c, pv((ex, ey, zl + 5.0)), pv((tx, ty, zl + 3.6))); VIEWS[r['id']] = (c, True)
 ex_view = (SCHEME or {}).get('view', {})
 if ex_view.get('camera') and any(ex_view['camera'].get('position') or [0]):
     cam = ex_view['camera']; c = make_cam('Cam_export'); c.data.sensor_fit = 'VERTICAL'; c.data.angle = math.radians(ex_view.get('fov') or 60)

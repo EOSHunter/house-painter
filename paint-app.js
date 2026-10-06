@@ -11,12 +11,15 @@
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   // ------------------------------------------------------------------ paint targets
+  const LV = window.LEVELS || [{ index: 0, id: 'ground', name: '', elevation: 0, HOUSE: H, ROOMS: R }], MULTI = LV.length > 1;   // the floors of the house (just one for most)
+  const TOPZ = Math.max(...LV.map(L => L.elevation + (L.ROOMS.ceilingMax || 8)));                                             // the height of the tallest floor's ceiling
+  const lvName = i => (MULTI ? LV[i || 0].name : '');
   const TARGETS = {};
   R.surfaces.forEach(s => {
     const ext = s.room === 'exterior';
     TARGETS[s.id] = { key: s.id, room: ext ? 'house' : s.room, kind: ext ? 'siding' : (s.kind === 'end' ? 'end' : 'wall'), area: s.area, s,
-      label: ext ? `Siding \u00b7 ${s.dir} side` : (s.kind === 'end' ? 'Wall end' : s.name.split(' \u00b7 ')[1]),
-      full: ext ? `Exterior siding \u00b7 ${s.dir} side` : s.name };
+      label: ext ? `${MULTI ? lvName(s.level) + ' siding' : 'Siding'} \u00b7 ${s.dir} side` : (s.kind === 'end' ? 'Wall end' : s.name.split(' \u00b7 ')[1]),
+      full: ext ? `${MULTI ? lvName(s.level) + ' exterior siding' : 'Exterior siding'} \u00b7 ${s.dir} side` : s.name };
   });
   R.rooms.forEach(r => { TARGETS['C:' + r.id] = { key: 'C:' + r.id, room: r.id, kind: 'ceiling', area: r.area, label: 'Ceiling', full: r.name + ' \u00b7 Ceiling' }; });
   // the house's own items (cabinet runs, special doors) plus the whole-house groups every house has
@@ -90,7 +93,7 @@
   // true colour: flat, neutral light, so every wall shows the chip colour. The others are previews of real light.
   const lamps = Object.values(B.roomInfo).map(ri => {
     const l = new T.PointLight(0xffbf80, 0, 17, 2);           // ~2700K bulb at each room's ceiling
-    l.position.set(ri.cx, 7.4, ri.cy); scene.add(l); return l;
+    l.position.set(ri.cx, (ri.elevation || 0) + 7.4, ri.cy); scene.add(l); return l;
   });
   let envTex = null;
   try { const pm = new T.PMREMGenerator(renderer); envTex = pm.fromScene(new T.RoomEnvironment(), 0.04).texture; } catch (e) { envTex = null; }
@@ -163,6 +166,20 @@
 
   // ------------------------------------------------------------------ views
   const C3 = B.center;
+  // floors: show them up to one (so the ones below can be looked into); a wall you choose on a floor that is hidden brings it back
+  let shownTo = LV.length - 1;
+  function showLevels(k) {
+    shownTo = Math.max(0, Math.min(LV.length - 1, k));
+    if (B.levels) B.levels.forEach((part, i) => { if (i > 0) { part.root.visible = i <= shownTo; (part.moved || []).forEach(m => { m.visible = i <= shownTo; }); } });
+    if (B.levels) B.levels[0].root.visible = true;
+    document.querySelectorAll('#levelSeg [data-level]').forEach(b => b.setAttribute('aria-pressed', +b.dataset.level === shownTo));
+    requestRender();
+  }
+  if (MULTI) {
+    const seg = $('#levelSeg'); seg.hidden = false;
+    seg.innerHTML = '<span class="lvlabel">Floors</span>' + LV.map((L, i) => `<button class="btn" data-level="${i}" aria-pressed="${i === shownTo}" title="Show up to and including this floor">${esc(i === LV.length - 1 && i > 0 ? 'All floors' : L.name)}</button>`).join('');
+    seg.addEventListener('click', e => { const b = e.target.closest('[data-level]'); if (b) showLevels(+b.dataset.level); });
+  }
   function setOrbit(free) {
     controls.enableZoom = true; controls.enablePan = free; controls.rotateSpeed = free ? 0.8 : 0.45;
     controls.minDistance = free ? 8 : 0.05; controls.maxDistance = free ? 160 : 40; controls.maxPolarAngle = free ? 1.48 : Math.PI - 0.15; controls.minPolarAngle = 0;
@@ -181,36 +198,73 @@
 
   // ------------------------------------------------------------------ walk mode (first person, WASD + mouse look)
   const EYE = 5.3, RADIUS = 0.6;
-  const walk = { on: false, yaw: 0, pitch: 0, x: 0, y: 0, keys: new Set(), last: 0, locked: false, drag: null };
-  const OBST = [];                                           // plan rects [x0, y0, x1, y1] you can't walk through
-  for (const w of H.walls) {
-    if (w.status === 'removed') continue;
-    const horiz = (w.x1 - w.x0) >= (w.y1 - w.y0), s = horiz ? w.x0 : w.y0, e = horiz ? w.x1 : w.y1;
-    const gaps = w.ext ? [] : (w.openings || []).filter(o => o.type === 'door' || o.type === 'cased').sort((p, q) => p.a - q.a);
-    const push = (a, b) => { if (b - a > 0.01) OBST.push(horiz ? [a, w.y0, b, w.y1] : [w.x0, a, w.x1, b]); };
-    let cur = s; gaps.forEach(o => { push(cur, o.a); cur = o.b; }); push(cur, e);   // interior doorways are open; outside doors stay shut
-  }
-  for (const f of H.fixtures) {
-    if (f.st === 'removed') continue;
-    if (['box', 'range', 'front', 'pumps', 'tub', 'ftub', 'shower', 'heater', 'toilet'].includes(f.k)) { const r = window.HouseFixtures.footprint(f); if (r) OBST.push(r); }
-  }
-  // angled walls: you stay a body's width from the wall, except where there is a doorway (outside doors stay shut)
-  const SLANTS = H.slants.filter(S => S.status !== 'removed');
-  const slantBlocks = (x, y) => SLANTS.some(S => {
+  const walk = { on: false, yaw: 0, pitch: 0, x: 0, y: 0, z: 0, level: 0, stair: null, keys: new Set(), last: 0, locked: false, drag: null };
+  const FXH = window.HouseFixtures;
+  // what blocks you on each floor: wall pieces (interior doorways are open, outside doors stay shut), big fixtures, and angled walls
+  const COLL = LV.map(L => {
+    const Hk = L.HOUSE, OBST = [];
+    for (const w of Hk.walls) {
+      if (w.status === 'removed') continue;
+      const horiz = (w.x1 - w.x0) >= (w.y1 - w.y0), s0 = horiz ? w.x0 : w.y0, e0 = horiz ? w.x1 : w.y1;
+      const gaps = w.ext ? [] : (w.openings || []).filter(o => o.type === 'door' || o.type === 'cased').sort((p, q) => p.a - q.a);
+      const push = (a, b) => { if (b - a > 0.01) OBST.push(horiz ? [a, w.y0, b, w.y1] : [w.x0, a, w.x1, b]); };
+      let cur = s0; gaps.forEach(o => { push(cur, o.a); cur = o.b; }); push(cur, e0);
+    }
+    for (const f of Hk.fixtures) {
+      if (f.st === 'removed') continue;
+      if (['box', 'range', 'front', 'pumps', 'tub', 'ftub', 'shower', 'heater', 'toilet'].includes(f.k)) { const r = FXH.footprint(f); if (r) OBST.push(r); }
+    }
+    return { OBST, SLANTS: Hk.slants.filter(S => S.status !== 'removed') };
+  });
+  const slantBlocks = (SLANTS, x, y) => SLANTS.some(S => {
     const dx = x - S.p0[0], dy = y - S.p0[1], t = dx * S.u[0] + dy * S.u[1], d = dx * S.nr[0] + dy * S.nr[1];
     if (t < -S.e0 - RADIUS || t > S.len + S.e1 + RADIUS || Math.abs(d) > S.t / 2 + RADIUS) return false;
     return !(!S.ext && S.openings.some(o => (o.type === 'door' || o.type === 'cased') && t > o.a && t < o.b));
   });
-  const blocked = (x, y) => OBST.some(([x0, y0, x1, y1]) => x > x0 - RADIUS && x < x1 + RADIUS && y > y0 - RADIUS && y < y1 + RADIUS) || (SLANTS.length > 0 && slantBlocks(x, y));
-  function walkCam() { camera.position.set(walk.x, EYE, walk.y); camera.rotation.set(walk.pitch, walk.yaw, 0, 'YXZ'); }
+  // stairs: a flight on one floor climbs to the next. You step on at its foot (or, from above, at its head), and stay between its sides.
+  const STAIRS = [];
+  LV.forEach(L => L.HOUSE.fixtures.forEach(f => { if (f.k === 'stairs' && f.st !== 'removed' && FXH.footprint(f)) STAIRS.push({ r: FXH.footprint(f), dir: FXH.facing(f) || 'e', rise: f.rise ?? 9, from: L.index, z0: L.elevation }); }));
+  const stairP = (S, x, y) => { const [x0, y0, x1, y1] = S.r; return S.dir === 'e' ? (x - x0) / (x1 - x0) : S.dir === 'w' ? (x1 - x) / (x1 - x0) : S.dir === 's' ? (y - y0) / (y1 - y0) : (y1 - y) / (y1 - y0); };
+  const stairSide = (S, x, y, m = 0) => S.r[0] - m <= x && x <= S.r[2] + m && S.r[1] - m <= y && y <= S.r[3] + m;       // within its footprint (inflated by m)
+  const stairLat = (S, x, y) => (S.dir === 'e' || S.dir === 'w' ? y > S.r[1] + 0.25 && y < S.r[3] - 0.25 : x > S.r[0] + 0.25 && x < S.r[2] - 0.25);
+  const blockedAt = (level, x, y) => {
+    const c = COLL[level];
+    if (c.OBST.some(([x0, y0, x1, y1]) => x > x0 - RADIUS && x < x1 + RADIUS && y > y0 - RADIUS && y < y1 + RADIUS) || (c.SLANTS.length > 0 && slantBlocks(c.SLANTS, x, y))) return true;
+    for (const S of STAIRS) {                                  // a flight is a wall on its floor, except at the end you step on from; the stairwell is a railing on the floor above
+      if (S.from === level && stairSide(S, x, y, RADIUS) && !(stairSide(S, x, y) && stairP(S, x, y) < 0.15 && stairLat(S, x, y))) return true;
+      if (S.from + 1 === level && stairSide(S, x, y, RADIUS) && !(stairSide(S, x, y) && stairP(S, x, y) > 0.85 && stairLat(S, x, y))) return true;
+    }
+    return false;
+  };
+  const blocked = (x, y) => blockedAt(walk.level, x, y);
+  window.__walk = { walk, walkTo, blockedAt, STAIRS, requestRender };                          // a handle for testing the walkthrough
+  function walkCam() { camera.position.set(walk.x, EYE + walk.z, walk.y); camera.rotation.set(walk.pitch, walk.yaw, 0, 'YXZ'); }
+  // one step: on a flight your height follows it; leave at either end and you are on that floor
+  function walkTo(nx, ny) {
+    const S = walk.stair;
+    if (S) {
+      if (!stairLat(S, nx, ny)) return false;
+      const p = stairP(S, nx, ny);
+      if (p < 0) { if (blockedAt(S.from, nx, ny)) return false; walk.stair = null; walk.level = S.from; walk.z = S.z0; walk.x = nx; walk.y = ny; return true; }
+      if (p > 1) { if (blockedAt(S.from + 1, nx, ny)) return false; walk.stair = null; walk.level = S.from + 1; walk.z = S.z0 + S.rise; walk.x = nx; walk.y = ny; return true; }
+      walk.x = nx; walk.y = ny; walk.z = S.z0 + S.rise * p; return true;
+    }
+    if (blockedAt(walk.level, nx, ny)) return false;
+    for (const T2 of STAIRS) {
+      const foot = T2.from === walk.level && stairSide(T2, nx, ny) && stairP(T2, nx, ny) < 0.15 && stairLat(T2, nx, ny);
+      const head = T2.from + 1 === walk.level && stairSide(T2, nx, ny) && stairP(T2, nx, ny) > 0.85 && stairLat(T2, nx, ny);
+      if (foot || head) { walk.stair = T2; walk.x = nx; walk.y = ny; walk.z = T2.z0 + T2.rise * Math.max(0, Math.min(1, stairP(T2, nx, ny))); return true; }
+    }
+    walk.x = nx; walk.y = ny; return true;
+  }
   function stepWalk(t) {
     const dt = walk.last ? Math.min(0.05, (t - walk.last) / 1000) : 0; walk.last = t;
     const k = walk.keys, f = (k.has('w') ? 1 : 0) - (k.has('s') ? 1 : 0), r = (k.has('d') ? 1 : 0) - (k.has('a') ? 1 : 0);
     if (f || r) {
       const sp = (k.has('shift') ? 11 : 5.5) * dt / Math.hypot(f, r), sn = Math.sin(walk.yaw), cs = Math.cos(walk.yaw);
       const dx = (-sn * f + cs * r) * sp, dy = (-cs * f - sn * r) * sp;      // forward is -Z in three.js = north in the plan
-      if (!blocked(walk.x + dx, walk.y)) walk.x += dx;         // slide along walls: each axis on its own
-      if (!blocked(walk.x, walk.y + dy)) walk.y += dy;
+      walkTo(walk.x + dx, walk.y);                             // slide along walls: each axis on its own
+      walkTo(walk.x, walk.y + dy);
       if (immersive) updateRoomLabel();
     }
     walkCam();
@@ -231,8 +285,10 @@
     B.ceilings.visible = true; fill.intensity = 0;
     camera.fov = insideFov; camera.updateProjectionMatrix();
     let { x, y, yaw } = H.start;                              // just inside the front door, facing into the house
+    walk.level = 0; walk.z = 0; walk.stair = null;
     if (roomId) {
-      const ri = B.roomInfo[roomId]; x = ri.cx; y = ri.cy;
+      const ri = B.roomInfo[roomId]; x = ri.cx; y = ri.cy; walk.level = ri.level || 0; walk.z = ri.elevation || 0;
+      if (MULTI) showLevels(Math.max(shownTo, walk.level));
       for (let r = 0; blocked(x, y) && r < 6; r += 0.25)       // nudge off furniture if the centre is taken
         for (const [ox, oy] of [[r, 0], [-r, 0], [0, r], [0, -r]]) if (!blocked(ri.cx + ox, ri.cy + oy)) { x = ri.cx + ox; y = ri.cy + oy; break; }
       const w0 = roomWalls(roomId).find(t => t.kind === 'wall');
@@ -270,8 +326,9 @@
   const hfov = () => 2 * Math.atan(Math.tan(camera.fov * Math.PI / 360) * camera.aspect);   // horizontal field of view, radians
   function dollhouse() {
     exitWalk(); view = { kind: 'doll' }; B.ceilings.visible = false; fill.intensity = 0; camera.fov = 40; camera.updateProjectionMatrix(); setOrbit(true);
-    const dir = new T.Vector3(22, 44, 40).normalize(), dist = Math.max(63 * K, SPAN * 0.55 / Math.tan(hfov() / 2), SPAN * 0.5 / Math.tan(camera.fov * Math.PI / 360));
-    flyTo(C3.clone().addScaledVector(dir, dist), C3.clone()); pressView('vDoll'); hud();
+    const dir = new T.Vector3(22, 44, 40).normalize(), tall = MULTI ? TOPZ * 1.5 : 0, dist = Math.max(63 * K, SPAN * 0.55 / Math.tan(hfov() / 2), SPAN * 0.5 / Math.tan(camera.fov * Math.PI / 360), tall / Math.tan(camera.fov * Math.PI / 360));
+    const mid = C3.clone(); if (MULTI) mid.y = TOPZ * 0.33;
+    flyTo(mid.clone().addScaledVector(dir, dist), mid); pressView('vDoll'); hud();
   }
   function topDown() {
     exitWalk(); view = { kind: 'top' }; B.ceilings.visible = false; fill.intensity = 0; camera.fov = 40; camera.updateProjectionMatrix(); setOrbit(true);
@@ -280,7 +337,7 @@
   }
   function outside() {
     exitWalk(); view = { kind: 'out' }; B.ceilings.visible = false; fill.intensity = 0; camera.fov = 40; camera.updateProjectionMatrix(); setOrbit(true);
-    flyTo(new T.Vector3(C3.x - 26 * K, 9, C3.z + 52 * K), new T.Vector3(C3.x, 3, C3.z)); pressView('vOut'); hud();
+    flyTo(new T.Vector3(C3.x - 26 * K, 9 + (MULTI ? TOPZ * 0.8 : 0), C3.z + 52 * K * (MULTI ? 1 + TOPZ / 60 : 1)), new T.Vector3(C3.x, 3 + (MULTI ? TOPZ * 0.3 : 0), C3.z)); pressView('vOut'); hud();
   }
   function roomView(id, wallKey) {
     const walls = roomWalls(id).filter(t => t.kind === 'wall');
@@ -310,6 +367,7 @@
   function faceWall(key) {
     const t = TARGETS[key]; if (!t || !t.s) return;
     exitWalk();
+    if (MULTI && (t.s.level || 0) > shownTo) showLevels(t.s.level);
     const ext = t.kind === 'siding', v = ext ? B.surfaceView(t.s) : clearView(t, B.surfaceView(t.s));
     view = { kind: ext ? 'out' : 'wall', room: t.room, key };
     B.ceilings.visible = !ext;
@@ -468,7 +526,7 @@
       const r = R.byId[id], walls = roomWalls(id), items = Object.values(TARGETS).filter(t => t.room === id && (t.kind === 'cabinet' || t.kind === 'door'));
       const wallArea = walls.reduce((s, t) => s + t.area, 0);
       return `<details class="room" data-room="${id}"${openRooms.has(id) ? ' open' : ''}>
-        <summary><span class="rname">${esc(r.name)}</span><span class="rarea">${Math.round(wallArea)} sf</span>
+        <summary><span class="rname">${esc(r.name)}${MULTI ? ` <small class="rlevel">${esc(lvName(r.level))}</small>` : ''}</span><span class="rarea">${Math.round(wallArea)} sf</span>
           <span class="rdots">${walls.filter(t => t.kind === 'wall').map(t => `<i style="--c:${hexOf(t.key)}"></i>`).join('')}</span></summary>
         <div class="rbody">
           <div class="ractions"><button class="btn" data-act="view" data-room="${id}">Look around</button><button class="btn" data-act="selwalls" data-room="${id}">Select all walls</button></div>
@@ -724,7 +782,7 @@
   const appEl = document.querySelector('.app');
   $('#ihGo').innerHTML = ROOM_ORDER.map(id => `<option value="${id}">${esc(R.byId[id].name)}</option>`).join('');
   function updateRoomLabel() {
-    const id = R.roomAt(walk.x, walk.y), r = id && R.byId[id];
+    const id = (MULTI ? LV[walk.level].ROOMS : R).roomAt(walk.x, walk.y), r = id && R.byId[id];
     if (r) { $('#ihRoom').textContent = r.name; $('#ihGo').value = id; walk.room = id; }
   }
   function enterImmersive(roomId) {

@@ -154,6 +154,13 @@
   .pstart.on circle:first-child { stroke: var(--ink); }
   .notecard { padding: 8px; margin: 6px 0; border: 1px solid var(--line); border-radius: var(--r); }
   .field textarea { width: 100%; font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--r); background: var(--raised); color: var(--ink); resize: vertical; }
+  #lBelow rect { fill: var(--muted); opacity: .22; pointer-events: none; }
+  #lBelow path { stroke: var(--muted); opacity: .22; pointer-events: none; }
+  #lBelow .stairghost { fill: none; stroke: var(--muted); stroke-dasharray: 3 2; opacity: .5; }
+  .pvoid rect { fill: rgba(0, 0, 0, .12); stroke: var(--select); stroke-dasharray: 5 3; vector-effect: non-scaling-stroke; }
+  .pvoid line { stroke: var(--select); opacity: .5; vector-effect: non-scaling-stroke; }
+  .pvoid text { fill: var(--select); font-family: var(--f-mono); pointer-events: none; }
+  .pvoid.on rect { stroke-width: 2px; }
   .snapmark { fill: none; stroke: var(--snap); pointer-events: none; }
   .guide { stroke: var(--snap); stroke-dasharray: 2 3; pointer-events: none; }
   .scalept { fill: var(--snap); pointer-events: none; }
@@ -236,6 +243,7 @@
       <button data-tool="cased" aria-pressed="false" title="Place a doorway without a door (O)">Opening<kbd>O</kbd></button>
       <button data-tool="room" aria-pressed="false" title="Click inside a space to make it a room (R)">Room<kbd>R</kbd></button>
       <button data-tool="split" aria-pressed="false" title="Split an open-plan space into rooms (L)">Split<kbd>L</kbd></button>
+      <button data-tool="void" aria-pressed="false" title="Cut a stairwell in a floor above the ground floor (U)">Stairwell<kbd>U</kbd></button>
       <button data-tool="fixture" aria-pressed="false" title="Place cabinets, appliances and bath fixtures (F)">Fixture<kbd>F</kbd></button>
       <button data-tool="label" aria-pressed="false" title="Add a name to the floor plan (B)">Label<kbd>B</kbd></button>
       <button data-tool="dim" aria-pressed="false" title="Add a dimension to the floor plan (M)">Measure<kbd>M</kbd></button>
@@ -265,6 +273,8 @@
     <div class="under" id="underBox"></div>
     <input type="file" id="underFile" accept="image/*,application/pdf" hidden>
     <input type="file" id="floorFile" accept="image/*" hidden>
+    <h2>Floors</h2>
+    <div class="roomlist" id="levelBox"></div>
     <h2>Rooms</h2>
     <div class="roomlist" id="roomList"></div>
     <div class="actions" style="padding: 6px 16px 0"><button class="btn" id="findRoomsBtn" title="Fill every closed space that is not a room yet" hidden>Find all rooms</button></div>
@@ -280,7 +290,7 @@
           <pattern id="gridMinor" patternUnits="userSpaceOnUse" width="1" height="1"><path id="gridMinorPath" d="M1 0H0V1" fill="none" stroke="var(--grid)"/></pattern>
           <pattern id="gridMajor" patternUnits="userSpaceOnUse" width="5" height="5"><path id="gridMajorPath" d="M5 0H0V5" fill="none" stroke="var(--grid-major)"/></pattern>
         </defs>
-        <g id="lUnder"></g>
+        <g id="lUnder"></g><g id="lBelow"></g>
         <rect id="gridA" x="-1000" y="-1000" width="2000" height="2000" fill="url(#gridMinor)" pointer-events="none"/>
         <rect id="gridB" x="-1000" y="-1000" width="2000" height="2000" fill="url(#gridMajor)" pointer-events="none"/>
         <g id="lRooms"></g><g id="lFix"></g><g id="lWalls"></g><g id="lOpen"></g><g id="lSplits"></g><g id="lPlan"></g><g id="lTrace"></g><g id="lSel"></g><g id="lGhost"></g>

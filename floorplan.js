@@ -1,13 +1,20 @@
 /* 2D floor plan (after / before / changes / paint surfaces), drawn from window.HOUSE + window.ROOMS. */
 (function(){
-  const H = window.HOUSE, S = 20, ML = 80, MT = 92;
+  // with several floors this page shows one at a time: ?level=0 (the ground floor, the default), 1, ...
+  const LVS = window.LEVELS && window.LEVELS.length > 1 ? window.LEVELS : null;
+  const LI = LVS ? Math.max(0, Math.min(LVS.length - 1, +new URLSearchParams(location.search).get('level') || 0)) : 0;
+  const H = LVS ? LVS[LI].HOUSE : window.HOUSE, S = 20, ML = 80, MT = 92;
   const X = v => ML + v*S, Y = v => MT + v*S;
   const n = v => +v.toFixed(2);
   const ftin = v => { const ft=Math.floor(v+1e-6), inch=Math.round((v-ft)*12); return inch===12?`${ft+1}'-0"`:`${ft}'-${inch}"`; };
   const esc = v => String(v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const P = H.plan || {};
-  document.title = H.name + ' \u00b7 Floor plan';
-  document.getElementById('title').textContent = H.name;
+  document.title = H.name + (LVS ? ' \u00b7 ' + LVS[LI].name : '') + ' \u00b7 Floor plan';
+  document.getElementById('title').textContent = H.name + (LVS ? ' \u00b7 ' + LVS[LI].name : '');
+  if (LVS) {                                                                   // a link to each floor
+    const u = new URL(location.href), links = LVS.map((L, i) => { u.searchParams.set('level', i); return `<a href="${u.search}" class="lvlink" aria-current="${i === LI}" style="margin-right:12px;${i === LI ? 'font-weight:700;' : ''}color:inherit">${esc(L.name)}</a>`; }).join('');
+    document.getElementById('subtitle').insertAdjacentHTML('afterend', `<div class="sub" id="levels">Floor: ${links}</div>`);
+  }
   document.getElementById('subtitle').textContent = [H.subtitle, ftin(H.W) + ' \u00d7 ' + ftin(H.D)].filter(Boolean).join(' \u00b7 ');
   document.getElementById('floorBtn').textContent = (H.floor.name || 'Wood') + ' floor';
   document.getElementById('floorName').textContent = [H.floor.name, H.floor.spec].filter(Boolean).join(' ');
@@ -20,7 +27,7 @@
   const vis = st => { st = st||'keep'; return (mode==='after'||mode==='surfaces') ? st!=='removed' : mode==='before' ? st!=='new' : true; };
 
   /* ---------- paint surfaces ---------- */
-  const R = window.ROOMS;
+  const R = LVS ? LVS[LI].ROOMS : window.ROOMS;
   const roomHue = {}; R.rooms.forEach((r,i)=>{ roomHue[r.id] = (i*137.5)%360; }); roomHue.exterior = 0;
   function surfColor(s, i){ const h=roomHue[s.room]; return s.room==='exterior' ? `hsl(0 0% ${i%2?55:40}%)` : `hsl(${h} 70% ${i%2?42:58}%)`; }
   function surfacesSVG(){
@@ -150,6 +157,12 @@
         let r=`<rect class="fx ${f.c||'cabW'}" x="${X(f.x)}" y="${Y(f.y)}" width="${f.w*S}" height="${f.h*S}" rx="1"/>`;
         if(f.label) r+=`<text class="rsub" font-size="${f.size||8}" x="${X(f.x+f.w/2)}" y="${Y(f.y+f.h/2)+3}" style="fill:${f.c==='cabB'?'#fff':'var(--ink)'};font-weight:600">${f.label}</text>`;
         return r; }
+      case 'stairs': {                                                               // treads across the flight, and an arrow up
+        const d=f.front||'e', along=d==='e'||d==='w', n=Math.max(3,Math.round((f.rise||9)/0.6)), x=X(f.x), y=Y(f.y), w=f.w*S, h=f.h*S;
+        let r=`<rect class="fx app" x="${x}" y="${y}" width="${w}" height="${h}"/>`;
+        for(let i=1;i<n;i++){ const t=i/n; r+= along ? `<line class="hair" x1="${x+(d==='e'?t:1-t)*w}" y1="${y}" x2="${x+(d==='e'?t:1-t)*w}" y2="${y+h}"/>` : `<line class="hair" x1="${x}" y1="${y+(d==='s'?t:1-t)*h}" x2="${x+w}" y2="${y+(d==='s'?t:1-t)*h}"/>`; }
+        const cx=x+w/2, cy=y+h/2, a=Math.min(w,h)*0.28, L={e:[1,0],w:[-1,0],s:[0,1],n:[0,-1]}[d], tx=cx+L[0]*(along?w:h)*0.38, ty=cy+L[1]*(along?w:h)*0.38, bx=cx-L[0]*(along?w:h)*0.38, by=cy-L[1]*(along?w:h)*0.38;
+        return r+`<line class="hair" style="stroke-width:1.6" x1="${bx}" y1="${by}" x2="${tx}" y2="${ty}"/><polygon class="fxfill" points="${tx},${ty} ${tx-L[0]*a+L[1]*a*0.6},${ty-L[1]*a-L[0]*a*0.6} ${tx-L[0]*a-L[1]*a*0.6},${ty-L[1]*a+L[0]*a*0.6}"/><text class="rsub" font-size="7" x="${cx}" y="${cy+(along?-1:0)*0}" style="font-weight:600;fill:var(--ink)">UP</text>`; }
       case 'oval':   return `<ellipse class="fxfill" cx="${X(f.cx)}" cy="${Y(f.cy)}" rx="${f.rx*S}" ry="${f.ry*S}"/>`;
       case 'ftub':   return `<ellipse class="fxfill" cx="${X(f.cx)}" cy="${Y(f.cy)}" rx="${f.rx*S}" ry="${f.ry*S}"/>`+
                             `<ellipse class="fxt" cx="${X(f.cx)}" cy="${Y(f.cy)}" rx="${(f.rx-.25)*S}" ry="${(f.ry-.25)*S}"/>`;
@@ -254,6 +267,7 @@
     // dimensions
     o+=dimH(0,H.W,-4.3,ftin(H.W));
     o+=dimV(0,H.D,-3.6,ftin(H.D));
+    (H.voids||[]).forEach(v=>{ o+=`<rect class="dashed" x="${X(v[0])}" y="${Y(v[1])}" width="${(v[2]-v[0])*S}" height="${(v[3]-v[1])*S}"/><line class="hair" x1="${X(v[0])}" y1="${Y(v[1])}" x2="${X(v[2])}" y2="${Y(v[3])}"/><line class="hair" x1="${X(v[2])}" y1="${Y(v[1])}" x2="${X(v[0])}" y2="${Y(v[3])}"/><text class="rsub" font-size="7" x="${X((v[0]+v[2])/2)}" y="${Y((v[1]+v[3])/2)}" style="font-weight:600;fill:var(--ink)">OPEN TO BELOW</text>`; });
     (P.dims||[]).forEach(d=>{ o+= d.x1!==undefined ? dimH(d.x1,d.x2,d.y,esc(d.label||ftin(d.x2-d.x1))) : dimV(d.y1,d.y2,d.x,esc(d.label||ftin(d.y2-d.y1))); });
     (P.texts||[]).forEach(t=>{ o+=`<text class="tiny" x="${X(t.x)}" y="${Y(t.y)}">${esc(t.t)}</text>`; });
     if(mode==='changes') (P.callouts||[]).forEach(c=>{ o+=callout(c.x,c.y,esc(c.t)); });

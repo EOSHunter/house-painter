@@ -334,3 +334,60 @@ test('curves: the Blender export carries the pieces of each curved surface', () 
   const b = HouseCore.forBlender(HOUSE, ROOMS);
   assert.ok(b.surfaces.filter(s => s.parts).length === 4 && b.slants.some(S => S.arc === 1));
 });
+
+// ---------------------------------------------------------------------------------------------- more than one floor
+const two = () => load('two-storey');
+
+test('floors: a house can have floors above the ground floor, each with its own walls, rooms and fixtures', () => {
+  assert.deepEqual(HouseCore.validate(two()), []);
+  const { HOUSE, ROOMS, LEVELS } = HouseCore.build(two());
+  assert.equal(LEVELS.length, 2);
+  assert.equal(LEVELS[0].elevation, 0);
+  assert.ok(Math.abs(LEVELS[1].elevation - (LEVELS[0].ROOMS.ceilingMax + 0.9)) < 1e-9, 'the next floor stands on a 0.9 ft slab over the ceiling: ' + LEVELS[1].elevation);
+  assert.equal(HOUSE, LEVELS[0].HOUSE, 'HOUSE is the ground floor');
+  assert.equal(ROOMS.rooms.length, 6, 'ROOMS lists every floor\'s rooms');
+  assert.deepEqual(ROOMS.rooms.map(r => r.level), [0, 0, 0, 1, 1, 1]);
+  assert.ok(ROOMS.byId.study && ROOMS.byId.hall);
+});
+
+test('floors: outside walls of an upper floor have ids of their own, so every surface id is unique', () => {
+  const { ROOMS } = HouseCore.build(two());
+  const ids = ROOMS.surfaces.map(s => s.id);
+  assert.equal(new Set(ids).size, ids.length);
+  assert.ok(ids.includes('EXT-N') && ids.includes('EXT2-N'));
+  assert.ok(ROOMS.surfaces.filter(s => s.id.startsWith('EXT2-')).every(s => s.level === 1));
+});
+
+test('floors: validation catches a room id used on two floors, and a bad stairwell', () => {
+  const dup = two(); dup.levels[0].rooms[0].id = 'living';
+  assert.ok(HouseCore.validate(dup).some(p => /more than one floor/.test(p)), HouseCore.validate(dup).join('|'));
+  const bad = two(); bad.levels[0].voids = [[5, 5, 4, 4]];
+  assert.ok(HouseCore.validate(bad).some(p => /Level 2: "voids"/.test(p)));
+  const broken = two(); delete broken.levels[0].walls;
+  assert.ok(HouseCore.validate(broken).some(p => /^Level 2:/.test(p)));
+});
+
+test('floors: stairs climb to the next floor, and its floor and the ceilings below have the stairwell cut out', () => {
+  const { LEVELS } = HouseCore.build(two());
+  const st = LEVELS[0].HOUSE.fixtures.find(f => f.k === 'stairs');
+  assert.ok(Math.abs(st.rise - LEVELS[1].elevation) < 1e-9, 'rise ' + st.rise);
+  const v = LEVELS[1].HOUSE.voids[0];
+  assert.deepEqual(LEVELS[0].ROOMS.ceilVoids, LEVELS[1].HOUSE.voids);
+  const covers = (rects, x, y) => rects.some(([a, b, c, d]) => x > a && x < c && y > b && y < d);
+  assert.ok(covers(LEVELS[1].HOUSE.floorRects, 20, 10), 'floor elsewhere');
+  assert.ok(!covers(LEVELS[1].HOUSE.floorRects, (v[0] + v[2]) / 2, (v[1] + v[3]) / 2), 'a hole where the stairs come up');
+  assert.deepEqual(HouseCore.subtractRects([[0, 0, 10, 10]], [[4, 4, 6, 6]]).reduce((t, [a, b, c, d]) => t + (c - a) * (d - b), 0), 96);
+});
+
+test('floors: a house of one floor has one level and nothing else changes', () => {
+  const { ROOMS, LEVELS } = HouseCore.build(load('starter-cottage'));
+  assert.equal(LEVELS.length, 1); assert.equal(LEVELS[0].ROOMS, ROOMS); assert.equal(ROOMS.levels, undefined);
+});
+
+test('floors: the Blender export carries each floor with its height', () => {
+  const { HOUSE, ROOMS } = HouseCore.build(two());
+  const b = HouseCore.forBlender(HOUSE, ROOMS);
+  assert.equal(b.levels.length, 1);
+  assert.ok(b.levels[0].elevation > 8 && b.levels[0].house.walls.length > 0 && b.levels[0].house.surfaces.length > 0);
+  assert.ok(b.ceilVoids.length === 1 && b.levels[0].house.voids.length === 1);
+});

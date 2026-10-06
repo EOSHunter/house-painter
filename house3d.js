@@ -4,11 +4,13 @@
  * paint-surface boundaries, so each face of each box carries the material of exactly one surface.
  *
  * Coordinates: plan feet (x east, y south, z up) \u2192 three.js (X = x, Y = z, Z = y). 1 unit = 1 ft.
- * window.House3DBuild(HOUSE, ROOMS) -> { root, ceilings, pickables, material(key), keyAt(hit), roomInfo, surfaceView, ... }
+ * window.House3DBuild(HOUSE, ROOMS, LEVELS) -> { root, ceilings, pickables, material(key), keyAt(hit), roomInfo, surfaceView, ... }
+ * With several floors (LEVELS from HouseCore.build) each is built with its own elevation and the results are one model: one root, one list of
+ * pickables, one set of paint materials.
  * When the page already has window.HOUSE / window.ROOMS, window.House3D is built from them on load.
  */
 (function () {
-function build(H, R) {
+function build(H, R, opts = {}) {
   const T = THREE;
   const CEIL = R.ceilingHeight;                              // openings carry their own z0/z1 (house-core.js)
   const T_HALF = H.T / 2;
@@ -22,13 +24,13 @@ function build(H, R) {
   const DEFAULTS = { wall: '#F1EFEA', ceiling: '#F5F4F0', trim: '#F6F6F3', exttrim: '#F4F4F0', doors: '#F3F3EF', extdoors: '#F3F3EF', siding: '#E9E8E2' };
   const ITEM = {};                                           // the house's paintable items (cabinet runs, special doors)
   for (const it of H.items) { ITEM[it.key] = it; DEFAULTS[it.key] = it.default || (it.kind === 'door' ? '#F3F3EF' : '#F1F0EC'); }
-  const mats = {};
+  const mats = opts.mats || {};                              // shared between floors, so one paint colour covers them all
   const partGroup = key => { const m = /^(\w+):(door|drawer)\d+$/.exec(key); return m ? m[1] : null; };   // "kbase:door3" -> "kbase"
   function defaultHex(key) {
     if (DEFAULTS[key]) return DEFAULTS[key];
     if (partGroup(key)) return DEFAULTS[partGroup(key)] || DEFAULTS.wall;
     if (key.startsWith('C:')) return DEFAULTS.ceiling;
-    if (key.startsWith('EXT-')) return DEFAULTS.siding;
+    if (/^EXT\d*-/.test(key)) return DEFAULTS.siding;
     return DEFAULTS.wall;
   }
   function material(key) {
@@ -118,7 +120,7 @@ function build(H, R) {
     cut: std('#B7B4AD', 0.95), counter: std('#F3F3F0', 0.25), tile: std('#EEEEEA', 0.15), appWhite: std('#ECEEEE', 0.35),
     steel: std('#BFC3C7', 0.3, 0.9), black: std('#141518', 0.25), brass: std('#B8923C', 0.35, 0.9), chrome: std('#D8DADD', 0.15, 1),
     porc: std('#FBFBFA', 0.12), winframe: std('#F7F7F5', 0.45), wire: std('#E8E8E6', 0.5), heater: std('#E2E4E6', 0.4),
-    pump: std('#35607F', 0.45), skirt: std('#C9C6BD', 0.85), deck: std('#7A5A3B', 0.8), ground: std('#7E8A6A', 1), reveal: std('#3A3C40', 0.6),
+    pump: std('#35607F', 0.45), skirt: std('#C9C6BD', 0.85), slab: std('#CFCBC2', 0.85), stair: std('#A88B66', 0.7), deck: std('#7A5A3B', 0.8), ground: std('#7E8A6A', 1), reveal: std('#3A3C40', 0.6),
     glass: new T.MeshStandardMaterial({ color: lin('#CFE3EE'), roughness: 0.05, metalness: 0, transparent: true, opacity: 0.22, depthWrite: false }),
     floor: std(H.floor.color || '#B09672', 0.55)
   };
@@ -191,7 +193,7 @@ function build(H, R) {
       const big = rects.reduce((m, q) => ((q[2] - q[0]) * (q[3] - q[1]) > (m[2] - m[0]) * (m[3] - m[1]) ? q : m), rects[0]);
       cx = (big[0] + big[2]) / 2; cy = (big[1] + big[3]) / 2;
     }
-    roomInfo[r.id] = { cx, cy, bbox: [bx0, by0, bx1, by1], rects };
+    roomInfo[r.id] = { cx, cy, bbox: [bx0, by0, bx1, by1], rects, elevation: opts.elevation || 0, level: opts.level || 0 };
     const cd = r.ceiling;
     let cr = rects, zf = CEIL - 0.004;
     if (cd && !(cd.type === 'flat' && cd.h === CEIL)) {
@@ -206,6 +208,7 @@ function build(H, R) {
         cr = cut;
       }
     }
+    if (R.ceilVoids && R.ceilVoids.length) cr = HouseCore.subtractRects(cr, R.ceilVoids);
     const ceil = new T.Mesh(rectsGeometry(cr, zf, true), material('C:' + r.id));
     ceil.receiveShadow = true;
     ceilings.add(pick(ceil, 'C:' + r.id));
@@ -432,7 +435,7 @@ function build(H, R) {
   // A panel without its own colour shows the cabinet run's colour (the app resolves that).
   // Fixtures are built in their own frame (fixtures.js): p = depth from the back to the front, q = across the front.
   const FX = window.HouseFixtures;
-  const cabParts = [], partN = {};
+  const cabParts = opts.cabParts || [], partN = opts.partN || {};
   const DOOR_PROUD = 0.045, GAP = 0.022;
   const lbox = (F, p0, q0, z0, p1, q1, z1, m) => { const r = F.box(p0, q0, p1, q1); return box(r[0], r[1], z0, r[2], r[3], z1, m); };
   const lcyl = (F, p, q, rp, rq, z0, z1, m) => { const [x, y] = F.pt(p, q); return F.swap ? cylinder(x, y, rq, rp, z0, z1, m) : cylinder(x, y, rp, rq, z0, z1, m); };
@@ -590,6 +593,12 @@ function build(H, R) {
         yb(0.12, 0.2, bx1 - 0.35, bx1 - 0.3, 3.0, 4.2, M.black);
         break;
       }
+      case 'stairs': {                                                  // a straight flight: solid steps, each rising from the floor, the top one level with the floor above
+        const F = FX.frame(f), rise = f.rise ?? (CEIL + 0.9), n = Math.max(2, Math.round(rise / 0.6)), rh = rise / n, tr = F.P / n;
+        for (let i = 0; i < n; i++) lbox(F, tr * i, 0, 0, tr * (i + 1), F.Q, rh * (i + 1), M.stair);
+        lbox(F, 0, 0, 0, F.P, 0.06, rise * 0.5 + 1.0, M.stair); lbox(F, 0, F.Q - 0.06, 0, F.P, F.Q, rise * 0.5 + 1.0, M.stair);       // low walls either side, so it reads as a stair from the side
+        break;
+      }
       case 'steps': {
         const t1 = y0 + f.h * 0.45, t2 = y0 + f.h * 0.72, gz = -2.0;
         box(x0, y0, gz, x1, t1, -0.25, M.deck); box(x0, t1, gz, x1, t2, -1.0, M.deck); box(x0, t2, gz, x1, y1, -1.7, M.deck);
@@ -605,10 +614,15 @@ function build(H, R) {
   const floorMesh = new T.Mesh(rectsGeometry(H.floorRects, 0, false), M.floor);
   floorMesh.receiveShadow = true;
   root.add(floorMesh);
-  if (H.slants.length) H.floorRects.forEach(([x0, y0, x1, y1]) => box(x0 - 0.3, y0 - 0.3, -2.0, x1 + 0.3, y1 + 0.3, -0.02, M.skirt));
-  else box(-0.05, -0.05, -2.0, H.W + 0.05, H.D + 0.05, -0.02, M.skirt);
-  const ground = new T.Mesh(rectsGeometry([[-150, -150, H.W + 150, H.D + 150]], -2.0, false), M.ground);
-  ground.receiveShadow = true; root.add(ground);
+  if (opts.upper) {                                           // a floor above: the slab it stands on, under the walls too, with its stairwell left open
+    const ex = H.E + 0.05, solid = (H.voids && H.voids.length ? HouseCore.subtractRects : (r => r))(H.floorRects.map(([a, b, c, d]) => [a - ex, b - ex, c + ex, d + ex]), H.voids || []);
+    solid.forEach(([x0, y0, x1, y1]) => box(x0, y0, -(opts.slab || 0.9), x1, y1, -0.02, M.slab));
+  } else {
+    if (H.slants.length) H.floorRects.forEach(([x0, y0, x1, y1]) => box(x0 - 0.3, y0 - 0.3, -2.0, x1 + 0.3, y1 + 0.3, -0.02, M.skirt));
+    else box(-0.05, -0.05, -2.0, H.W + 0.05, H.D + 0.05, -0.02, M.skirt);
+    const ground = new T.Mesh(rectsGeometry([[-150, -150, H.W + 150, H.D + 150]], -2.0, false), M.ground);
+    ground.receiveShadow = true; root.add(ground);
+  }
 
   // plank texture: drawn once from a photo crop of one plank (floor.texture), then tiled in world feet
   // img: a photo of one plank (grain running up the image), or a canvas drawn with the same orientation
@@ -677,9 +691,33 @@ function build(H, R) {
 
   return {
     root, ceilings, pickables, material, setPaint, defaultHex, keyAt, roomInfo, surfaceView, loadFloorTexture, loadFloor, SHEEN, cabParts, WOODS, woodSwatch,
-    center: new T.Vector3(H.W / 2, 0, H.D / 2)
+    center: new T.Vector3(H.W / 2, 0, H.D / 2), elevation: opts.elevation || 0
   };
 }
-  window.House3DBuild = build;
-  if (window.HOUSE && window.ROOMS) window.House3D = build(window.HOUSE, window.ROOMS);
+// every floor of a house in one model: each built at its own elevation, sharing paint materials, picking and the list of cabinet doors
+function buildAll(H, R, LEVELS) {
+  if (!LEVELS || LEVELS.length < 2) return build(H, R);
+  const T = THREE, mats = {}, cabParts = [], partN = {};
+  const parts = LEVELS.map(L => build(L.HOUSE, L.ROOMS, { mats, cabParts, partN, upper: L.index > 0, slab: L.slab, elevation: L.elevation, level: L.index }));
+  const main = parts[0];
+  parts.forEach((P, i) => {
+    if (!i) return;
+    P.root.position.y = LEVELS[i].elevation; main.root.add(P.root);
+    P.root.remove(P.ceilings);                                            // the ceilings of every floor live together, so one switch shows or hides them all
+    P.moved = P.ceilings.children.slice(); P.moved.forEach(m => { m.position.y = LEVELS[i].elevation; main.ceilings.add(m); });
+    main.pickables.push(...P.pickables);
+    Object.assign(main.roomInfo, P.roomInfo);
+  });
+  const levelOf = s => parts[s.level || 0];
+  return Object.assign({}, main, {
+    cabParts,
+    levels: parts,
+    surfaceView: s => { const v = levelOf(s).surfaceView(s), e = LEVELS[s.level || 0].elevation; v.eye.y += e; v.target.y += e; return v; },
+    loadFloor: cb => { let n = parts.length; parts.forEach(P => P.loadFloor(() => { if (--n === 0) cb && cb(); })); },
+    loadFloorTexture: (url, cb) => { let n = parts.length; parts.forEach(P => P.loadFloorTexture(url, () => { if (--n === 0) cb && cb(); })); }
+  });
+}
+
+  window.House3DBuild = buildAll;
+  if (window.HOUSE && window.ROOMS) window.House3D = buildAll(window.HOUSE, window.ROOMS, window.LEVELS);
 })();

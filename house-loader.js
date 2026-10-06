@@ -8,7 +8,7 @@
  * Which house:  ?house=<url>    a house.json at that address (relative, or another site that allows CORS)
  *               ?house=local    the file last opened with "Open file" (kept in this browser)
  *               otherwise       data-default
- * Sets window.HOUSE and window.ROOMS (see house-core.js) and
+ * Sets window.HOUSE, window.ROOMS and window.LEVELS (see house-core.js) and
  *      window.HOUSE_SOURCE = { kind: 'default' | 'url' | 'local', url, id, src }   (src = the house file as loaded)
  */
 (function () {
@@ -90,7 +90,7 @@
     let src;
     try { src = JSON.parse(text); } catch { throw new Error('The house file is not valid JSON.'); }
     const built = HouseCore.build(src);                  // throws with a readable list of problems
-    window.HOUSE = built.HOUSE; window.ROOMS = built.ROOMS;
+    window.HOUSE = built.HOUSE; window.ROOMS = built.ROOMS; window.LEVELS = built.LEVELS;
     window.HOUSE_SOURCE = Object.assign(source, { id: built.HOUSE.id, src });
     await loadScripts(THEN);
   }

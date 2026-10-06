@@ -3,7 +3,7 @@
  * part of the project uses: joined walls, room zones, paintable wall surfaces, room shapes and heights.
  * Pure data in, data out. Runs in the browser (window.HouseCore) and in Node (require('./house-core.js')).
  *
- *   const { HOUSE, ROOMS } = HouseCore.build(houseJson);
+ *   const { HOUSE, ROOMS, LEVELS } = HouseCore.build(houseJson);   (HOUSE is the ground floor; with `levels`, ROOMS lists every floor's rooms and LEVELS has each floor's own HOUSE and ROOMS)
  *   HouseCore.validate(houseJson)       -> [] or a list of problems (strings)
  *   HouseCore.forBlender(HOUSE, ROOMS)  -> the plain-JSON house that build_house.py reads
  *
@@ -70,9 +70,23 @@
         if (r.polys !== undefined && (!Array.isArray(r.polys) || !r.polys.every(poly => Array.isArray(poly) && poly.length >= 3 && poly.every(v => Array.isArray(v) && v.length === 2 && v.every(num))))) p.push(`Room ${i}: "polys" must be a list of polygons, each a list of at least three [x, y] points.`);
       });
     }
+    // more floors: each is a house of its own (walls, rooms, fixtures) standing on the one below; room ids are unique across all of them
+    const allRooms = (src.rooms || []).slice();
+    if (src.levels !== undefined) {
+      if (!Array.isArray(src.levels)) p.push('"levels" must be a list of floors above the ground floor.');
+      else src.levels.forEach((lv, k) => {
+        if (!lv || typeof lv !== 'object') { p.push(`Level ${k + 2}: must be an object.`); return; }
+        const sub = { ...lv, format: FORMAT, W: lv.W ?? src.W, D: lv.D ?? src.D }; delete sub.levels;
+        validate(sub).forEach(m => { if (!/"format"/.test(m)) p.push(`Level ${k + 2}: ${m}`); });
+        if (lv.elevation !== undefined && !num(lv.elevation)) p.push(`Level ${k + 2}: "elevation" is the height of its floor above the ground floor, in feet.`);
+        if (lv.voids !== undefined && !(Array.isArray(lv.voids) && lv.voids.every(q => Array.isArray(q) && q.length === 4 && q.every(num) && q[2] > q[0] && q[3] > q[1]))) p.push(`Level ${k + 2}: "voids" must be a list of [x0, y0, x1, y1] holes in its floor (a stairwell).`);
+        (lv.rooms || []).forEach(r => allRooms.push(r));
+      });
+    }
+    { const seen = new Set(); for (const r of allRooms) { if (r && r.id) { if (seen.has(r.id) && !p.some(m => /duplicate id/.test(m) && m.includes('"' + r.id + '"'))) p.push(`Room id "${r.id}" is used on more than one floor: ids are shared by all of them.`); seen.add(r.id); } } }
     (src.items || []).forEach((it, i) => {
       if (!it.key || !/^\w+$/.test(it.key)) p.push(`Item ${i}: "key" must be letters, digits or _.`);
-      if (it.room && it.room !== 'house' && !(src.rooms || []).some(r => r.id === it.room)) p.push(`Item ${i}: room "${it.room}" does not exist.`);
+      if (it.room && it.room !== 'house' && !allRooms.some(r => r.id === it.room)) p.push(`Item ${i}: room "${it.room}" does not exist.`);
     });
     return p;
   }
@@ -247,10 +261,58 @@
   }
 
   // ------------------------------------------------------------------ build
+  // rectangles with some rectangular holes cut out of them
+  function subtractRects(rects, holes) {
+    let cur = rects.map(q => q.slice());
+    for (const [hx0, hy0, hx1, hy1] of holes) {
+      const next = [];
+      for (const [x0, y0, x1, y1] of cur) {
+        if (hx0 >= x1 || hx1 <= x0 || hy0 >= y1 || hy1 <= y0) { next.push([x0, y0, x1, y1]); continue; }
+        if (hy0 > y0) next.push([x0, y0, x1, hy0]);
+        if (hy1 < y1) next.push([x0, hy1, x1, y1]);
+        const ya = Math.max(y0, hy0), yb = Math.min(y1, hy1);
+        if (hx0 > x0) next.push([x0, ya, hx0, yb]);
+        if (hx1 < x1) next.push([hx1, ya, x1, yb]);
+      }
+      cur = next;
+    }
+    return cur;
+  }
+  const SLAB = 0.9;                                                     // thickness of a floor between storeys, in feet
   function build(src) {
     const problems = validate(src);
     if (problems.length) { const e = new Error('This house file has problems:\n- ' + problems.join('\n- ')); e.problems = problems; throw e; }
     src = JSON.parse(JSON.stringify(src));
+    const base = buildLevel(src, { extShort: 'EXT' });
+    const LEVELS = [{ id: src.levelId || 'ground', name: src.levelName || 'Ground floor', elevation: 0, slab: 0, HOUSE: base.HOUSE, ROOMS: base.ROOMS }];
+    let prev = LEVELS[0];
+    (src.levels || []).forEach((lv, k) => {
+      const slab = lv.slab ?? SLAB, elevation = lv.elevation ?? (prev.elevation + prev.ROOMS.ceilingMax + slab);
+      const sub = { format: FORMAT, version: src.version, id: src.id, name: src.name, units: src.units, W: lv.W ?? src.W, D: lv.D ?? src.D, wallThickness: src.wallThickness,
+        heights: Object.assign({}, src.heights || {}, lv.heights || {}), floor: lv.floor || src.floor, floorRects: lv.floorRects, walls: lv.walls, rooms: lv.rooms, roomOrder: lv.roomOrder,
+        items: src.items, fixtures: lv.fixtures || [], plan: lv.plan, start: lv.start, renderRooms: lv.renderRooms };
+      const built = buildLevel(sub, { extShort: 'EXT' + (k + 2), voids: lv.voids || [] });
+      const L = { id: lv.id || 'level' + (k + 2), name: lv.name || (k === 0 ? 'Upper floor' : 'Floor ' + (k + 2)), elevation, slab, HOUSE: built.HOUSE, ROOMS: built.ROOMS };
+      LEVELS.push(L); prev = L;
+    });
+    LEVELS.forEach((L, i) => {                                         // stairs climb to the next floor unless they say how high they go
+      for (const f of L.HOUSE.fixtures) if (f.k === 'stairs' && f.rise === undefined && LEVELS[i + 1]) f.rise = LEVELS[i + 1].elevation - L.elevation;
+    });
+    LEVELS.forEach((L, i) => {                                         // the ceilings of a floor have the stairwell of the floor above cut out of them
+      L.index = i; L.HOUSE.elevation = L.elevation; L.HOUSE.levelIndex = i; L.ROOMS.ceilVoids = (LEVELS[i + 1] && LEVELS[i + 1].HOUSE.voids) || [];
+      L.ROOMS.rooms.forEach(r => { r.level = i; }); L.ROOMS.surfaces.forEach(sf => { sf.level = i; });
+    });
+    if (LEVELS.length === 1) return { HOUSE: base.HOUSE, ROOMS: base.ROOMS, LEVELS };
+    const rooms = LEVELS.flatMap(L => L.ROOMS.rooms), surfaces = LEVELS.flatMap(L => L.ROOMS.surfaces);
+    const ownerOf = id => LEVELS.find(L => L.ROOMS.byId[id]);
+    const ROOMS = Object.assign({}, base.ROOMS, {                         // every floor's rooms and surfaces in one list (roomAt, ceilingHeight and the rest are the ground floor's)
+      rooms, surfaces, byId: Object.fromEntries(rooms.map(r => [r.id, r])), order: LEVELS.flatMap(L => L.ROOMS.order),
+      ceilingAt: (id, x, y) => { const L = ownerOf(id); return L ? L.ROOMS.ceilingAt(id, x, y) : base.ROOMS.ceilingHeight; },
+      roomAtLevel: (k, x, y) => LEVELS[k].ROOMS.roomAt(x, y), levels: LEVELS
+    });
+    return { HOUSE: base.HOUSE, ROOMS, LEVELS };
+  }
+  function buildLevel(src, opts) {
     const heights = Object.assign({}, DEFAULT_HEIGHTS, src.heights || {});
     const E = (src.wallThickness && src.wallThickness.exterior) || 0.5, T = (src.wallThickness && src.wallThickness.interior) || 0.33;
     const { ortho: walls, slants: rawSlants } = splitWalls(src.walls, E, T);
@@ -276,9 +338,11 @@
       start: src.start || null, renderRooms: src.renderRooms || null,
       tints: plan.tints || [], labels: plan.labels || [], plan
     };
-    const ROOMS = buildRooms(HOUSE, src.rooms, src.roomOrder);
+    const ROOMS = buildRooms(HOUSE, src.rooms, src.roomOrder, opts.extShort || 'EXT');
     // with angled walls the outline is not a rectangle, so the floor is what the rooms cover (unless the file says otherwise)
     if (slants.length && !src.floorRects) HOUSE.floorRects = ROOMS.rooms.flatMap(r => r.shape);
+    HOUSE.voids = opts.voids || [];                                      // holes in this floor (a stairwell)
+    if (HOUSE.voids.length) HOUSE.floorRects = subtractRects(HOUSE.floorRects, HOUSE.voids);
     if (!HOUSE.start) HOUSE.start = startPoint(HOUSE, ROOMS);
     if (!HOUSE.renderRooms) HOUSE.renderRooms = ROOMS.rooms.filter(r => r.area >= 40).map(r => r.id);
     return { HOUSE, ROOMS };
@@ -313,7 +377,7 @@
    * list of rectangles: walls are tested first, so a point inside any wall belongs to no room. Open-plan spaces are
    * split into rooms by the zone rectangles alone (no wall needed).
    */
-  function buildRooms(H, roomList, roomOrder) {
+  function buildRooms(H, roomList, roomOrder, extShort = 'EXT') {
     const CEIL = H.heights.ceiling;
     const rooms = roomList.map(r => ({ id: r.id, name: r.name || r.id, short: r.short || r.id.toUpperCase().slice(0, 4), rects: r.rects || [], polys: r.polys || [], ceilingSpec: r.ceiling }));
     const byId = Object.fromEntries(rooms.map(r => [r.id, r]));
@@ -476,7 +540,7 @@
       list.forEach((s, i) => {
         const n = list.length > 1 ? ' ' + (i + 1) : '';
         const roomName = s.room === 'exterior' ? 'Exterior' : byId[s.room].name;
-        const short = s.room === 'exterior' ? 'EXT' : byId[s.room].short;
+        const short = s.room === 'exterior' ? extShort : byId[s.room].short;
         s.name = `${roomName} \u00b7 ${s.dir}${s.dir === 'Wall end' ? '' : ' wall'}${n}`;
         s.id = `${short}-${s.dir === 'Wall end' ? 'END' : (s.letter || s.dir[0])}${list.length > 1 ? i + 1 : ''}`;
       });
@@ -610,6 +674,12 @@
   // Plain JSON with everything build_house.py needs: joined walls (openings carry z0/z1), fixtures, paint surfaces,
   // paint items, and ceiling rectangles that run out to the wall centrelines so no light leaks at the edges.
   function forBlender(H, R) {
+    if (R.levels && R.levels.length > 1) {                                // a house of several floors: the ground floor, with the others riding along
+      const out = forBlender(R.levels[0].HOUSE, R.levels[0].ROOMS);
+      out.levels = R.levels.slice(1).map(L => ({ id: L.id, name: L.name, elevation: L.elevation, slab: L.slab, ceilVoids: L.ROOMS.ceilVoids, house: forBlender(L.HOUSE, L.ROOMS) }));
+      out.ceilVoids = R.levels[0].ROOMS.ceilVoids;
+      return out;
+    }
     const walls = H.walls.filter(w => w.status !== 'removed');
     const rooms = R.rooms.map(r => {
       const out = r.shape.map(q => q.slice());
@@ -638,9 +708,9 @@
       format: 'house-painter/built-house', version: 1, id: H.id, name: H.name,
       W: H.W, D: H.D, E: H.E, T: H.T, heights: H.heights, floor: H.floor, floorRects: H.floorRects,
       walls: H.walls, slants: H.slants, fixtures: H.fixtures, items: H.items, renderRooms: H.renderRooms,
-      surfaces, rooms, ceilingHeight: R.ceilingHeight, ceilingMax: R.ceilingMax, doorHeight: R.doorHeight, windowHead: R.windowHead
+      voids: H.voids || [], surfaces, rooms, ceilingHeight: R.ceilingHeight, ceilingMax: R.ceilingMax, doorHeight: R.doorHeight, windowHead: R.windowHead
     };
   }
 
-  return { FORMAT, DEFAULT_HEIGHTS, validate, build, joinWalls, forBlender, arcInfo };
+  return { FORMAT, DEFAULT_HEIGHTS, validate, build, joinWalls, forBlender, arcInfo, subtractRects };
 });

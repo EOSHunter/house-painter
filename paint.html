@@ -82,6 +82,9 @@
   .exp { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
   .exp input { flex: 1; accent-color: var(--ink); }
   .lightnote { margin: 0; font-size: 12px; color: var(--muted); }
+  .lvseg { display: inline-flex; gap: 4px; align-items: center; }
+  .lvseg .lvlabel { font: 600 11px var(--f-mono); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 2px 0 6px; }
+  .rlevel { font-weight: 400; color: var(--muted); font-size: 11px; margin-left: 4px; }
   .fov { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; cursor: default; }
   .fov span { color: var(--muted); }
   .fov input { width: 90px; accent-color: var(--ink); }
@@ -230,6 +233,7 @@
         <button class="btn" id="vTop" aria-pressed="false">Top down</button>
         <button class="btn" id="vOut" aria-pressed="false">Outside</button>
         <button class="btn primary" id="vWalk" aria-pressed="false">Walkthrough</button>
+        <span id="levelSeg" class="lvseg" role="group" aria-label="Floors" hidden></span>
         <label class="fov btn"><span>Field of view</span><input type="range" id="fov" min="45" max="100" step="1" value="75" aria-label="Field of view"><output id="fovOut">75°</output></label>
       </div>
       <div class="lightbar">

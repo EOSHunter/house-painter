@@ -35,6 +35,7 @@ Copy [`houses/starter-cottage/house.json`](../houses/starter-cottage/house.json)
 | `fixtures` | | See [Fixtures](#fixtures). |
 | `start` | | `{ "x", "y", "yaw" }`: where the walkthrough starts. Defaults to just inside the first exterior door. For `yaw`, 0 faces north (−y), π faces south, −π/2 faces east and π/2 faces west. |
 | `renderRooms` | | Room ids Blender renders for `--views rooms`. Defaults to every room of 40 sq ft or more. |
+| `levels` | | Floors above the ground floor. See [More than one floor](#more-than-one-floor). |
 | `plan` | | Floor-plan extras: `tints`, `labels`, `dims`, `texts`, `callouts`, `notes`. Only `floorplan.html` uses these. Rooms without labels are named automatically. |
 | `editor` | | Written by the plan editor and ignored by everything else. `underlay` holds the blueprint's name, size, scale (`s`, in feet per pixel), position (`ox`, `oy`), rotation and opacity. `splits` holds the zone lines between open-plan rooms. |
 
@@ -120,6 +121,26 @@ The reserved ids are `exterior` and `house`.
 Walls rise to meet their rooms' ceilings (a wall between two rooms goes as high as the higher one), and the area of each painted wall face follows the ceiling above it. Heights are from the floor. Ceilings of any one room are one plane or two, taken across the bounding box of its shape, so an L-shaped room slopes as one rectangle would.
 
 > Saved schemes refer to surfaces by ID, such as `BR1-N`. Renaming a room's `short`, or adding a wall that splits a surface, changes IDs, and any colours saved on the old IDs no longer show.
+
+## More than one floor
+
+The top level of the file is the **ground floor**. Floors above it are listed in `levels`, bottom to top, and each is written like a small house of its own:
+
+```json
+"levels": [
+  { "id": "upper", "name": "Upstairs",
+    "walls": [ ... ], "rooms": [ ... ], "fixtures": [ ... ],
+    "voids": [[26, 8.7, 29.5, 21.2]] }
+]
+```
+
+- `walls`, `rooms` and `fixtures` are exactly as for the ground floor, in the same coordinates (so the outside walls line up). `heights`, `floor` and `floorRects` can be given to override the house's. `items` (paint groups) are shared by every floor and live at the top level.
+- **Room ids are shared**: every room on every floor needs its own id (`bed1` upstairs, `living` downstairs).
+- `elevation` is the height of the floor above the ground floor, in feet. Left out, it is the ceiling of the floor below plus a 0.9 ft slab (a 9 ft ceiling gives 9.9).
+- `voids` are holes in this floor, `[x0, y0, x1, y1]`: a stairwell. The floor is left open there, and the ceilings of the floor below are cut open under it.
+- **Stairs** are a fixture on the floor they climb from: `{ "k": "stairs", "x": 26, "y": 8.7, "w": 3.5, "h": 12.5, "front": "n" }`. `w` is the width, `h` the length of the run, and `front` the way you walk going up (the top end). They climb to the next floor unless `rise` (feet) says otherwise. Keep the foot clear to step on from, and make the floor above's `void` match the stairs.
+- Paint surfaces keep their ids. The outside of each upper floor is named with its number: `EXT2-N`, `EXT3-E`.
+- Limits: floors are whole stories laid one on another; a floor can't overhang past the one below it without that part having no floor under it, and there are no basements or split levels (give a floor a negative `elevation` to put it below, at your own risk).
 
 ## Items
 
